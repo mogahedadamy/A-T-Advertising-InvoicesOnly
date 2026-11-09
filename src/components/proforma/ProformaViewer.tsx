@@ -1,0 +1,112 @@
+import { useEffect, useRef, useState } from "react";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { InvoiceZoomControls } from "@/components/invoice/InvoiceZoomControls";
+import { ProformaDocument } from "./ProformaDocument";
+import type { ProformaInvoice } from "@/lib/proforma/types";
+
+export const PROFORMA_WIDTH = 794; // 210mm in pixels at 96 DPI
+export const PROFORMA_HEIGHT = 1123; // 297mm in pixels at 96 DPI
+
+interface Props {
+  invoice: ProformaInvoice;
+  isVisible?: boolean;
+}
+
+export function ProformaViewer({ invoice, isVisible = true }: Props) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<number | null>(null);
+  const [currentScale, setCurrentScale] = useState<number>(1);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const el = boxRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const isMobile = window.innerWidth < 768;
+      const paddingX = isMobile ? 12 : 32;
+      const paddingY = isMobile ? 16 : 48;
+      const clientW = el.clientWidth || window.innerWidth;
+      const clientH = el.clientHeight || window.innerHeight;
+
+      const w = Math.max(150, clientW - paddingX);
+      const h = Math.max(150, clientH - paddingY);
+      const scaleW = w / PROFORMA_WIDTH;
+      const scaleH = h / PROFORMA_HEIGHT;
+
+      // On mobile phones, fit to width so A4 text is readable
+      let optimal: number;
+      if (isMobile) {
+        optimal = Math.max(0.38, Math.min(1.0, scaleW));
+      } else {
+        optimal = Math.max(0.25, Math.min(1.15, Math.min(scaleW, scaleH)));
+      }
+
+      const rounded = Number(optimal.toFixed(3));
+      setFit(rounded);
+      setCurrentScale(rounded);
+    };
+
+    const ro = new ResizeObserver(measure);
+    measure();
+    ro.observe(el);
+
+    const t1 = setTimeout(measure, 60);
+    const t2 = setTimeout(measure, 200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      ro.disconnect();
+    };
+  }, [invoice.lines.length, isVisible]);
+
+  return (
+    <div
+      ref={boxRef}
+      dir="ltr"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 flex items-center justify-center select-none"
+    >
+      {fit !== null && (
+        <TransformWrapper
+          initialScale={fit}
+          minScale={fit * 0.4}
+          maxScale={fit * 4.0}
+          centerOnInit
+          limitToBounds={false}
+          doubleClick={{ mode: "reset" }}
+          onTransform={(ref) => {
+            setCurrentScale(Number(ref.state.scale.toFixed(2)));
+          }}
+        >
+          {({ zoomIn, zoomOut, resetTransform }) => (
+            <>
+              <TransformComponent
+                wrapperStyle={{ width: "100%", height: "100%" }}
+                contentStyle={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: "100%",
+                  minHeight: "100%",
+                  padding: "12px",
+                }}
+              >
+                <div className="rounded-md shadow-2xl ring-1 ring-black/30 overflow-hidden bg-white">
+                  <ProformaDocument invoice={invoice} />
+                </div>
+              </TransformComponent>
+
+              <InvoiceZoomControls
+                zoomOut={() => zoomOut(0.15)}
+                reset={() => resetTransform()}
+                zoomIn={() => zoomIn(0.15)}
+                scalePercent={Math.round((currentScale / fit) * 100)}
+              />
+            </>
+          )}
+        </TransformWrapper>
+      )}
+    </div>
+  );
+}

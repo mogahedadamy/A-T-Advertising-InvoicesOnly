@@ -1,0 +1,1216 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* ═══ Core Semantic Colors ═══ */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-glow: hsl(var(--primary-glow));
+  --color-primary-deep: hsl(var(--primary-deep));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-brand-gold: hsl(var(--brand-gold));
+
+  /* ═══ Surface Elevation Tokens ═══ */
+  --color-surface: hsl(var(--surface));
+  --color-surface-elevated: hsl(var(--surface-elevated));
+  --color-surface-glass: hsl(var(--surface-glass));
+  --color-nav-bar: hsl(var(--nav-bar));
+  --color-nav-active-bg: hsl(var(--nav-active-bg));
+  --color-nav-active-fg: hsl(var(--nav-active-fg));
+
+  /* ═══ Sidebar Tokens ═══ */
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* ═══ Typography ═══ */
+  --font-display: "Readex Pro", Tajawal, system-ui, sans-serif;
+  --font-arabic: Tajawal, "Readex Pro", system-ui, sans-serif;
+
+  /* ═══ Border Radius Scale ═══ */
+  --radius-xs: calc(var(--radius) - 8px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
+
+  /* ═══ Shadow Tokens ═══ */
+  --shadow-elegant: var(--shadow-elegant);
+  --shadow-card: var(--shadow-card);
+  --shadow-key: var(--shadow-key);
+  --shadow-key-primary: var(--shadow-key-primary);
+  --shadow-ring-soft: var(--ring-soft);
+  --shadow-float: var(--shadow-float);
+  --shadow-glow-primary: var(--shadow-glow-primary);
+  --shadow-glow-orange: var(--shadow-glow-orange);
+
+  /* ═══ Animation Tokens ═══ */
+  --animate-shake: shake 0.4s ease-in-out;
+  --animate-count-up: count-up 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-aurora: aurora 8s ease-in-out infinite alternate;
+  --animate-nav-pop: nav-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-blur: fade-blur 0.25s ease-out both;
+  --animate-pulse-soft: pulse-soft 2.5s ease-in-out infinite;
+
+  @keyframes shake {
+
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+
+    20%,
+    60% {
+      transform: translateX(-8px);
+    }
+
+    40%,
+    80% {
+      transform: translateX(8px);
+    }
+  }
+
+  @keyframes count-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.88);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes aurora {
+    0% {
+      transform: translate(0%, 0%) scale(1);
+      opacity: 0.4;
+    }
+
+    33% {
+      transform: translate(8%, -6%) scale(1.1);
+      opacity: 0.6;
+    }
+
+    66% {
+      transform: translate(-5%, 8%) scale(0.95);
+      opacity: 0.5;
+    }
+
+    100% {
+      transform: translate(3%, -3%) scale(1.05);
+      opacity: 0.45;
+    }
+  }
+
+  @keyframes nav-pop {
+    0% {
+      transform: scale(0.88) translateY(4px);
+      opacity: 0.5;
+    }
+
+    60% {
+      transform: scale(1.08) translateY(-2px);
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-blur {
+    from {
+      opacity: 0;
+      filter: blur(4px);
+    }
+
+    to {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  @keyframes pulse-soft {
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+
+@utility bg-gradient-primary {
+  background-image: var(--gradient-primary);
+}
+
+@utility bg-gradient-brand {
+  background-image: var(--gradient-brand);
+}
+
+@utility bg-gradient-display {
+  background-image: var(--gradient-display);
+}
+
+@utility bg-gradient-soft {
+  background-image: var(--gradient-soft);
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  max-width: 1400px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ELITE UI UTILITY CLASSES — Phase 1 Design Token Upgrade
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* Glass card — unified glassmorphism surface with mobile GPU safety */
+@utility glass-card {
+  background: hsl(var(--surface-glass));
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: var(--shadow-float);
+
+  @media (min-width: 768px) {
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+  }
+}
+
+/* Tactile button — physical press feel */
+@utility btn-tactile {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 120ms ease,
+    background-color 150ms ease;
+
+  &:active {
+    transform: scale(0.96) translateY(1px);
+  }
+}
+
+/* T.A Master Action Button — Royal Emerald Seal */
+@utility btn-primary-seal {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background-image: linear-gradient(135deg, hsl(164 70% 21%), hsl(164 70% 12%));
+  color: #ffffff;
+  border: 1px solid hsl(164 60% 30% / 0.4);
+  box-shadow: 0 4px 14px -2px hsl(164 70% 12% / 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  font-weight: 800;
+  transition: transform 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 120ms ease,
+    filter 150ms ease;
+
+  &:hover {
+    filter: brightness(1.06);
+  }
+
+  &:active {
+    transform: scale(0.97) translateY(1.5px);
+    box-shadow: 0 2px 6px -1px hsl(164 70% 12% / 0.5);
+  }
+}
+
+/* T.A Sage Pill Button — Inspired by Pro. Invoice Badge */
+@utility btn-sage-pill {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 9999px;
+  background-color: hsl(165 20% 92%);
+  color: hsl(164 70% 16%);
+  border: 1px solid hsl(165 20% 80%);
+  font-weight: 700;
+  transition: all 140ms ease;
+
+  &:hover {
+    background-color: hsl(165 25% 88%);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.active,
+  &[data-state="active"] {
+    background-color: hsl(164 70% 17%);
+    color: #ffffff;
+    border-color: hsl(164 70% 17%);
+    box-shadow: 0 2px 8px -2px hsl(164 70% 17% / 0.35);
+  }
+}
+
+/* Numeric display — tabular, high-contrast for financial data */
+@utility num-display {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "kern";
+  letter-spacing: -0.02em;
+}
+
+/* Stat card base — animate in on mount without GPU memory leaks */
+@utility stat-card {
+  animation: var(--animate-count-up);
+}
+
+/* Float shadow utility */
+@utility shadow-float {
+  box-shadow: var(--shadow-float);
+}
+
+/* Primary glow utility */
+@utility shadow-glow-primary {
+  box-shadow: var(--shadow-glow-primary);
+}
+
+/* Orange glow utility — now gold for T.A branding */
+@utility shadow-glow-gold {
+  box-shadow: var(--shadow-glow-gold);
+}
+
+/* Soft pulse animation class */
+@utility animate-pulse-soft {
+  animation: var(--animate-pulse-soft);
+}
+
+/* Aurora background animation */
+@utility animate-aurora {
+  animation: var(--animate-aurora);
+}
+
+/* Slide-up entrance animation */
+@utility animate-slide-up {
+  animation: var(--animate-slide-up);
+}
+
+/* Nav pop animation on tab switch */
+@utility animate-nav-pop {
+  animation: var(--animate-nav-pop);
+}
+
+/* Fade + blur entrance */
+@utility animate-fade-blur {
+  animation: var(--animate-fade-blur);
+}
+
+/* Interactive element base — focus ring + no tap flash */
+@utility interactive {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+
+  &:focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.7);
+    outline-offset: 2px;
+  }
+}
+
+/* Sticky bottom drawer/dock for mobile financial summaries */
+@utility sticky-summary-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  background-color: hsl(var(--card) / 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid hsl(var(--border) / 0.7);
+  box-shadow: 0 -4px 20px -2px hsl(0 0% 0% / 0.08);
+}
+
+/* Border gradient shimmer on hover */
+@utility border-glow {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.5), hsl(var(--brand-gold) / 0.3));
+    opacity: 0;
+    transition: opacity 200ms ease;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+}
+
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* ══════════════════════════════════════════════════════════
+       T.A Advertising Solution — هوية الزمرد الملكي
+       الأخضر الزمردي العميق #0D4A39 + شامبين الأختام #C5A059
+       ══════════════════════════════════════════════════════════ */
+
+    /* ─── Background & Surface ─── */
+    --background: 164 8% 97%;
+    --foreground: 164 30% 8%;
+    --surface: 0 0% 100%;
+    --surface-elevated: 0 0% 100%;
+    --surface-glass: 164 10% 99% / 0.82;
+    --nav-bar: 164 6% 99%;
+    --nav-active-bg: 164 35% 93%;
+    --nav-active-fg: 164 70% 17%;
+
+    /* ─── Cards & Popovers ─── */
+    --card: 0 0% 100%;
+    --card-foreground: 164 30% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 164 30% 8%;
+
+    /* ─── Brand Primary (T.A Emerald) ─── */
+    --primary: 164 70% 17%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 164 70% 29%;
+    --primary-deep: 164 70% 10%;
+
+    /* ─── Brand Accent (Champagne Gold) ─── */
+    --brand-gold: 40 48% 56%;
+    --brand-gold-foreground: 0 0% 100%;
+
+    /* ─── Secondary & Neutral ─── */
+    --secondary: 164 8% 95%;
+    --secondary-foreground: 164 50% 20%;
+    --muted: 164 10% 93%;
+    --muted-foreground: 164 6% 40%;
+
+    /* ─── Accent & Semantic ─── */
+    --accent: 40 48% 56%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ─── Borders & Inputs ─── */
+    --border: 164 10% 87%;
+    --input: 0 0% 100%;
+    --ring: 164 70% 17%;
+
+    /* ─── Gradients ─── */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary-deep)), hsl(var(--primary)));
+    --gradient-brand: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 50%, hsl(var(--brand-gold)) 100%);
+    --gradient-display: linear-gradient(180deg, hsl(0 0% 100%), hsl(164 10% 96%));
+    --gradient-soft: linear-gradient(180deg, hsl(0 0% 100%), hsl(164 8% 97%));
+    --gradient-aurora-1: radial-gradient(ellipse 60% 50% at 20% 40%, hsl(164 70% 29% / 0.12) 0%, transparent 70%);
+    --gradient-aurora-2: radial-gradient(ellipse 55% 45% at 80% 60%, hsl(40 48% 56% / 0.1) 0%, transparent 70%);
+    --gradient-aurora-3: radial-gradient(ellipse 50% 60% at 50% 20%, hsl(164 50% 40% / 0.06) 0%, transparent 70%);
+
+    /* ─── Shadows ─── */
+    --shadow-elegant: 0 1px 2px hsl(0 0% 0% / 0.04), 0 8px 24px -12px hsl(var(--primary) / 0.18);
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.04), 0 2px 8px -2px hsl(0 0% 0% / 0.06);
+    --shadow-key: 0 4px 0 hsl(164 10% 80%);
+    --shadow-key-primary: 0 6px 16px -4px hsl(var(--primary) / 0.45), 0 2px 0 hsl(var(--primary-deep));
+    --ring-soft: 0 0 0 4px hsl(var(--primary) / 0.12);
+    --shadow-float: 0 4px 6px -1px hsl(0 0% 0% / 0.06), 0 12px 28px -8px hsl(0 0% 0% / 0.1);
+    --shadow-glow-primary: 0 0 0 1px hsl(var(--primary) / 0.15), 0 8px 24px -6px hsl(var(--primary) / 0.35);
+    --shadow-glow-gold: 0 0 0 1px hsl(var(--brand-gold) / 0.15), 0 8px 24px -6px hsl(var(--brand-gold) / 0.3);
+
+    /* ─── Shape ─── */
+    --radius: 1.25rem;
+
+    /* ─── Sidebar ─── */
+    --sidebar-background: 164 6% 99%;
+    --sidebar-foreground: 164 10% 18%;
+    --sidebar-primary: 164 70% 17%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 164 35% 93%;
+    --sidebar-accent-foreground: 164 70% 17%;
+    --sidebar-border: 164 10% 90%;
+    --sidebar-ring: 164 70% 17%;
+  }
+
+  .dark {
+    /* ══════════════════════════════════════════════════════════
+       الوضع الليلي الفاخر — T.A Executive Obsidian
+       أسود زمردي عميق #071914 مع لمسات ذهبية دافئة
+       ══════════════════════════════════════════════════════════ */
+
+    /* ─── Background & Surface ─── */
+    --background: 163 56% 6%;
+    --foreground: 164 15% 95%;
+    --surface: 164 40% 8%;
+    --surface-elevated: 164 30% 11%;
+    --surface-glass: 164 35% 9% / 0.78;
+    --nav-bar: 163 50% 7%;
+    --nav-active-bg: 164 50% 14%;
+    --nav-active-fg: 164 55% 65%;
+
+    /* ─── Cards & Popovers ─── */
+    --card: 164 40% 8%;
+    --card-foreground: 164 15% 95%;
+    --popover: 164 35% 9%;
+    --popover-foreground: 164 15% 95%;
+
+    /* ─── Brand Primary (T.A Emerald — bright for dark bg) ─── */
+    --primary: 164 60% 40%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 164 65% 50%;
+    --primary-deep: 164 55% 22%;
+
+    /* ─── Brand Accent (Champagne Gold) ─── */
+    --brand-gold: 40 48% 62%;
+    --brand-gold-foreground: 0 0% 100%;
+
+    /* ─── Secondary & Neutral ─── */
+    --secondary: 164 20% 14%;
+    --secondary-foreground: 164 15% 95%;
+    --muted: 164 18% 13%;
+    --muted-foreground: 164 12% 55%;
+
+    /* ─── Accent & Semantic ─── */
+    --accent: 40 48% 62%;
+    --accent-foreground: 0 0% 10%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ─── Borders & Inputs ─── */
+    --border: 164 16% 18%;
+    --input: 164 30% 11%;
+    --ring: 164 60% 40%;
+
+    /* ─── Gradients ─── */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary-deep)), hsl(var(--primary)));
+    --gradient-brand: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 50%, hsl(var(--brand-gold)) 100%);
+    --gradient-display: linear-gradient(180deg, hsl(164 35% 9%), hsl(164 40% 7%));
+    --gradient-soft: linear-gradient(180deg, hsl(164 35% 8%), hsl(164 40% 6%));
+    --gradient-aurora-1: radial-gradient(ellipse 60% 50% at 20% 40%, hsl(164 60% 40% / 0.14) 0%, transparent 70%);
+    --gradient-aurora-2: radial-gradient(ellipse 55% 45% at 80% 60%, hsl(40 48% 62% / 0.1) 0%, transparent 70%);
+    --gradient-aurora-3: radial-gradient(ellipse 50% 60% at 50% 20%, hsl(164 50% 50% / 0.08) 0%, transparent 70%);
+
+    /* ─── Shadows (deeper for dark surfaces) ─── */
+    --shadow-elegant: 0 1px 2px hsl(0 0% 0% / 0.4), 0 10px 30px -10px hsl(0 0% 0% / 0.55);
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.3), 0 2px 10px -2px hsl(0 0% 0% / 0.4);
+    --shadow-key: 0 4px 0 hsl(164 30% 5%);
+    --shadow-key-primary: 0 6px 16px -4px hsl(var(--primary) / 0.5), 0 2px 0 hsl(var(--primary-deep));
+    --ring-soft: 0 0 0 4px hsl(var(--primary) / 0.18);
+    --shadow-float: 0 4px 8px -2px hsl(0 0% 0% / 0.4), 0 16px 40px -8px hsl(0 0% 0% / 0.55);
+    --shadow-glow-primary: 0 0 0 1px hsl(var(--primary) / 0.25), 0 8px 28px -4px hsl(var(--primary) / 0.45);
+    --shadow-glow-gold: 0 0 0 1px hsl(var(--brand-gold) / 0.2), 0 8px 28px -4px hsl(var(--brand-gold) / 0.4);
+
+    /* ─── Sidebar ─── */
+    --sidebar-background: 163 56% 6.5%;
+    --sidebar-foreground: 164 15% 95%;
+    --sidebar-primary: 164 60% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 164 25% 13%;
+    --sidebar-accent-foreground: 164 15% 95%;
+    --sidebar-border: 164 16% 15%;
+    --sidebar-ring: 164 60% 40%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+    /* Smooth theme switch on background & color */
+    transition-property: background-color, border-color, color;
+    transition-duration: 180ms;
+    transition-timing-function: ease;
+  }
+
+  /* Restore immediate transitions for interactive elements */
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    transition-property: background-color, border-color, color,
+      transform, box-shadow, opacity, filter;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    overscroll-behavior-x: none;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Readex Pro', 'Tajawal', system-ui, sans-serif;
+    font-feature-settings: "kern", "liga", "calt";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: fixed;
+    inset: 0;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+  }
+
+  html[dir="rtl"] body {
+    font-family: 'Tajawal', 'Readex Pro', system-ui, sans-serif;
+  }
+
+  /* ── Text selection highlight ── */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.22);
+    color: hsl(var(--foreground));
+  }
+
+  /* ── Scrollbar micro-polish (WebKit) ── */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* ── Page content entrance animation ── */
+  main {
+    animation: var(--animate-fade-blur);
+  }
+
+  /* ── Focus ring override — brand-consistent ── */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.65);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  input,
+  textarea,
+  select {
+    color: hsl(var(--foreground));
+    font-family: inherit;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground) / 0.8) !important;
+    -webkit-text-fill-color: hsl(var(--muted-foreground) / 0.8) !important;
+    opacity: 1;
+  }
+
+  /* ضمان ظهور النص المكتوب باللون الأسود الواضح في الوضع النهاري والأبيض في الليلي */
+  :root:not(.dark) input,
+  :root:not(.dark) textarea,
+  :root:not(.dark) select {
+    color: #090d16 !important;
+    -webkit-text-fill-color: #090d16 !important;
+  }
+
+  .dark input,
+  .dark textarea,
+  .dark select {
+    color: #f8fafc !important;
+    -webkit-text-fill-color: #f8fafc !important;
+  }
+
+  :root:not(.dark) input::placeholder,
+  :root:not(.dark) textarea::placeholder {
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+    opacity: 1 !important;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
+    opacity: 1 !important;
+  }
+}
+
+/* ===== فاتورة T.A Advertising — تنسيق ورقة A5 عرضية (Landscape) للعرض والطباعة ===== */
+:root {
+  --invoice-paper: #ffffff;
+  --invoice-ink: #0f172a;
+  --invoice-accent: #0D4A39;
+  --invoice-accent-2: #0D4A39;
+  --invoice-soft: #f0f7f5;
+  --invoice-border: #b8cfc9;
+}
+
+.invoice-paper {
+  background: var(--invoice-paper);
+  color: var(--invoice-ink);
+  font-family: var(--font-arabic, 'Tajawal', sans-serif);
+  padding: 12px 18px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  position: relative;
+  border-top: 5px solid #0D4A39;
+  border-bottom: 3.5px solid var(--invoice-accent-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.inv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1.5px solid var(--invoice-border);
+}
+
+.inv-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inv-logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.inv-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+}
+
+.inv-brand-ar {
+  font-size: 16px;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1.3;
+  letter-spacing: 0.2px;
+}
+
+.inv-brand-en {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.8px;
+  color: var(--invoice-accent-2);
+  direction: ltr;
+  line-height: 1.2;
+}
+
+.inv-badge-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.inv-badge {
+  border: 1.5px solid #0D4A39;
+  background: #eaf3f0;
+  color: #0D4A39;
+  border-radius: 6px;
+  padding: 3px 18px;
+  font-weight: 900;
+  font-size: 13.5px;
+  letter-spacing: 0.3px;
+  box-shadow: 0 1px 2px rgba(13, 74, 57, 0.08);
+}
+
+.inv-branch-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.inv-serial-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.inv-serial {
+  border: 1.5px solid var(--invoice-ink);
+  border-radius: 8px;
+  padding: 3px 12px;
+  background: var(--invoice-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.inv-serial-no {
+  color: var(--invoice-accent-2);
+  font-weight: 900;
+  font-size: 15px;
+  direction: ltr;
+  font-family: monospace;
+}
+
+.inv-date-text {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+/* بيانات الفاتورة المدمجة — 4 أعمدة تشمل التاريخ والعميل والشحن */
+.inv-meta-grid {
+  margin: 5px 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px 10px;
+  background: var(--invoice-soft);
+  border: 1px solid var(--invoice-border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 10.5px;
+}
+
+.inv-meta-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inv-meta-cell b {
+  color: #475569;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.inv-meta-cell span {
+  font-weight: 700;
+  color: var(--invoice-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-checks-row {
+  grid-column: span 4;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--invoice-border);
+}
+
+.inv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.inv-box {
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--invoice-ink);
+  border-radius: 2.5px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 9.5px;
+  color: #0D4A39;
+  font-weight: 900;
+  line-height: 1;
+}
+
+/* جدول الفاتورة — مخصص بدقة لـ 9 أسطر */
+.inv-table-wrap {
+  margin-bottom: 4px;
+}
+
+.inv-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: 1.5px solid var(--invoice-ink);
+  font-size: 10.5px;
+}
+
+.inv-table th {
+  background: #0D4A39;
+  color: #ffffff;
+  font-weight: 900;
+  padding: 4px 3px;
+  border: 1px solid var(--invoice-ink);
+  font-size: 10.5px;
+  height: 22px;
+}
+
+.inv-table td {
+  border: 1px solid var(--invoice-border);
+  padding: 2.5px 4px;
+  text-align: center;
+  height: 21px;
+  max-height: 21px;
+  color: var(--invoice-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-table tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.inv-num {
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+  font-weight: 800;
+}
+
+.inv-strong {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.inv-desc {
+  text-align: right !important;
+  font-weight: 600;
+}
+
+.inv-total-row td {
+  background: #edf5f2 !important;
+  border-top: 1.5px solid var(--invoice-ink) !important;
+  font-weight: 900;
+  height: 24px;
+}
+
+.inv-total-label {
+  text-align: left !important;
+  font-size: 11px;
+  color: var(--invoice-ink);
+}
+
+.inv-total-val {
+  font-size: 13.5px;
+  color: var(--invoice-accent-2);
+  font-family: monospace;
+  font-weight: 900;
+}
+
+/* تذييل الفاتورة والتواقيع الثلاثة */
+.inv-footer {
+  margin-top: 4px;
+  border-top: 1px solid var(--invoice-border);
+  padding-top: 4px;
+}
+
+.inv-signs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.inv-sign-box {
+  border-top: 1px dotted var(--invoice-ink);
+  padding-top: 2px;
+  margin-top: 14px;
+  color: #475569;
+}
+
+.inv-note {
+  margin-top: 4px;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+/* قواعد الطباعة والمعاينة الرسمية */
+.proforma-sheet {
+  font-family: var(--font-arabic, 'Tajawal', system-ui, sans-serif) !important;
+}
+
+.invoice-print-root,
+.proforma-print-root,
+.custom-invoice-print-root,
+#custom-invoice-print-portal {
+  position: fixed !important;
+  left: -9999px !important;
+  top: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -999 !important;
+}
+
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  /* 1. طباعة فاتورة A5 العرضية لأوامر التشغيل */
+  body:not(.printing-proforma):not(.printing-custom-invoice) {
+    width: 210mm !important;
+    height: 148mm !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body:not(.printing-proforma):not(.printing-custom-invoice)>*:not(.invoice-print-root):not(.invoice-standalone-root):not(.proforma-sheet):not(.standard-invoice-sheet):not(.invoice-paper) {
+    display: none !important;
+  }
+
+  .invoice-print-root,
+  .invoice-standalone-root {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .invoice-print-page {
+    width: 210mm !important;
+    height: 148mm !important;
+    max-height: 148mm !important;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .invoice-print-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .invoice-print-root .invoice-paper {
+    width: 210mm !important;
+    height: 148mm !important;
+    max-height: 148mm !important;
+    box-sizing: border-box !important;
+    padding: 5mm 8mm 4mm !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .inv-table thead {
+    display: table-header-group;
+  }
+
+  .inv-table tr,
+  .inv-footer,
+  .inv-header,
+  .inv-meta-grid {
+    break-inside: avoid;
+  }
+
+  .inv-table tfoot {
+    display: table-row-group;
+  }
+
+  /* 2. طباعة الفاتورة المبدئية A4 الطولية للعميل عبر البورتال المستقل */
+  @page proforma-page {
+    size: 210mm 297mm;
+    margin: 0;
+  }
+
+  body.printing-proforma {
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.printing-proforma>*:not(.proforma-print-root) {
+    display: none !important;
+  }
+
+  .proforma-print-root {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page: proforma-page;
+  }
+
+  .proforma-print-root .proforma-sheet {
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 10mm 12mm 10mm 12mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    position: relative !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. طباعة الفواتير الخاصة A4 (مبدئية، مبيعات، مشتريات) */
+  @page custom-invoice-page {
+    size: 210mm 297mm;
+    margin: 0;
+  }
+
+  body.printing-custom-invoice {
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.printing-custom-invoice>*:not(.custom-invoice-print-root):not(#custom-invoice-print-portal) {
+    display: none !important;
+  }
+
+  .custom-invoice-print-root,
+  #custom-invoice-print-portal {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page: custom-invoice-page;
+  }
+
+  .custom-invoice-print-root .standard-invoice-sheet,
+  #custom-invoice-print-portal .standard-invoice-sheet {
+    display: block !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    position: relative !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .custom-invoice-print-root *,
+  #custom-invoice-print-portal * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
