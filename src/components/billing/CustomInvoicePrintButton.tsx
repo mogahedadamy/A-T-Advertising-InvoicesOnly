@@ -253,15 +253,24 @@ export function CustomInvoicePrintButton({
         size={size}
         onClick={handleExport}
         disabled={isExporting || isPrinting}
-        className="font-bold border-primary/40 text-primary hover:bg-primary/10 gap-1.5"
+        className="font-bold border-primary/40 text-primary hover:bg-primary/10 gap-1 sm:gap-1.5 h-8 px-2 sm:px-3 text-xs rounded-xl cursor-pointer"
         title="تصدير وحفظ ملف PDF أصلي في جهازك"
       >
         {isExporting ? (
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
         ) : (
-          <FileDown className="h-4 w-4" />
+          <FileDown className="h-3.5 w-3.5" />
         )}
-        <span>{isExporting ? "جاري الحفظ..." : "حفظ PDF أصلي"}</span>
+        <span>
+          {isExporting ? (
+            "جاري الحفظ..."
+          ) : (
+            <>
+              <span className="sm:hidden">حفظ PDF</span>
+              <span className="hidden sm:inline">حفظ PDF أصلي</span>
+            </>
+          )}
+        </span>
       </Button>
 
       <Button
@@ -269,13 +278,13 @@ export function CustomInvoicePrintButton({
         size={size}
         onClick={handlePrint}
         disabled={isExporting || isPrinting}
-        className={className || "font-bold shadow-sm gap-1.5"}
+        className={className || "font-bold shadow-sm gap-1 sm:gap-1.5 h-8 px-2.5 sm:px-3 text-xs rounded-xl cursor-pointer"}
         title="طباعة عبر خدمة النظام أو الطابعة"
       >
         {isPrinting ? (
-          <Loader2 className="h-4 w-4 animate-spin text-white" />
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
         ) : (
-          <Printer className="h-4 w-4" />
+          <Printer className="h-3.5 w-3.5" />
         )}
         <span>{isPrinting ? "جاري التجهيز..." : "طباعة"}</span>
       </Button>

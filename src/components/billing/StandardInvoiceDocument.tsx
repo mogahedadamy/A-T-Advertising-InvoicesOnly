@@ -7,6 +7,7 @@ import {
   TA_QR_CODE_BASE64,
 } from "@/assets/invoiceImagesBase64";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
+import { getInvoiceTafqeet } from "@/lib/proforma/tafqeet";
 
 interface Props {
   invoice: CustomInvoice;
@@ -32,6 +33,9 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
       items
     );
     const isRtl = lang === "ar";
+
+    // تفقيط المبلغ بالحروف حسب لغة الفاتورة الحالية (عربي / إنجليزي)
+    const invoiceTafqeet = getInvoiceTafqeet(totalAmount, isRtl);
 
     // صياغة التاريخ اليوم / الشهر / السنة
     const formattedDate = (() => {
@@ -75,7 +79,9 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
         id={id}
         ref={ref}
         dir={isRtl ? "rtl" : "ltr"}
-        className="proforma-sheet standard-invoice-sheet bg-white text-black mx-auto select-text relative flex flex-col justify-between"
+        className={`proforma-sheet standard-invoice-sheet bg-white text-black mx-auto select-text relative flex flex-col justify-between ${
+          isRtl ? "text-right" : "text-left"
+        }`}
         style={{
           width: "210mm",
           height: "297mm",
@@ -86,13 +92,14 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
           overflow: "hidden",
           fontFamily: isRtl
             ? "'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-            : "system-ui, -apple-system, sans-serif",
+            : "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           WebkitPrintColorAdjust: "exact",
           printColorAdjust: "exact",
           backgroundColor: "#ffffff",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
+          textAlign: isRtl ? "right" : "left",
         }}
       >
         {/* ─── 1. الترويسة الرئيسية (الشعار + شارة الفاتورة بالمنتصف تماماً) ─── */}
@@ -164,7 +171,12 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               <span className={`font-bold text-black shrink-0 ${isRtl ? "w-[62px]" : "w-[58px]"}`}>
                 {isRtl ? "العميل :" : "Client :"}
               </span>
-              <div className="flex-1 border-b border-black pb-0.5 font-bold text-[13.5px] text-black px-1 truncate">
+              <div
+                className={`flex-1 border-b border-black pb-0.5 font-bold text-[13.5px] text-black px-1 truncate ${
+                  isRtl ? "text-right" : "text-left"
+                }`}
+                dir={isRtl ? "rtl" : "ltr"}
+              >
                 {clientName}
               </div>
             </div>
@@ -174,7 +186,12 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               <span className={`font-bold text-black shrink-0 ${isRtl ? "w-[62px]" : "w-[58px]"}`}>
                 {isRtl ? "عناية السيد :" : "Attn.:"}
               </span>
-              <div className="flex-1 border-b border-black pb-0.5 font-semibold text-[12.5px] text-black px-1 truncate">
+              <div
+                className={`flex-1 border-b border-black pb-0.5 font-semibold text-[12.5px] text-black px-1 truncate ${
+                  isRtl ? "text-right" : "text-left"
+                }`}
+                dir={isRtl ? "rtl" : "ltr"}
+              >
                 {attnPerson}
               </div>
             </div>
@@ -517,7 +534,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               ))}
             </tbody>
 
-            {/* سطر الإجمالي والمجموع الكلي */}
+            {/* سطر الإجمالي والمجموع الكلي مع التفقيط الكامل */}
             <tfoot className="w-full shrink-0">
               <tr
                 className="w-full flex"
@@ -526,20 +543,31 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   borderTop: "1px solid #1e293b",
                 }}
               >
-                {/* المساحة المتبقية من الجدول */}
+                {/* خانة تفقيط المبلغ بالحروف (عربي / إنجليزي) */}
                 <td
+                  className={`flex items-center px-3 text-[11px] font-bold text-black overflow-hidden ${
+                    isRtl ? "text-right justify-start" : "text-left justify-start"
+                  }`}
                   style={{
                     width: hasDimensionsOrMaterial ? "73%" : "71.5%",
                     backgroundColor: "#E0E6E4",
+                    textAlign: isRtl ? "right" : "left",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
                   }}
-                ></td>
+                >
+                  <span className="italic text-slate-700 shrink-0 ml-1">
+                    {isRtl ? "المبلغ كتابة: " : "Amount in words: "}
+                  </span>
+                  <span className="font-extrabold not-italic text-black truncate">
+                    {invoiceTafqeet}
+                  </span>
+                </td>
 
                 {/* كلمة Subtotal / المجموع */}
                 <td
-                  className="flex items-center justify-center font-black italic text-[14.5px] text-black"
+                  className="flex items-center justify-center font-black italic text-[14px] text-black"
                   style={{
                     width: hasDimensionsOrMaterial ? "12%" : "12.5%",
                     backgroundColor: "#ffffff",
@@ -621,12 +649,19 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               border: "1px solid #1e293b",
               height: "76px",
               boxSizing: "border-box",
+              textAlign: isRtl ? "right" : "left",
             }}
           >
-            <span className="text-[12px] font-bold italic text-black">
+            <span
+              className={`text-[12px] font-bold italic text-black ${
+                isRtl ? "text-right" : "text-left"
+              }`}
+            >
               {isRtl ? "إعداد: " : "Prepared by: "}
               <span className="not-italic font-extrabold">
-                {meta.accountName || (isRtl ? "طارق عثمان علي" : "Tarig osman Ali")}
+                {isRtl
+                  ? (meta.accountName || "طارق عثمان علي")
+                  : "Tarig Osman Ali"}
               </span>
             </span>
           </div>
@@ -666,9 +701,14 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               border: "1px solid #1e293b",
               height: "76px",
               boxSizing: "border-box",
+              textAlign: isRtl ? "right" : "left",
             }}
           >
-            <span className="text-[12px] font-bold italic text-black">
+            <span
+              className={`text-[12px] font-bold italic text-black ${
+                isRtl ? "text-right" : "text-left"
+              }`}
+            >
               {isRtl ? "اعتماد واستلام العميل:" : "Client's approval:"}
             </span>
           </div>

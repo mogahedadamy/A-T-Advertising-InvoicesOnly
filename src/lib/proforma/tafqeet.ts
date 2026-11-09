@@ -1,5 +1,5 @@
 /**
- * تفقيط الأرقام وتحويلها إلى كلمات باللغة العربية
+ * تفقيط الأرقام وتحويلها إلى كلمات باللغتين العربية والإنجليزية
  * مصمم خصيصاً للفواتير والمطالبات المالية
  */
 
@@ -130,4 +130,116 @@ export function tafqeetSDG(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "صفر جنيه سوداني";
   const words = numberToArabicWords(amount);
   return `فقط ${words} جنيه سوداني لا غير`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * تفقيط الأرقام باللغة الإنجليزية (English Number to Words)
+ * ═══════════════════════════════════════════════════════════════ */
+
+const EN_ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+
+const EN_TENS = [
+  "",
+  "",
+  "Twenty",
+  "Thirty",
+  "Forty",
+  "Fifty",
+  "Sixty",
+  "Seventy",
+  "Eighty",
+  "Ninety",
+];
+
+function convertGroupEn(n: number): string {
+  let str = "";
+  const hundreds = Math.floor(n / 100);
+  const remainder = n % 100;
+
+  if (hundreds > 0) {
+    str += `${EN_ONES[hundreds]} Hundred`;
+  }
+
+  if (remainder > 0) {
+    if (str) str += " ";
+    if (remainder < 20) {
+      str += EN_ONES[remainder];
+    } else {
+      const t = Math.floor(remainder / 10);
+      const o = remainder % 10;
+      str += EN_TENS[t];
+      if (o > 0) str += `-${EN_ONES[o]}`;
+    }
+  }
+
+  return str;
+}
+
+/**
+ * تحويل رقم صحيح إلى نص إنجليزي
+ * Example: 96600 -> "Ninety-Six Thousand Six Hundred"
+ */
+export function numberToEnglishWords(num: number): string {
+  const n = Math.floor(Math.abs(num));
+  if (n === 0) return "Zero";
+
+  const billions = Math.floor(n / 1_000_000_000);
+  const millions = Math.floor((n % 1_000_000_000) / 1_000_000);
+  const thousands = Math.floor((n % 1_000_000) / 1_000);
+  const remainder = n % 1_000;
+
+  const parts: string[] = [];
+
+  if (billions > 0) {
+    parts.push(`${convertGroupEn(billions)} Billion`);
+  }
+  if (millions > 0) {
+    parts.push(`${convertGroupEn(millions)} Million`);
+  }
+  if (thousands > 0) {
+    parts.push(`${convertGroupEn(thousands)} Thousand`);
+  }
+  if (remainder > 0) {
+    parts.push(convertGroupEn(remainder));
+  }
+
+  return parts.join(" ");
+}
+
+/**
+ * تفقيط المبلغ المالي باللغة الإنجليزية
+ * Example: 96600 -> "Only Ninety-Six Thousand Six Hundred Sudanese Pounds."
+ */
+export function tafqeetEnglish(amount: number, currency = "Sudanese Pounds"): string {
+  if (!Number.isFinite(amount) || amount <= 0) return `Zero ${currency}`;
+  const words = numberToEnglishWords(amount);
+  return `Only ${words} ${currency}.`;
+}
+
+/**
+ * المساعد الموحد للتفقيط حسب لغة المستند المحددة
+ */
+export function getInvoiceTafqeet(amount: number, isRtl: boolean): string {
+  return isRtl ? tafqeetSDG(amount) : tafqeetEnglish(amount);
 }

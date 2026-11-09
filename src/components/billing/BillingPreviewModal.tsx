@@ -30,17 +30,17 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
         className="w-[98vw] sm:w-[96vw] max-w-4xl h-[94dvh] sm:h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-0.5rem)] flex flex-col p-0 rounded-2xl sm:rounded-3xl border-border/60 bg-card shadow-2xl overflow-hidden"
         dir="rtl"
       >
-        <DialogHeader className="p-3 sm:p-4 pr-3 pl-14 sm:pr-6 sm:pl-16 shrink-0 border-b border-border/50 flex flex-row items-center justify-between text-right bg-card z-10">
-          <div className="min-w-0 pr-1 sm:pr-2">
-            <DialogTitle className="text-base sm:text-lg font-black text-foreground truncate">
+        <DialogHeader className="p-2.5 sm:p-4 pr-3 pl-12 sm:pr-6 sm:pl-16 shrink-0 border-b border-border/50 flex flex-row items-center justify-between text-right bg-card z-10 gap-2">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-xs sm:text-base font-black text-foreground truncate">
               معاينة {title} #{invoice.meta.serial}
             </DialogTitle>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              السادة: {invoice.meta.partyName} — التاريخ: {invoice.meta.date}
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">
+              {invoice.meta.partyName || invoice.meta.partyEnName || "عميل"}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {onEdit && (
               <Button
                 variant="outline"
@@ -49,7 +49,8 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
                   onOpenChange(false);
                   onEdit(invoice);
                 }}
-                className="h-8 rounded-xl font-bold text-xs gap-1"
+                className="h-8 px-2 sm:px-3 rounded-xl font-bold text-xs gap-1 cursor-pointer"
+                title="تعديل الفاتورة"
               >
                 <Edit3 className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">تعديل</span>
@@ -58,7 +59,7 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
             <CustomInvoicePrintButton
               invoice={invoice}
               size="sm"
-              className="h-8 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold"
+              className="h-8 px-2.5 sm:px-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs cursor-pointer"
             />
           </div>
         </DialogHeader>
