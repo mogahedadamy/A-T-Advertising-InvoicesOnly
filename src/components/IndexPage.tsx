@@ -4,10 +4,8 @@ import { OrderList } from "@/components/order/OrderList";
 import { OrderSummaryBar } from "@/components/order/OrderSummaryBar";
 import { InvoiceTypeSelectionDialog } from "@/components/invoice/InvoiceTypeSelectionDialog";
 import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
-import { ProformaDialog } from "@/components/proforma/ProformaDialog";
-import { toProformaLines } from "@/lib/proforma/fromCalc";
 import { toCustomInvoiceItems } from "@/lib/billing/fromCalc";
-import type { CustomInvoiceItem } from "@/lib/billing/types";
+import type { CustomInvoiceItem, CustomInvoiceType } from "@/lib/billing/types";
 import { useOrderSession } from "@/lib/orderSession";
 import { PageShell } from "@/components/layout/PageShell";
 import { playTapSound, playDeleteSound } from "@/lib/soundEffects";
@@ -37,13 +35,12 @@ function getGreeting(name?: string) {
 const Index: React.FC = () => {
   const [order, setOrder] = useOrderSession();
   const [typeSelectOpen, setTypeSelectOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<CustomInvoiceType>("sales");
   const [salesInvoiceOpen, setSalesInvoiceOpen] = useState(false);
   const [salesItems, setSalesItems] = useState<CustomInvoiceItem[]>([]);
-  const [proformaOpen, setProformaOpen] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const { userName } = useUserProfile();
 
-  const proformaLines = useMemo(() => toProformaLines(order), [order]);
   const greeting = useMemo(() => getGreeting(userName), [userName]);
 
   const todayDateStr = useMemo(() => {
@@ -87,21 +84,16 @@ const Index: React.FC = () => {
       items.map((item, i) => (i === index ? { ...item, description: newDesc } : item))
     );
 
-  const handleOpenSalesInvoice = () => {
-    playTapSound();
+  const handleSelectInvoiceType = (chosenType: CustomInvoiceType) => {
+    setSelectedType(chosenType);
     const items = toCustomInvoiceItems(order);
     setSalesItems(items);
     setSalesInvoiceOpen(true);
   };
 
-  const handleOpenProformaInvoice = () => {
-    playTapSound();
-    setProformaOpen(true);
-  };
-
   return (
     <PageShell>
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-4 min-w-0 touch-pan-y overscroll-x-contain select-none">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-4 pb-28 md:pb-12 min-w-0 touch-pan-y overscroll-contain select-none">
         {/* ── شريط الترحيب التنفيذي بالمسؤول والتاريخ ── */}
         <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-card/90 px-3.5 py-2 backdrop-blur-md shadow-2xs mb-3 w-full min-w-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -190,27 +182,19 @@ const Index: React.FC = () => {
         </div>
       </main>
 
-      {/* نافذة اختيار نوع الفاتورة المعتمدة (مبيعات / مبدئية) */}
+      {/* نافذة تحديد نوع الفاتورة الصادرة (مبدئية / مبيعات / مشتريات) */}
       <InvoiceTypeSelectionDialog
         open={typeSelectOpen}
         onClose={() => setTypeSelectOpen(false)}
-        onSelectSalesInvoice={handleOpenSalesInvoice}
-        onSelectProforma={handleOpenProformaInvoice}
+        onSelectType={handleSelectInvoiceType}
       />
 
-      {/* نافذة فاتورة المبيعات الرسمية A4/A5 */}
+      {/* نافذة فاتورة المبيعات الرسمية المعتمدة A4/A5 */}
       <CustomInvoiceDialog
         open={salesInvoiceOpen}
         onOpenChange={setSalesInvoiceOpen}
-        initialType="sales"
+        initialType={selectedType}
         initialItems={salesItems}
-      />
-
-      {/* نافذة الفاتورة المبدئية وعرض الأسعار A4 */}
-      <ProformaDialog
-        open={proformaOpen}
-        onClose={() => setProformaOpen(false)}
-        initialLines={proformaLines}
       />
 
       {/* نافذة تعديل بيانات الحساب */}

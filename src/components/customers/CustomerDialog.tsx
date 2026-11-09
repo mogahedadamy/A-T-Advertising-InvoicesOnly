@@ -65,9 +65,9 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
       role="dialog"
       aria-modal="true"
       dir="rtl"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] px-[max(1rem,env(safe-area-inset-left,0px))] animate-in fade-in"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl space-y-4">
+      <div className="w-full max-w-lg max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-5 shadow-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/60 pb-3">
           <div className="flex items-center gap-2">
@@ -172,20 +172,20 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-border/60">
+            <Button
+              type="submit"
+              className="h-9 bg-primary px-5 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary-deep cursor-pointer"
+            >
+              {initialData ? "تحديث البيانات" : "حفظ العميل"}
+            </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={onClose}
-              className="h-9 px-4 text-xs font-bold"
+              className="h-9 px-4 text-xs font-bold cursor-pointer"
             >
               إلغاء
-            </Button>
-            <Button
-              type="submit"
-              className="h-9 bg-primary px-5 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary-deep"
-            >
-              {initialData ? "تحديث البيانات" : "حفظ العميل"}
             </Button>
           </div>
         </form>

@@ -34,6 +34,7 @@ import {
 } from "@/lib/biometricDiagnostics";
 import { BiometricDiagnosticsDialog } from "@/components/settings/BiometricDiagnosticsDialog";
 import { PasswordChangeCard } from "@/components/settings/PasswordChangeCard";
+import { InvoiceBackupCard } from "@/components/settings/InvoiceBackupCard";
 
 const Settings: React.FC = () => {
   const { theme, toggle } = useTheme();
@@ -144,10 +145,10 @@ const Settings: React.FC = () => {
 
   return (
     <PageShell>
-      <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 py-5 md:max-w-3xl">
+      <main className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:max-w-3xl md:pb-16 touch-pan-y overscroll-contain">
         <div className="flex items-center gap-2">
           <Link
-            to="/"
+            to="/calculator"
             aria-label="رجوع"
             className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-secondary text-foreground transition-all hover:border-primary/40 hover:text-primary hover:shadow-sm active:scale-95 touch-manipulation"
           >
@@ -308,6 +309,9 @@ const Settings: React.FC = () => {
             </div>
           )}
         </section>
+
+        {/* Invoice Data Safety & Backup */}
+        <InvoiceBackupCard />
 
         {/* Password Change Component */}
         <PasswordChangeCard />

@@ -117,16 +117,24 @@ export async function initNativeStorage(keysToSync: string[]): Promise<void> {
 
         // 1. فحص التخزين الأصلي لأندرويد أولاً
         const nativeResult = await Preferences.get({ key }).catch(() => null);
-        if (nativeResult && nativeResult.value !== null && nativeResult.value !== undefined && nativeResult.value !== "") {
+        if (
+          nativeResult &&
+          nativeResult.value !== null &&
+          nativeResult.value !== undefined &&
+          nativeResult.value !== "" &&
+          nativeResult.value !== "[]"
+        ) {
           valueToUse = nativeResult.value;
         }
 
-        // 2. إذا لم توجد في أندرويد، نفحص localStorage الحالي
-        if (!valueToUse && typeof window !== "undefined") {
+        // 2. إذا لم توجد قيمة ممتلئة في أندرويد، أو كانت localStorage تحتوي على بيانات أحدث/أكبر، نفحص localStorage الحالي
+        if (typeof window !== "undefined") {
           try {
             const localVal = localStorage.getItem(key);
             if (localVal !== null && localVal !== "" && localVal !== "[]") {
-              valueToUse = localVal;
+              if (!valueToUse || (localVal.length > (valueToUse?.length || 0))) {
+                valueToUse = localVal;
+              }
             }
           } catch {}
         }

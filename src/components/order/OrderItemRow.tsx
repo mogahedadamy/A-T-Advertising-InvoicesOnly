@@ -55,11 +55,11 @@ export function OrderItemRow({ item, index, onRemove, onDescriptionChange }: Pro
 
         {/* Cost & Delete */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <div className="text-left">
-            <span className="text-xs sm:text-sm font-black text-foreground font-mono tabular-nums">
+          <div className="flex items-baseline gap-1 text-left">
+            <span className="text-xs sm:text-sm font-black text-foreground font-mono tabular-nums" dir="ltr">
               {formatNumber(item.cost)}
             </span>
-            <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground mr-1">ج.س</span>
+            <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground">ج.س</span>
           </div>
 
           <Button

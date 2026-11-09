@@ -39,20 +39,13 @@ export function InvoicesPageContent() {
             سجل موحد ودائم مرتبط بالحاسبة، الفواتير، وعروض الأسعار ({stats.totalCount} فاتورة محفوظة)
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/proforma-invoices"
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/12 px-3.5 text-xs font-black text-[#C5A059] dark:text-[#E0BC75] shadow-xs transition-all active:scale-95 touch-manipulation hover:bg-[#C5A059]/25 hover:border-[#C5A059]/60"
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>فاتورة مبدئية</span>
-          </Link>
+        <div className="flex items-center gap-2 shrink-0">
           <Link
             to="/billing"
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-xs font-black text-primary-foreground shadow-md shadow-primary/25 transition-all active:scale-95 touch-manipulation hover:bg-primary/90"
+            className="inline-flex h-9.5 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-xs font-black text-primary-foreground shadow-xs shadow-primary/25 transition-all active:scale-95 touch-manipulation hover:bg-primary/90"
           >
             <PlusCircle className="h-4 w-4" />
-            <span>فاتورة مبيعات</span>
+            <span>إصدار فاتورة جديدة</span>
           </Link>
         </div>
       </div>

@@ -12,7 +12,7 @@ export function InvoiceZoomControls({ zoomIn, zoomOut, reset, scalePercent }: Pr
   return (
     <div
       dir="ltr"
-      className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/90 px-2 py-1 text-white shadow-xl backdrop-blur-md z-10 text-xs"
+      className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/90 px-2 py-1 text-white shadow-xl backdrop-blur-md z-10 text-xs"
     >
       <Button
         variant="ghost"

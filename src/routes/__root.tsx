@@ -5,14 +5,15 @@ import {
   createRootRouteWithContext,
   useRouter,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import PasswordLock from "@/components/PasswordLock";
 import SplashScreen from "@/components/common/SplashScreen";
-import { useTrialGuard } from "@/lib/trialGuard";
+import { useTrialExpiry } from "@/lib/trialGuard";
 import { TrialExpiredScreen } from "@/components/common/TrialExpiredScreen";
+import { CustomInvoicePrintPortal } from "@/components/billing/CustomInvoicePrintButton";
 
 function NotFoundComponent() {
   return (
@@ -44,8 +45,8 @@ function RootComponent() {
   const [splashFinished, setSplashFinished] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
-  // مراقبة صلاحية النسخة التجريبية (48 ساعة) مع حماية ضد الانهيار
-  const trialStatus = useTrialGuard();
+  // مراقبة صلاحية النسخة التجريبية (48 ساعة) دون التسبب بإعادة تصيير متكررة
+  const { isExpired, isTampered } = useTrialExpiry();
 
   useEffect(() => {
     setMounted(true);
@@ -68,21 +69,22 @@ function RootComponent() {
     return () => window.removeEventListener("app-lock", handleLockEvent);
   }, []);
 
-  const handleFinishSplash = () => {
+  const handleFinishSplash = useCallback(() => {
     sessionStorage.setItem("ta_splash_finished", "true");
     setSplashFinished(true);
-  };
+  }, []);
 
-  const handleUnlock = () => {
+  const handleUnlock = useCallback(() => {
     sessionStorage.setItem("future_calc_unlocked", "true");
     setUnlocked(true);
-  };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <CustomInvoicePrintPortal />
         {!mounted ? (
           <div className="flex h-screen w-screen items-center justify-center bg-background text-primary">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -90,9 +92,9 @@ function RootComponent() {
         ) : !splashFinished ? (
           /* شاشة البداية الملكية تعمل دون انقطاع لكامل مدتها (6 ثوانٍ) لمنع أي انهيار */
           <SplashScreen duration={6000} onFinish={handleFinishSplash} />
-        ) : trialStatus.isExpired ? (
+        ) : isExpired ? (
           /* شاشة الإيقاف النهائي بمجرد انقضاء الـ 48 ساعة */
-          <TrialExpiredScreen isTampered={trialStatus.isTampered} />
+          <TrialExpiredScreen isTampered={isTampered} />
         ) : !unlocked ? (
           <PasswordLock onUnlock={handleUnlock} />
         ) : (

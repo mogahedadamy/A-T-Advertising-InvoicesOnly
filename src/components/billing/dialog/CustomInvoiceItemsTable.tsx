@@ -1,5 +1,5 @@
-import React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import React, { useState } from "react";
+import { Plus, Trash2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CustomInvoiceItem } from "@/lib/billing/types";
@@ -15,7 +15,7 @@ interface Props {
 
 /**
  * جدول بنود الفاتورة المعتمدة التفاعلي:
- * إدخال التفاصيل، الكمية، سعر الوحدة، واحتساب الإجمالي تلقائياً
+ * يدعم إضافة أعمدة المقاسات والخامات بشكل ديناميكي ومستقل عن بيان ووصف البند
  */
 export function CustomInvoiceItemsTable({
   items,
@@ -23,11 +23,20 @@ export function CustomInvoiceItemsTable({
   totalAmount,
   totalInWords,
 }: Props) {
+  const [forceShowDimensions, setForceShowDimensions] = useState(false);
+
+  // الكشف التلقائي: إذا وُجد مقاس أو خامة في أي بند تظهر الأعمدة تلقائياً
+  const hasDimensions =
+    forceShowDimensions ||
+    items.some((it) => Boolean(it.dimensions?.trim() || it.material?.trim()));
+
   const handleAddItem = () => {
     playAddSound();
     const newItem: CustomInvoiceItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       description: "",
+      material: "",
+      dimensions: "",
       qty: 1,
       unitPrice: 0,
       total: 0,
@@ -42,7 +51,7 @@ export function CustomInvoiceItemsTable({
 
   const handleFieldChange = (
     idx: number,
-    field: "description" | "qty" | "unitPrice" | "total",
+    field: "description" | "material" | "dimensions" | "qty" | "unitPrice" | "total",
     val: string
   ) => {
     const next = [...items];
@@ -51,6 +60,10 @@ export function CustomInvoiceItemsTable({
 
     if (field === "description") {
       target.description = val;
+    } else if (field === "material") {
+      target.material = val;
+    } else if (field === "dimensions") {
+      target.dimensions = val;
     } else if (field === "qty") {
       const cleaned = val.replace(/[^0-9]/g, "");
       const qty = cleaned === "" ? 0 : parseInt(cleaned, 10);
@@ -77,23 +90,41 @@ export function CustomInvoiceItemsTable({
 
   return (
     <div className="rounded-2xl border border-border/70 bg-card/90 p-3 sm:p-4 space-y-3 shadow-2xs">
-      <div className="flex items-center justify-between border-b border-border/50 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-black text-foreground">جدول البنود والخدمات</span>
           <span className="text-[10px] font-mono font-bold text-muted-foreground px-2 py-0.5 rounded-full bg-secondary">
             {items.length} بنود
           </span>
+          {hasDimensions && (
+            <span className="text-[10px] font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+              أعمدة المقاسات والخامات مفعّلة ✓
+            </span>
+          )}
         </div>
 
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleAddItem}
-          className="h-7.5 px-3 rounded-lg text-xs font-bold gap-1 bg-primary hover:bg-primary/90 text-white shadow-2xs cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>إضافة سطر</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setForceShowDimensions((v) => !v)}
+            className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold gap-1 cursor-pointer border-border/70 hover:bg-secondary"
+          >
+            <Layers className="h-3 w-3 text-primary" />
+            <span>{hasDimensions ? "تبسيط الأعمدة" : "إضافة مقاسات وخامات"}</span>
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleAddItem}
+            className="h-7.5 px-3 rounded-lg text-xs font-bold gap-1 bg-primary hover:bg-primary/90 text-white shadow-2xs cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>إضافة سطر</span>
+          </Button>
+        </div>
       </div>
 
       {/* جدول إدخال البنود */}
@@ -102,10 +133,16 @@ export function CustomInvoiceItemsTable({
           <thead>
             <tr className="border-b border-border/60 text-[11px] font-black text-muted-foreground">
               <th className="py-2 pr-2 w-8 text-center">#</th>
-              <th className="py-2 px-2 min-w-[200px]">البيان / التفاصيل *</th>
+              <th className="py-2 px-2 min-w-[170px]">البيان / الوصف *</th>
+              {hasDimensions && (
+                <th className="py-2 px-2 w-28 text-center">الخامة</th>
+              )}
+              {hasDimensions && (
+                <th className="py-2 px-2 w-32 text-center">المقاس (الأبعاد)</th>
+              )}
               <th className="py-2 px-2 w-20 text-center">العدد</th>
-              <th className="py-2 px-2 w-28 text-center">سعر الوحدة</th>
-              <th className="py-2 px-2 w-28 text-center">الإجمالي</th>
+              <th className="py-2 px-2 w-24 text-center">سعر الوحدة</th>
+              <th className="py-2 px-2 w-24 text-center">الإجمالي</th>
               <th className="py-2 pl-2 w-10 text-center">حذف</th>
             </tr>
           </thead>
@@ -119,10 +156,35 @@ export function CustomInvoiceItemsTable({
                   <Input
                     value={it.description}
                     onChange={(e) => handleFieldChange(idx, "description", e.target.value)}
-                    placeholder="مثال: طباعة بنر 3×1 متر، تصميم هوية، تركيب..."
+                    placeholder="البيان (مثال: يافطة محل عطور، بنر واجهة...)"
                     className="h-8.5 text-xs rounded-lg font-medium"
                   />
                 </td>
+
+                {/* كولوم الخامة */}
+                {hasDimensions && (
+                  <td className="py-2 px-2">
+                    <Input
+                      value={it.material || ""}
+                      onChange={(e) => handleFieldChange(idx, "material", e.target.value)}
+                      placeholder="بنر كوري، فليكس..."
+                      className="h-8.5 text-xs rounded-lg font-medium text-center"
+                    />
+                  </td>
+                )}
+
+                {/* كولوم المقاسات */}
+                {hasDimensions && (
+                  <td className="py-2 px-2">
+                    <Input
+                      value={it.dimensions || ""}
+                      onChange={(e) => handleFieldChange(idx, "dimensions", e.target.value)}
+                      placeholder="3.00 × 1.50 م"
+                      className="h-8.5 text-xs rounded-lg font-mono font-medium text-center tabular-nums"
+                    />
+                  </td>
+                )}
+
                 <td className="py-2 px-2">
                   <Input
                     type="text"
@@ -191,3 +253,4 @@ export function CustomInvoiceItemsTable({
   );
 }
 
+export default CustomInvoiceItemsTable;

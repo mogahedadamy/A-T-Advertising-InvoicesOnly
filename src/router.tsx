@@ -10,7 +10,8 @@ export const router = createRouter({
   history: hashHistory,
   context: { queryClient },
   scrollRestoration: true,
-  defaultPreloadStaleTime: 0,
+  defaultPreload: "intent",
+  defaultPreloadStaleTime: 30000,
 });
 
 declare module "@tanstack/react-router" {

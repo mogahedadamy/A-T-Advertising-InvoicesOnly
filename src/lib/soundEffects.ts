@@ -49,31 +49,33 @@ export function setSoundEnabled(enabled: boolean): void {
   } catch {}
 }
 
-/** نقرة زر خفيفة احترافية (Tap / Click) */
+/** نقرة زر خفيفة احترافية (Tap / Click) — تنفذ بشكل غير معطل */
 export function playTapSound(): void {
   if (!isSoundEnabled()) return;
-  const ctx = getAudioContext();
-  if (!ctx) return;
+  queueMicrotask(() => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
 
-  try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(600, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.04);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(600, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.03);
 
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-    osc.start();
-    osc.stop(ctx.currentTime + 0.045);
-  } catch {
-    // Ignore audio playback issues
-  }
+      osc.start();
+      osc.stop(ctx.currentTime + 0.035);
+    } catch {
+      // Ignore audio playback issues
+    }
+  });
 }
 
 /** صوت حساب المقاسات (Calculator Chime) */

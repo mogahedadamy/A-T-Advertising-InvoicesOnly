@@ -3,6 +3,7 @@ import { Printer, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { commitProformaSerial } from "@/lib/proforma/serial";
 import { triggerPrintWithElement, exportElementToPdf } from "@/lib/pdfExport";
+import { toast } from "sonner";
 
 interface Props {
   serial: string;
@@ -71,7 +72,10 @@ export function ProformaPrintButton({
     setIsExporting(true);
     try {
       const el = await prepareProformaElement();
-      if (!el) return;
+      if (!el) {
+        toast.error("تعذر العثور على مستند الفاتورة لحفظ ملف PDF");
+        return;
+      }
       await exportElementToPdf(el, {
         filename: `فاتورة-مبدئية-TA-${serial}`,
         format: "a4",

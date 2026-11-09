@@ -85,7 +85,6 @@ export function convertOklchToRgb(input: string): string {
     }
   );
 
-  // حماية إضافية: استبدال أي تعبير oklch شاذ متبقٍ بلون محايد متوافق
   return converted.replace(/oklch\([^)]+\)/gi, "rgb(100, 116, 139)");
 }
 
@@ -93,19 +92,18 @@ export function convertOklchToRgb(input: string): string {
  * أنماط الطباعة والتصدير الشاملة والمستقلة بالكامل:
  * - معطلة تماماً لميزة Font Boosting في أندرويد عبر text-size-adjust: 100%
  * - تضمن ألوان HEX/RGB متوافقة وبدون أخطاء oklch
- * - تغطي كافة فئات Tailwind والأبعاد لمستندات A5 و A4 بدقة مطلقة
+ * - تغطي كافة فئات Tailwind والأبعاد لمستندات A4 و A5 بدقة مطلقة
+ * - خالية تماماً من الـ Overrides التي تشوه الجداول أو التذييل
  */
 export const INVOICE_STANDALONE_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
 
 :root {
   --invoice-paper: #ffffff;
-  --invoice-ink: #0f172a;
-  --invoice-accent: #1d4ed8;
-  --invoice-accent-2: #ea580c;
-  --invoice-soft: #f8fafc;
-  --invoice-border: #cbd5e1;
-  --font-arabic: 'Tajawal', system-ui, -apple-system, sans-serif;
+  --invoice-ink: #000000;
+  --invoice-accent: #0D4A39;
+  --invoice-border: #1e293b;
+  --font-arabic: 'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 *, *::before, *::after {
@@ -122,7 +120,7 @@ html, body {
   color: #000000 !important;
   margin: 0 !important;
   padding: 0 !important;
-  font-family: 'Tajawal', system-ui, -apple-system, sans-serif !important;
+  font-family: 'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   direction: rtl !important;
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
@@ -148,29 +146,31 @@ html, body {
   z-index: 1 !important;
 }
 
-/* 1. ورقة الفاتورة المبدئية A4 والفاتورة المخصصة (210mm x 297mm) */
+/* 1. ورقة الفاتورة المعتمدة A4 (210mm x 297mm) — مرونة Flex كاملة لتوزيع المساحات */
 .proforma-sheet, .standard-invoice-sheet {
   width: 210mm !important;
   min-height: 297mm !important;
   max-height: 297mm !important;
   height: 297mm !important;
   background-color: #ffffff !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   position: relative !important;
   left: auto !important;
   top: auto !important;
   margin: 0 auto !important;
-  padding: 0 !important;
+  padding: 10mm 12mm 10mm 12mm !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
   opacity: 1 !important;
   visibility: visible !important;
-  display: block !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
   page-break-inside: avoid !important;
   break-inside: avoid !important;
 }
 
-/* 2. ورقة فاتورة طلب التشغيل A5 العرضية (760px x 536px / 210mm x 148mm) */
+/* 2. ورقة فاتورة A5 العرضية (760px x 536px / 210mm x 148mm) */
 .invoice-paper {
   width: 760px !important;
   min-height: 536px !important;
@@ -178,14 +178,14 @@ html, body {
   max-height: 536px !important;
   background: #ffffff !important;
   color: #0f172a !important;
-  font-family: 'Tajawal', system-ui, -apple-system, sans-serif !important;
+  font-family: 'Tajawal', 'Cairo', system-ui, -apple-system, sans-serif !important;
   padding: 12px 18px 10px !important;
   font-size: 11px !important;
   line-height: 1.4 !important;
   box-sizing: border-box !important;
   position: relative !important;
-  border-top: 5px solid #ea580c !important;
-  border-bottom: 3.5px solid #ea580c !important;
+  border-top: 5px solid #0D4A39 !important;
+  border-bottom: 3.5px solid #0D4A39 !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: space-between !important;
@@ -210,6 +210,20 @@ html, body {
 }
 
 @media print {
+  @page {
+    margin: 0 !important;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .standard-invoice-sheet {
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
   .invoice-paper {
     width: 210mm !important;
     height: 148mm !important;
@@ -221,7 +235,7 @@ html, body {
   }
 }
 
-/* عناصر ورقة A5 العرضية */
+/* ══════════ عناصر ورقة A5 العرضية ══════════ */
 .inv-header {
   display: flex !important;
   align-items: center !important;
@@ -257,7 +271,7 @@ html, body {
   font-size: 9px !important;
   font-weight: 900 !important;
   letter-spacing: 1.8px !important;
-  color: #ea580c !important;
+  color: #0D4A39 !important;
   direction: ltr !important;
   line-height: 1.2 !important;
 }
@@ -268,9 +282,9 @@ html, body {
   gap: 2px !important;
 }
 .inv-badge {
-  border: 1.5px solid #dc2626 !important;
-  background: #fef2f2 !important;
-  color: #dc2626 !important;
+  border: 1.5px solid #0D4A39 !important;
+  background: #f0fdf4 !important;
+  color: #0D4A39 !important;
   border-radius: 6px !important;
   padding: 3px 18px !important;
   font-weight: 900 !important;
@@ -299,7 +313,7 @@ html, body {
   font-weight: 800 !important;
 }
 .inv-serial-no {
-  color: #ea580c !important;
+  color: #0D4A39 !important;
   font-weight: 900 !important;
   font-size: 15px !important;
   direction: ltr !important;
@@ -334,33 +348,6 @@ html, body {
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
-.inv-checks-row {
-  grid-column: span 4 !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 14px !important;
-  padding-top: 3px !important;
-  border-top: 1px dashed #cbd5e1 !important;
-}
-.inv-check {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  font-weight: 700 !important;
-  font-size: 10px !important;
-}
-.inv-box {
-  width: 13px !important;
-  height: 13px !important;
-  border: 1.5px solid #0f172a !important;
-  border-radius: 2.5px !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  font-size: 9.5px !important;
-  color: #ea580c !important;
-  font-weight: 900 !important;
-  line-height: 1 !important;
-}
 .inv-table-wrap {
   margin-bottom: 4px !important;
 }
@@ -372,8 +359,8 @@ html, body {
   font-size: 10.5px !important;
 }
 .inv-table th {
-  background: #ea580c !important;
-  background-color: #ea580c !important;
+  background: #C1D0CD !important;
+  background-color: #C1D0CD !important;
   color: #000000 !important;
   font-weight: 900 !important;
   padding: 4px 3px !important;
@@ -395,378 +382,190 @@ html, body {
 .inv-table tbody tr:nth-child(even) td {
   background: #f8fafc !important;
 }
-.inv-num {
-  font-family: monospace !important;
-  font-weight: 800 !important;
-}
-.inv-strong {
-  font-weight: 800 !important;
-  color: #0f172a !important;
-}
-.inv-desc {
-  text-align: right !important;
-  font-weight: 600 !important;
-}
-.inv-total-row td {
-  background: #fff7ed !important;
-  background-color: #fff7ed !important;
-  border-top: 1.5px solid #0f172a !important;
-  font-weight: 900 !important;
-  height: 24px !important;
-}
-.inv-total-label {
-  text-align: left !important;
-  font-size: 11px !important;
-  color: #0f172a !important;
-}
-.inv-total-val {
-  font-size: 13.5px !important;
-  color: #ea580c !important;
-  font-family: monospace !important;
-  font-weight: 900 !important;
-}
-.inv-footer {
-  margin-top: 4px !important;
-  border-top: 1px solid #cbd5e1 !important;
-  padding-top: 4px !important;
-}
-.inv-signs {
-  display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 16px !important;
-  font-size: 10.5px !important;
-  font-weight: 700 !important;
-  text-align: center !important;
-}
-.inv-sign-box {
-  border-top: 1px dotted #0f172a !important;
-  padding-top: 2px !important;
-  margin-top: 14px !important;
-  color: #475569 !important;
-}
-.inv-note {
-  margin-top: 4px !important;
-  font-size: 8.5px !important;
-  font-weight: 600 !important;
-  color: #64748b !important;
-  text-align: center !important;
-}
 
-/* جداول الفواتير العامة والبروفورما */
-table {
-  width: 100% !important;
-  border-collapse: collapse !important;
-}
-th, td {
-  border: 1px solid #cbd5e1 !important;
-}
-thead tr, th, .bg-\\[\\#f58220\\] {
-  background-color: #f58220 !important;
-  background: #f58220 !important;
-  color: #000000 !important;
-  font-weight: 900 !important;
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
-tfoot tr {
-  background-color: #f8fafc !important;
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
+/* ══════════ نظام CSS Grid ══════════ */
+.grid { display: grid !important; }
+.grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)) !important; }
+.col-span-1 { grid-column: span 1 / span 1 !important; }
+.col-span-2 { grid-column: span 2 / span 2 !important; }
+.col-span-3 { grid-column: span 3 / span 3 !important; }
+.col-span-4 { grid-column: span 4 / span 4 !important; }
+.col-span-5 { grid-column: span 5 / span 5 !important; }
+.col-span-6 { grid-column: span 6 / span 6 !important; }
+.col-span-7 { grid-column: span 7 / span 7 !important; }
+.col-span-8 { grid-column: span 8 / span 8 !important; }
+.col-span-9 { grid-column: span 9 / span 9 !important; }
+.col-span-10 { grid-column: span 10 / span 10 !important; }
+.col-span-11 { grid-column: span 11 / span 11 !important; }
+.col-span-12 { grid-column: span 12 / span 12 !important; }
 
-/* تنسيقات Tailwind الشاملة المستخدمة في الفواتير (ضمان التطابق الكامل مع المعاينة) */
+/* ══════════ نظام Flexbox ══════════ */
 .flex { display: flex !important; }
 .flex-col { flex-direction: column !important; }
+.flex-row { flex-direction: row !important; }
+.flex-1 { flex: 1 1 0% !important; min-width: 0 !important; }
+.shrink-0 { flex-shrink: 0 !important; }
+.grow { flex-grow: 1 !important; }
 .items-center { align-items: center !important; }
+.items-baseline { align-items: baseline !important; }
+.items-start { align-items: flex-start !important; }
+.items-end { align-items: flex-end !important; }
 .justify-between { justify-content: space-between !important; }
 .justify-center { justify-content: center !important; }
-.text-center { text-align: center !important; }
-.text-right { text-align: right !important; }
-.text-left { text-align: left !important; }
-.w-full { width: 100% !important; }
-.w-auto { width: auto !important; }
-.h-full { height: 100% !important; }
-.h-auto { height: auto !important; }
-.relative { position: relative !important; }
-.absolute { position: absolute !important; }
-.overflow-hidden { overflow: hidden !important; }
-.pointer-events-none { pointer-events: none !important; }
-.pointer-events-auto { pointer-events: auto !important; }
-.select-none { user-select: none !important; }
-.select-text { user-select: text !important; }
-.font-mono { font-family: monospace !important; }
-.font-sans { font-family: 'Tajawal', sans-serif !important; }
+.justify-start { justify-content: flex-start !important; }
+.justify-end { justify-content: flex-end !important; }
+
+/* ══════════ محاذاة ونصوص وأوزان الخطوط ══════════ */
+.font-mono { font-family: monospace, Courier, monospace !important; }
+.font-sans { font-family: 'Tajawal', 'Cairo', system-ui, sans-serif !important; }
 .font-black { font-weight: 900 !important; }
+.font-extrabold { font-weight: 800 !important; }
 .font-bold { font-weight: 700 !important; }
 .font-semibold { font-weight: 600 !important; }
 .font-medium { font-weight: 500 !important; }
 .font-normal { font-weight: 400 !important; }
+.italic { font-style: italic !important; }
+.not-italic { font-style: normal !important; }
+.text-center { text-align: center !important; }
+.text-right { text-align: right !important; }
+.text-left { text-align: left !important; }
 .leading-none { line-height: 1 !important; }
 .leading-tight { line-height: 1.25 !important; }
 .tracking-tight { letter-spacing: -0.025em !important; }
+.tracking-wide { letter-spacing: 0.025em !important; }
 .tracking-wider { letter-spacing: 0.05em !important; }
-.border { border-width: 1px !important; border-style: solid !important; }
-.border-l { border-left-width: 1px !important; border-left-style: solid !important; }
-.border-t { border-top-width: 1px !important; border-top-style: solid !important; }
-.border-box { box-sizing: border-box !important; }
-.divide-y > :not([hidden]) ~ :not([hidden]) { border-top-width: 1px !important; border-top-style: solid !important; border-color: #e2e8f0 !important; }
-.divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: #e2e8f0 !important; }
+.truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+.whitespace-nowrap { white-space: nowrap !important; }
+.tabular-nums { font-variant-numeric: tabular-nums !important; }
+.lowercase { text-transform: lowercase !important; }
 
-/* هوامش وأبعاد فواتير A4 المعتمدة */
-.px-\\[14mm\\] { padding-left: 14mm !important; padding-right: 14mm !important; }
-.px-\\[21mm\\] { padding-left: 21mm !important; padding-right: 21mm !important; }
-.pt-\\[5mm\\] { padding-top: 5mm !important; }
-.right-\\[21mm\\] { right: 21mm !important; }
-.w-\\[210mm\\] { width: 210mm !important; }
-
-/* أحجام الخطوط الدقيقة */
-.text-\\[25px\\] { font-size: 25px !important; }
-.text-\\[30px\\] { font-size: 30px !important; }
-.text-\\[18px\\] { font-size: 18px !important; }
-.text-\\[13px\\] { font-size: 13px !important; }
-.text-\\[12\\.5px\\] { font-size: 12.5px !important; }
-.text-\\[12px\\] { font-size: 12px !important; }
-.text-\\[10px\\] { font-size: 10px !important; }
+/* ══════════ أحجام الخطوط الدقيقة ══════════ */
 .text-\\[9\\.5px\\] { font-size: 9.5px !important; }
+.text-\\[10px\\] { font-size: 10px !important; }
 .text-\\[11px\\] { font-size: 11px !important; }
+.text-\\[11\\.5px\\] { font-size: 11.5px !important; }
+.text-\\[12px\\] { font-size: 12px !important; }
+.text-\\[12\\.5px\\] { font-size: 12.5px !important; }
+.text-\\[13px\\] { font-size: 13px !important; }
 .text-\\[13\\.5px\\] { font-size: 13.5px !important; }
+.text-\\[14px\\] { font-size: 14px !important; }
 .text-\\[14\\.5px\\] { font-size: 14.5px !important; }
-.text-\\[15\\.5px\\] { font-size: 15.5px !important; }
 .text-\\[15px\\] { font-size: 15px !important; }
+.text-\\[15\\.5px\\] { font-size: 15.5px !important; }
 .text-\\[16px\\] { font-size: 16px !important; }
+.text-\\[18px\\] { font-size: 18px !important; }
+.text-\\[22px\\] { font-size: 22px !important; }
+.text-\\[26px\\] { font-size: 26px !important; }
 .text-xs { font-size: 12px !important; }
+.text-transparent { color: transparent !important; }
 
-/* أبعاد العناصر الثابتة */
-.w-52 { width: 13rem !important; }
-.h-\\[3px\\] { height: 3px !important; }
-.h-\\[4\\.5px\\] { height: 4.5px !important; }
-.h-\\[84px\\] { height: 84px !important; }
-.h-\\[90px\\] { height: 90px !important; }
-.h-\\[128px\\] { height: 128px !important; }
-.h-\\[140px\\] { height: 140px !important; }
-.h-\\[36px\\] { height: 36px !important; }
-.h-\\[37px\\] { height: 37px !important; }
-.h-\\[40px\\] { height: 40px !important; }
-.h-\\[46px\\] { height: 46px !important; }
-.h-\\[52px\\] { height: 52px !important; }
-.w-\\[36px\\] { width: 36px !important; }
-.w-\\[38px\\] { width: 38px !important; }
-.w-\\[48px\\] { width: 48px !important; }
-.w-\\[64px\\] { width: 64px !important; }
-.w-\\[68px\\] { width: 68px !important; }
-.w-\\[82px\\] { width: 82px !important; }
-.w-\\[88px\\] { width: 88px !important; }
-.w-\\[94px\\] { width: 94px !important; }
-.w-\\[110px\\] { width: 110px !important; }
-.w-\\[120px\\] { width: 120px !important; }
-
-/* الألوان المعيارية */
-.text-\\[\\#901a24\\] { color: #901a24 !important; }
-.bg-\\[\\#901a24\\] { background-color: #901a24 !important; }
-.border-\\[\\#901a24\\]\\/50 { border-color: rgba(144, 26, 36, 0.5) !important; }
-.text-\\[\\#c2410c\\] { color: #c2410c !important; }
-.bg-\\[\\#f58220\\] { background-color: #f58220 !important; }
-.bg-orange-50\\/70 { background-color: rgba(255, 247, 237, 0.7) !important; }
-.border-orange-200\\/80 { border-color: rgba(254, 215, 170, 0.8) !important; }
-.bg-slate-50\\/30 { background-color: rgba(248, 250, 252, 0.3) !important; }
-.bg-slate-100\\/80 { background-color: rgba(241, 245, 249, 0.8) !important; }
-.border-slate-200 { border-color: #e2e8f0 !important; }
-.border-slate-300 { border-color: #cbd5e1 !important; }
-.border-black\\/15 { border-color: rgba(0, 0, 0, 0.15) !important; }
+/* ══════════ الألوان المعتمدة للفواتير ══════════ */
+.text-black { color: #000000 !important; }
+.text-white { color: #ffffff !important; }
 .text-slate-400 { color: #94a3b8 !important; }
 .text-slate-500 { color: #64748b !important; }
 .text-slate-600 { color: #475569 !important; }
 .text-slate-700 { color: #334155 !important; }
 .text-slate-800 { color: #1e293b !important; }
 .text-slate-900 { color: #0f172a !important; }
-.text-slate-950 { color: #020617 !important; }
-.text-muted-foreground { color: #64748b !important; }
-.text-muted-foreground\\/30 { color: rgba(100, 116, 139, 0.3) !important; }
-.text-foreground { color: #0f172a !important; }
-.text-black { color: #000000 !important; }
-.bg-black { background-color: #000000 !important; }
-.text-white { color: #ffffff !important; }
 .bg-white { background-color: #ffffff !important; }
+.bg-black { background-color: #000000 !important; }
+.bg-transparent { background-color: transparent !important; }
 
-/* المسافات والفجوات */
+/* ══════════ الحدود والزوايا ══════════ */
+.border { border-width: 1px !important; border-style: solid !important; }
+.border-b { border-bottom-width: 1px !important; border-bottom-style: solid !important; }
+.border-t { border-top-width: 1px !important; border-top-style: solid !important; }
+.border-l { border-left-width: 1px !important; border-left-style: solid !important; }
+.border-r { border-right-width: 1px !important; border-right-style: solid !important; }
+.border-black { border-color: #000000 !important; }
+.border-collapse { border-collapse: collapse !important; }
+.rounded-lg { border-radius: 0.5rem !important; }
+.rounded-xl { border-radius: 0.75rem !important; }
+.rounded-2xl { border-radius: 1rem !important; }
+.rounded-3xl { border-radius: 1.5rem !important; }
+.rounded-full { border-radius: 9999px !important; }
+.rounded-\\[8px\\] { border-radius: 8px !important; }
+.rounded-\\[10px\\] { border-radius: 10px !important; }
+.rounded-\\[12px\\] { border-radius: 12px !important; }
+.rounded-\\[20px\\] { border-radius: 20px !important; }
+
+/* ══════════ المسافات والهوامش ══════════ */
+.gap-1 { gap: 0.25rem !important; }
+.gap-1\\.5 { gap: 0.375rem !important; }
 .gap-2 { gap: 0.5rem !important; }
-.gap-10 { gap: 2.5rem !important; }
-.space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem !important; }
-.space-y-1\\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.375rem !important; }
+.gap-3 { gap: 0.75rem !important; }
+.gap-3\\.5 { gap: 0.875rem !important; }
+.gap-4 { gap: 1rem !important; }
+.p-0 { padding: 0 !important; }
+.p-1 { padding: 0.25rem !important; }
+.p-2 { padding: 0.5rem !important; }
 .p-2\\.5 { padding: 0.625rem !important; }
+.p-3 { padding: 0.75rem !important; }
+.px-1 { padding-left: 0.25rem !important; padding-right: 0.25rem !important; }
 .px-2 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
 .px-3 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
 .px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
 .px-5 { padding-left: 1.25rem !important; padding-right: 1.25rem !important; }
+.py-0\\.5 { padding-top: 0.125rem !important; padding-bottom: 0.125rem !important; }
 .py-1 { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
 .py-1\\.5 { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
 .py-2 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-.py-2\\.5 { padding-top: 0.625rem !important; padding-bottom: 0.625rem !important; }
+.pt-0\\.5 { padding-top: 0.125rem !important; }
 .pt-1 { padding-top: 0.25rem !important; }
+.pb-0\\.5 { padding-bottom: 0.125rem !important; }
 .pb-1 { padding-bottom: 0.25rem !important; }
+.pl-3 { padding-left: 0.75rem !important; }
+.pr-3 { padding-right: 0.75rem !important; }
+.my-1 { margin-top: 0.25rem !important; margin-bottom: 0.25rem !important; }
+.my-1\\.5 { margin-top: 0.375rem !important; margin-bottom: 0.375rem !important; }
+.my-2 { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
 .mt-0\\.5 { margin-top: 0.125rem !important; }
 .mt-1 { margin-top: 0.25rem !important; }
-.mt-2 { margin-top: 0.5rem !important; }
-.mt-10 { margin-top: 2.5rem !important; }
+.mt-1\\.5 { margin-top: 0.375rem !important; }
 .mb-1 { margin-bottom: 0.25rem !important; }
 .mb-2 { margin-bottom: 0.5rem !important; }
 .mb-2\\.5 { margin-bottom: 0.625rem !important; }
-.mb-3\\.5 { margin-bottom: 0.875rem !important; }
-.mb-4 { margin-bottom: 1rem !important; }
-.my-2 { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+.mr-1 { margin-right: 0.25rem !important; }
 .mx-auto { margin-left: auto !important; margin-right: auto !important; }
-.bottom-0 { bottom: 0 !important; }
-.left-0 { left: 0 !important; }
-.right-0 { right: 0 !important; }
-.left-\\[74px\\] { left: 74px !important; }
-.left-\\[94px\\] { left: 94px !important; }
-.bottom-\\[14px\\] { bottom: 14px !important; }
-.bottom-\\[16px\\] { bottom: 16px !important; }
-.bottom-\\[22px\\] { bottom: 22px !important; }
-.rounded-xs { border-radius: 0.125rem !important; }
-.rounded-xl { border-radius: 0.75rem !important; }
-.rounded-2xl { border-radius: 1rem !important; }
-.rounded-full { border-radius: 9999px !important; }
-.shadow-2xs { box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important; }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; }
+
+/* ══════════ الأبعاد الثابتة والمخصصة ══════════ */
+.w-full { width: 100% !important; }
+.w-auto { width: auto !important; }
+.h-full { height: 100% !important; }
+.h-auto { height: auto !important; }
+.min-h-0 { min-height: 0px !important; }
+.min-h-\\[80px\\] { min-height: 80px !important; }
+.min-h-\\[560px\\] { min-height: 560px !important; }
+.h-\\[38px\\] { height: 38px !important; }
+.h-\\[56px\\] { height: 56px !important; }
+.h-\\[66px\\] { height: 66px !important; }
+.w-\\[66px\\] { width: 66px !important; }
+.h-\\[68px\\] { height: 68px !important; }
+.h-\\[74px\\] { height: 74px !important; }
+.h-\\[76px\\] { height: 76px !important; }
+.h-\\[78px\\] { height: 78px !important; }
+.w-\\[40px\\] { width: 40px !important; }
+.w-\\[48px\\] { width: 48px !important; }
+.w-\\[58px\\] { width: 58px !important; }
+.w-\\[62px\\] { width: 62px !important; }
+.w-\\[100px\\] { width: 100px !important; }
+.w-\\[190px\\] { width: 190px !important; }
+.w-\\[460px\\] { width: 460px !important; }
+
+/* ══════════ التموضع والطبقات ══════════ */
+.relative { position: relative !important; }
+.absolute { position: absolute !important; }
+.inset-0 { inset: 0px !important; top: 0px !important; right: 0px !important; bottom: 0px !important; left: 0px !important; }
+.z-0 { z-index: 0 !important; }
+.z-10 { z-index: 10 !important; }
+.z-20 { z-index: 20 !important; }
+.pointer-events-none { pointer-events: none !important; }
+.pointer-events-auto { pointer-events: auto !important; }
+.select-none { user-select: none !important; }
+.select-text { user-select: text !important; }
+.overflow-hidden { overflow: hidden !important; }
 .object-contain { object-fit: contain !important; }
-.shrink-0 { flex-shrink: 0 !important; }
-.-rotate-2 { transform: rotate(-2deg) !important; }
-
-/* الأيقونات والمقاسات الدقيقة لتذييل الفواتير */
-.w-2\\.5 { width: 0.625rem !important; }
-.w-10 { width: 2.5rem !important; }
-.h-3\\.5 { height: 0.875rem !important; }
-.w-3\\.5 { width: 0.875rem !important; }
-.h-2 { height: 0.5rem !important; }
-.w-2 { width: 0.5rem !important; }
-.h-\\[9px\\] { height: 9px !important; }
-.w-\\[9px\\] { width: 9px !important; }
-.h-\\[10px\\] { height: 10px !important; }
-.w-\\[10px\\] { width: 10px !important; }
-.h-\\[15px\\] { height: 15px !important; }
-.w-\\[15px\\] { width: 15px !important; }
-.stroke-\\[2\\.2\\] { stroke-width: 2.2 !important; }
-
-/* تنسيقات تذييل الفاتورة المبدئية والفاتورة المخصصة A4 لضمان محاذاة هندسية دقيقة وثابتة ومستقلة */
-.proforma-footer-wrap {
-  position: absolute !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  width: 210mm !important;
-  height: 140px !important;
-  overflow: hidden !important;
-  pointer-events: none !important;
-  box-sizing: border-box !important;
-}
-.proforma-footer-bottom-line {
-  position: absolute !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 4.5px !important;
-  background-color: #901a24 !important;
-  z-index: 10 !important;
-}
-.proforma-footer-shape {
-  position: absolute !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  height: 128px !important;
-  width: auto !important;
-  object-fit: contain !important;
-  z-index: 20 !important;
-  pointer-events: none !important;
-}
-.proforma-footer-bar {
-  position: absolute !important;
-  bottom: 22px !important;
-  left: 74px !important;
-  width: 10px !important;
-  height: 52px !important;
-  background-color: #901a24 !important;
-  border-radius: 2px !important;
-  z-index: 20 !important;
-}
-.proforma-footer-contacts {
-  position: absolute !important;
-  bottom: 18px !important;
-  left: 94px !important;
-  z-index: 20 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 3.5px !important;
-  direction: ltr !important;
-  text-align: left !important;
-  font-size: 9.5px !important;
-  line-height: 1.35 !important;
-  color: #1e293b !important;
-  font-weight: 600 !important;
-  pointer-events: auto !important;
-}
-.proforma-contact-row {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  min-height: 15px !important;
-  white-space: nowrap !important;
-}
-.proforma-contact-icon {
-  width: 15px !important;
-  height: 15px !important;
-  min-width: 15px !important;
-  min-height: 15px !important;
-  border-radius: 9999px !important;
-  border: 1px solid rgba(144, 26, 36, 0.6) !important;
-  background-color: #ffffff !important;
-  color: #901a24 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-shrink: 0 !important;
-  box-sizing: border-box !important;
-  padding: 0 !important;
-}
-.proforma-contact-icon svg {
-  width: 9px !important;
-  height: 9px !important;
-  display: block !important;
-  stroke: #901a24 !important;
-  stroke-width: 2.2 !important;
-  fill: none !important;
-}
-.proforma-contact-text {
-  font-family: 'Tajawal', system-ui, -apple-system, sans-serif !important;
-  color: #1e293b !important;
-  direction: ltr !important;
-  unicode-bidi: isolate !important;
-  vertical-align: middle !important;
-}
-.proforma-contact-phone {
-  font-family: monospace, system-ui !important;
-  color: #1e293b !important;
-  direction: ltr !important;
-  unicode-bidi: isolate !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.3px !important;
-}
-.proforma-footer-stamp {
-  position: absolute !important;
-  bottom: 14px !important;
-  right: 21mm !important;
-  z-index: 20 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  pointer-events: auto !important;
-}
-.proforma-footer-stamp img {
-  height: 90px !important;
-  width: auto !important;
-  object-fit: contain !important;
-  transform: rotate(-2deg) !important;
-}
 `;
 
 /**
@@ -782,8 +581,8 @@ export function buildStandaloneInvoiceHtml(
     pageSize === "a5" ||
     element.classList.contains("invoice-paper") ||
     element.querySelector(".invoice-paper") !== null ||
-    title.includes("طلب") ||
-    title.includes("تشغيل");
+    title.includes("A5") ||
+    title.includes("a5");
 
   const rawHtml = convertOklchToRgb(element.outerHTML);
   const viewportWidth = isA5 ? 760 : 794;
@@ -832,7 +631,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 /**
  * توليد وحفظ ملف PDF أصلي وحقيقي (.pdf) بدقة عالية ومقاوم للأخطاء
- * مع دعم الصفحات المتعددة وحظر Font Boosting تماماً
+ * مع دعم الصفحات المتعددة وتطابق هندسي بنسبة 100% مع المعاينة
  */
 export async function exportElementToPdf(
   element: HTMLElement,
@@ -854,7 +653,7 @@ export async function exportElementToPdf(
     const targetWmm = isActuallyLandscape ? (actualFormat === "a5" ? 210 : 297) : (actualFormat === "a5" ? 148 : 210);
     const targetHmm = isActuallyLandscape ? (actualFormat === "a5" ? 148 : 210) : (actualFormat === "a5" ? 210 : 297);
 
-    // البحث عن كافة الصفحات المستهدفة بشكل سليم (يدعم الفواتير متعددة الصفحات)
+    // استخراج الصفحات المستهدفة
     let targets: HTMLElement[] = [];
     const printPages = Array.from(element.querySelectorAll<HTMLElement>(".invoice-print-page"));
     if (printPages.length > 0) {
@@ -877,7 +676,6 @@ export async function exportElementToPdf(
       compress: true,
     });
 
-    // ضبط مقاس صندوق العزل بدقة مطلقة لمنع أي تمدد أو هوامش فارغة
     const stageWidthPx = isA5 ? 760 : 794;
     const stageHeightPx = isA5 ? 536 : 1123;
 
@@ -895,8 +693,9 @@ export async function exportElementToPdf(
       staging.style.top = "0";
       staging.style.left = "-99999px";
       staging.style.width = `${stageWidthPx}px`;
+      staging.style.height = `${stageHeightPx}px`;
       staging.style.minHeight = `${stageHeightPx}px`;
-      staging.style.maxWidth = `${stageWidthPx}px`;
+      staging.style.maxHeight = `${stageHeightPx}px`;
       staging.style.backgroundColor = "#ffffff";
       staging.style.zIndex = "-9999";
       staging.style.margin = "0";
@@ -911,7 +710,9 @@ export async function exportElementToPdf(
       clone.style.setProperty("top", "0", "important");
       clone.style.setProperty("opacity", "1", "important");
       clone.style.setProperty("visibility", "visible", "important");
-      clone.style.setProperty("display", "block", "important");
+      clone.style.setProperty("display", isA5 ? "flex" : "flex", "important");
+      clone.style.setProperty("flex-direction", "column", "important");
+      clone.style.setProperty("justify-content", "space-between", "important");
       clone.style.setProperty("margin", "0 auto", "important");
       clone.style.setProperty("box-sizing", "border-box", "important");
       clone.style.setProperty("background-color", "#ffffff", "important");
@@ -936,22 +737,20 @@ export async function exportElementToPdf(
           })
         );
 
-        // التقاط الكانفاس بدقة عالية مع معالجة ألوان oklch وحظر Font Boosting دون حذف الـ CSS الأصلي
+        // التقاط الكانفاس بدقة عالية 2.0x مع ألوان sRGB متوافقة
         const canvas = await html2canvas(clone, {
           scale: 2.0,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
-          windowWidth: stageWidthPx + 50,
+          windowWidth: stageWidthPx,
+          windowHeight: stageHeightPx,
           onclone: (clonedDoc) => {
-            // 1. إزالة كافة ملفات الـ CSS الخارجية (link[rel="stylesheet"]) لمنع html2canvas
-            // من محاولة تحليل ألوان oklch الخاصة بحزم Tailwind v4 والتسبب بالخطأ
             clonedDoc.querySelectorAll("link[rel='stylesheet']").forEach((link) => {
               link.remove();
             });
 
-            // 2. تحويل أو تنظيف أي وسوم style موجودة تحتوي على oklch
             clonedDoc.querySelectorAll("style").forEach((styleEl) => {
               try {
                 if (styleEl.id === "standalone-pdf-styles") return;
@@ -963,7 +762,6 @@ export async function exportElementToPdf(
               }
             });
 
-            // 3. تحويل أي أنماط مضمنة style="..." تحتوي على oklch في كافة العناصر
             clonedDoc.querySelectorAll<HTMLElement>("*").forEach((el) => {
               const s = el.getAttribute("style");
               if (s && s.includes("oklch")) {
@@ -971,7 +769,6 @@ export async function exportElementToPdf(
               }
             });
 
-            // 4. حقن التنسيق الشامل المستقل كأولوية قصوى وبألوان sRGB/HEX متوافقة 100%
             const styleTag = clonedDoc.createElement("style");
             styleTag.id = "standalone-pdf-styles";
             styleTag.textContent = INVOICE_STANDALONE_CSS;
@@ -979,8 +776,9 @@ export async function exportElementToPdf(
           },
         });
 
-        const imgData = canvas.toDataURL("image/jpeg", 0.98);
-        pdf.addImage(imgData, "JPEG", 0, 0, targetWmm, targetHmm, undefined, "FAST");
+        // استخدام PNG لضمان نصوص حادة وخطوط نقية بدون أي تشويش JPEG
+        const imgData = canvas.toDataURL("image/png");
+        pdf.addImage(imgData, "PNG", 0, 0, targetWmm, targetHmm, undefined, "FAST");
       } finally {
         if (staging.parentNode) {
           staging.parentNode.removeChild(staging);
@@ -991,19 +789,19 @@ export async function exportElementToPdf(
     const safeFilename = (filename || "فاتورة-TA").replace(/[\\/:*?"<>|]/g, "-");
     const fullFilename = safeFilename.endsWith(".pdf") ? safeFilename : `${safeFilename}.pdf`;
 
-    // جسر أندرويد لحفظ الـ PDF في مجلد التنزيلات بالجهاز كملف ثنائي أصلي وسليم 100%
+    // جسر أندرويد لحفظ الـ PDF في مجلد التنزيلات بالجهاز
     const androidPrint = (window as any).AndroidPrint;
     if (androidPrint && typeof androidPrint.savePdf === "function") {
       const arrayBuffer = pdf.output("arraybuffer");
       const base64 = arrayBufferToBase64(arrayBuffer);
       androidPrint.savePdf(base64, fullFilename);
-      toast.success("تم تصدير وحفظ ملف الـ PDF الأصلي بنجاح", { id: toastId });
+      toast.success(`تم حفظ ملف الـ PDF بنجاح باسم: ${fullFilename}`, { id: toastId });
       return true;
     }
 
-    // متصفح الويب العادي
+    // متصفح الويب القياسي
     pdf.save(fullFilename);
-    toast.success("تم تنزيل ملف الـ PDF بنجاح", { id: toastId });
+    toast.success(`تم تنزيل ملف الـ PDF بنجاح: ${fullFilename}`, { id: toastId });
     return true;
   } catch (error: any) {
     console.error("PDF generation failed:", error);
@@ -1015,6 +813,7 @@ export async function exportElementToPdf(
 
 /**
  * معالج أمر الطباعة الذكي: يرسل HTML المخصص لأندرويد مع تحديد مقاس الورق بدقة
+ * يمنع تماماً أي طباعة لواجهة التطبيق أو النوافذ المحيطة
  */
 export function triggerPrintWithElement(
   element: HTMLElement | null,
@@ -1030,8 +829,8 @@ export function triggerPrintWithElement(
     actualPageSize =
       element?.classList.contains("invoice-paper") ||
       element?.querySelector(".invoice-paper") !== null ||
-      documentTitle.includes("طلب") ||
-      documentTitle.includes("تشغيل")
+      documentTitle.includes("A5") ||
+      documentTitle.includes("a5")
         ? "a5"
         : "a4";
   } else if (pageSize === "a5" || pageSize === "a4") {
@@ -1048,10 +847,18 @@ export function triggerPrintWithElement(
     actualOnDone?.();
   };
 
+  // حماية صارمة: منع طباعة نافذة التطبيق العامة إذا لم يتوفر عنصر الفاتورة
+  if (!element) {
+    console.error("Print rejected: Invoice element is null or undefined.");
+    toast.error("تعذر العثور على مستند الفاتورة لتجهيز الطباعة. يرجى إعادة المحاولة.");
+    cleanup();
+    return;
+  }
+
   const androidPrint = (window as any).AndroidPrint;
 
-  // 1. في أندرويد إذا توفر العنصر نرسل HTML مستقل بالكامل محدد الحجم بدقة لمنع الصفحة البيضاء وتثبيت التنسيق
-  if (androidPrint && typeof androidPrint.printHtml === "function" && element) {
+  // 1. في أندرويد نرسل HTML مستقل بالكامل محدد الحجم بدقة عبر جسر الطباعة الأصلي
+  if (androidPrint && typeof androidPrint.printHtml === "function") {
     try {
       const html = buildStandaloneInvoiceHtml(element, documentTitle, actualPageSize);
       androidPrint.printHtml(html, documentTitle, actualPageSize.toUpperCase());
@@ -1062,22 +869,10 @@ export function triggerPrintWithElement(
     }
   }
 
-  // 2. إذا توفر أمر print العادي في أندرويد
-  if (androidPrint && typeof androidPrint.print === "function") {
-    try {
-      androidPrint.print(documentTitle || "فاتورة-TA");
-      setTimeout(cleanup, 2000);
-      return;
-    } catch (e) {
-      console.warn("AndroidPrint.print error:", e);
-    }
-  }
-
-  // 3. متصفح الويب القياسي
-  window.addEventListener("afterprint", () => cleanup(), { once: true });
-  setTimeout(cleanup, 5000);
-
+  // 2. متصفح الويب القياسي (عبر نافذة طباعة مخصصة تركز على الفاتورة فقط)
   try {
+    window.addEventListener("afterprint", () => cleanup(), { once: true });
+    setTimeout(cleanup, 5000);
     window.print();
   } catch (err) {
     console.error("Browser print failed:", err);

@@ -171,7 +171,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-soft flex flex-col items-center justify-center p-6 relative" dir="rtl">
+    <div className="min-h-screen h-[100dvh] w-full bg-gradient-soft flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] relative overflow-y-auto" dir="rtl">
       {/* decorative brand glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
@@ -181,7 +181,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
       <button
         onClick={toggle}
         aria-label="تبديل الوضع"
-        className="absolute top-4 left-4 z-10 h-10 w-10 rounded-full border border-border bg-card/80 backdrop-blur hover:bg-muted flex items-center justify-center transition-all hover:shadow-md active:scale-95"
+        className="absolute top-[max(1rem,env(safe-area-inset-top,0px))] left-[max(1rem,env(safe-area-inset-left,0px))] z-10 h-10 w-10 rounded-full border border-border bg-card/80 backdrop-blur hover:bg-muted flex items-center justify-center transition-all hover:shadow-md active:scale-95"
       >
         {theme === "dark" ? <Sun className="h-5 w-5 text-accent" /> : <Moon className="h-5 w-5 text-primary" />}
       </button>

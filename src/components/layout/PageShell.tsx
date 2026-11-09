@@ -5,11 +5,11 @@ import { AppHeader } from "./AppHeader";
 import { BottomNav } from "./BottomNav";
 import { useUserProfile } from "@/lib/userProfileStore";
 import { UserProfileDialog } from "@/components/common/UserProfileDialog";
+import { useKeyboardAvoidance } from "@/components/common/SafeAreaLayout";
 
 const safeAreaStyle: CSSProperties = {
-  paddingTop: "env(safe-area-inset-top)",
-  paddingLeft: "env(safe-area-inset-left)",
-  paddingRight: "env(safe-area-inset-right)",
+  paddingLeft: "env(safe-area-inset-left, 0px)",
+  paddingRight: "env(safe-area-inset-right, 0px)",
 };
 
 /**
@@ -19,6 +19,9 @@ const safeAreaStyle: CSSProperties = {
 export function PageShell({ children }: { children: ReactNode }) {
   const { isOnboarded } = useUserProfile();
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // سحب الحقول المدخلة تلقائياً في حال فتح لوحة المفاتيح
+  useKeyboardAvoidance();
 
   useEffect(() => {
     // فتح نافذة التهيئة الأولية تلقائياً عند التشغيل الأول إذا لم يسبق حفظ الاسم
@@ -32,11 +35,13 @@ export function PageShell({ children }: { children: ReactNode }) {
       <AppSidebar />
       <div
         dir="rtl"
-        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden bg-background font-display text-foreground touch-pan-y"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full min-w-0 flex-1 flex-col overflow-hidden bg-background font-display text-foreground touch-pan-y"
         style={safeAreaStyle}
       >
         <AppHeader />
-        {children}
+        <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col relative">
+          {children}
+        </div>
         <BottomNav />
       </div>
 

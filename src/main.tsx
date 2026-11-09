@@ -50,7 +50,7 @@ if (typeof window !== "undefined" && (window as any).AndroidPrint) {
       return;
     }
 
-    (window as any).AndroidPrint.print(document.title || "فاتورة-TA");
+    toast.error("يرجى فتح أو تحديد الفاتورة قبل طلب الطباعة");
   };
 }
 

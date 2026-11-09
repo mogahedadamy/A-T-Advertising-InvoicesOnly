@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { TA_LOGO_WHITE_BASE64 } from "@/assets/invoiceImagesBase64";
 import { ShieldCheck } from "lucide-react";
 
@@ -21,12 +21,26 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [phase, setPhase] = useState<"enter" | "shine" | "ready">("enter");
 
+  // الحفاظ على مرجع الدالة لمنع إعادة تشغيل المؤقت نهائياً عند أي re-render للأب
+  const onFinishRef = useRef(onFinish);
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
+
+  const hasFinishedRef = useRef(false);
+
+  const safeFinish = useCallback(() => {
+    if (hasFinishedRef.current) return;
+    hasFinishedRef.current = true;
+    onFinishRef.current?.();
+  }, []);
+
   useEffect(() => {
     // 1. تسلسل ظهور المراحل الحركية
     const tShine = setTimeout(() => setPhase("shine"), 600);
     const tReady = setTimeout(() => setPhase("ready"), 1800);
 
-    // 2. محاكاة حركة شريط التحميل بسلاسة خلال المدة المحددة (6 ثوانٍ)
+    // 2. محاكاة حركة شريط التحميل بسلاسة فائقة خلال المدة المحددة (6 ثوانٍ)
     const startTime = performance.now();
     let animId: number;
 
@@ -49,9 +63,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       setIsFadingOut(true);
     }, duration - 400);
 
-    // 4. إنهاء الشاشة وتسليم الواجهة
+    // 4. إنهاء الشاشة وتسليم الواجهة بأمان لمرة واحدة فقط
     const tEnd = setTimeout(() => {
-      onFinish();
+      safeFinish();
     }, duration);
 
     return () => {
@@ -61,12 +75,13 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       clearTimeout(tEnd);
       cancelAnimationFrame(animId);
     };
-  }, [duration, onFinish]);
+  }, [duration, safeFinish]);
 
   // إمكانية النقر للتخطي الفوري إذا لم يرغب المستخدم في الانتظار
   const handleSkip = () => {
+    if (hasFinishedRef.current) return;
     setIsFadingOut(true);
-    setTimeout(onFinish, 180);
+    setTimeout(safeFinish, 180);
   };
 
   return (
@@ -79,8 +94,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           : "opacity-100 scale-100"
       }`}
       style={{
-        paddingTop: "max(2.5rem, env(safe-area-inset-top))",
-        paddingBottom: "max(2.5rem, env(safe-area-inset-bottom))",
+        paddingTop: "max(2rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(2rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1.5rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1.5rem, env(safe-area-inset-right, 0px))",
       }}
     >
       {/* ── 1. خلفية هالة الزمرد والأوبسيديان الملكية ── */}
@@ -94,7 +111,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       <div className="relative z-10 flex items-center gap-1.5 rounded-full border border-[#0D4A39]/60 bg-[#0C251E]/70 px-4 py-1.5 backdrop-blur-md transition-all duration-700">
         <ShieldCheck className="h-4 w-4 text-[#C5A059]" />
         <span className="text-[11px] font-semibold tracking-wider text-[#C2D1CE]">
-          منظومة الحاسبة والفواتير • v1.0.0-INVOICE (تجريبية 48 ساعة)
+          منظومة A-T-Advertising • الحاسبة والفواتير (تجريبية 48 ساعة)
         </span>
       </div>
 

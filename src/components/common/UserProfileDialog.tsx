@@ -54,12 +54,12 @@ export function UserProfileDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] px-[max(1rem,env(safe-area-inset-left,0px))] bg-black/60 backdrop-blur-md animate-fade-in"
       dir="rtl"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-border/70 bg-card/95 p-6 shadow-2xl backdrop-blur-xl animate-scale-up">
+      <div className="relative w-full max-w-md max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto overscroll-contain rounded-3xl border border-border/70 bg-card/95 p-5 sm:p-6 shadow-2xl backdrop-blur-xl animate-scale-up">
         {/* Glow decoration */}
         <div
           aria-hidden="true"

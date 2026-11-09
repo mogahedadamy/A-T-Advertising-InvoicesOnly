@@ -19,8 +19,10 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
       aria-modal="true"
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-between overflow-y-auto bg-[#061410] px-4 py-8 text-white select-none"
       style={{
-        paddingTop: "max(2rem, env(safe-area-inset-top))",
-        paddingBottom: "max(2rem, env(safe-area-inset-bottom))",
+        paddingTop: "max(1.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
       }}
     >
       {/* ── 1. هالة الإغلاق التام الخلفية ── */}

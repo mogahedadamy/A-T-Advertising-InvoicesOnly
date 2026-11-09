@@ -70,7 +70,7 @@ export function InvoiceViewer({ invoice, isVisible = true }: { invoice: Invoice;
     <div
       ref={boxRef}
       dir="ltr"
-      className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 flex items-center justify-center select-none"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 flex flex-col items-center justify-start select-none"
     >
       {/* في حال وجود أكثر من 9 بنود: أزرار التنقل بين صفحات الفاتورة */}
       {totalPages > 1 && (
@@ -102,7 +102,9 @@ export function InvoiceViewer({ invoice, isVisible = true }: { invoice: Invoice;
           initialScale={fit}
           minScale={fit * 0.5}
           maxScale={fit * 4.0}
-          centerOnInit
+          centerOnInit={false}
+          initialPositionX={0}
+          initialPositionY={0}
           limitToBounds={false}
           doubleClick={{ mode: "reset" }}
           onTransform={(ref) => {
@@ -115,14 +117,18 @@ export function InvoiceViewer({ invoice, isVisible = true }: { invoice: Invoice;
                 wrapperStyle={{ width: "100%", height: "100%" }}
                 contentStyle={{
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: "flex-start",
+                  width: "100%",
                   minWidth: "100%",
-                  minHeight: "100%",
-                  padding: "12px",
+                  paddingTop: "10px",
+                  paddingBottom: "56px",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
                 }}
               >
-                <div className="rounded-sm shadow-2xl ring-1 ring-black/20 overflow-hidden bg-white">
+                <div className="rounded-sm shadow-2xl ring-1 ring-black/20 overflow-hidden bg-white origin-top">
                   <InvoiceDocument invoice={invoice} pageIndex={pageIndex} />
                 </div>
               </TransformComponent>

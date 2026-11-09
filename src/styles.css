@@ -387,6 +387,40 @@
   }
 }
 
+/* ═══ Centralized Safe Area Utilities ═══ */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+@utility pl-safe {
+  padding-left: max(env(safe-area-inset-left, 0px), 0px);
+}
+@utility pr-safe {
+  padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}
+@utility p-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  padding-left: max(env(safe-area-inset-left, 0px), 0px);
+  padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}
+@utility px-safe {
+  padding-left: max(env(safe-area-inset-left, 0px), 0px);
+  padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}
+@utility py-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+@utility max-h-safe-dialog {
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem);
+}
+@utility h-safe-screen {
+  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
 
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
@@ -558,10 +592,6 @@ All colors MUST be HSL.
 @layer base {
   * {
     border-color: hsl(var(--border));
-    /* Smooth theme switch on background & color */
-    transition-property: background-color, border-color, color;
-    transition-duration: 180ms;
-    transition-timing-function: ease;
   }
 
   /* Restore immediate transitions for interactive elements */
@@ -571,10 +601,12 @@ All colors MUST be HSL.
   input,
   select,
   textarea {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     transition-property: background-color, border-color, color,
-      transform, box-shadow, opacity, filter;
-    transition-duration: 150ms;
-    transition-timing-function: ease;
+      transform, box-shadow, opacity;
+    transition-duration: 80ms;
+    transition-timing-function: ease-out;
   }
 
   html,
@@ -605,6 +637,14 @@ All colors MUST be HSL.
 
   html[dir="rtl"] body {
     font-family: 'Tajawal', 'Readex Pro', system-ui, sans-serif;
+  }
+
+  /* Hardware-accelerated smooth momentum scrolling */
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y pinch-zoom;
   }
 
   /* ── Text selection highlight ── */

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { commitSerial } from "@/lib/invoice/serial";
 import { triggerPrintWithElement, exportElementToPdf } from "@/lib/pdfExport";
 import { useState } from "react";
+import { toast } from "sonner";
 
 interface Props {
   serial: string;
@@ -48,7 +49,10 @@ export function InvoicePrintButton({
     setIsExporting(true);
     try {
       const el = await preparePrintElement();
-      if (!el) return;
+      if (!el) {
+        toast.error("تعذر العثور على مستند الفاتورة لحفظ ملف PDF");
+        return;
+      }
       await exportElementToPdf(el, {
         filename: `فاتورة-TA-${serial}`,
         format: "a5",

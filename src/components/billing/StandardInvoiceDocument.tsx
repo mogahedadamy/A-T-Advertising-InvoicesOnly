@@ -65,6 +65,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
 
     const attnPerson = meta.attn?.trim() || "";
 
+    // فحص ما إذا كانت الفاتورة تتضمن أبعاد مقاسات أو خامات لتفعيل الأعمدة المخصصة
+    const hasDimensionsOrMaterial = items.some(
+      (it) => Boolean(it.dimensions?.trim() || it.material?.trim())
+    );
+
     return (
       <div
         id={id}
@@ -80,11 +85,14 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
           boxSizing: "border-box",
           overflow: "hidden",
           fontFamily: isRtl
-            ? "var(--font-arabic, 'Tajawal', system-ui, sans-serif)"
+            ? "'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
             : "system-ui, -apple-system, sans-serif",
           WebkitPrintColorAdjust: "exact",
           printColorAdjust: "exact",
           backgroundColor: "#ffffff",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
         }}
       >
         {/* ─── 1. الترويسة الرئيسية (الشعار + شارة الفاتورة بالمنتصف تماماً) ─── */}
@@ -242,7 +250,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
             />
           </div>
 
-          {/* هيكل الجدول المعياري */}
+          {/* هيكل الجدول المعياري — يدعم أعمدة المقاسات والخامات ديناميكياً */}
           <table className="w-full border-collapse relative z-10 text-[12px] h-full flex flex-col justify-between">
             {/* رأس الجدول */}
             <thead className="w-full shrink-0">
@@ -254,11 +262,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   borderBottom: "1px solid #1e293b",
                 }}
               >
-                {/* البيان والمواصفات (يمين بالعربي / يسار بالإنجليزي) */}
+                {/* 1. البيان / الوصف */}
                 <th
                   className="py-2 px-3 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: "63%",
+                    width: hasDimensionsOrMaterial ? "36%" : "63%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -267,11 +275,41 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "البيان والمواصفات" : "Description"}
                 </th>
 
-                {/* العدد */}
+                {/* 2. الخامة (تُفعّل فقط عند وجود خامات أو مقاسات) */}
+                {hasDimensionsOrMaterial && (
+                  <th
+                    className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
+                    style={{
+                      width: "14%",
+                      ...(isRtl
+                        ? { borderLeft: "1px solid #1e293b" }
+                        : { borderRight: "1px solid #1e293b" }),
+                    }}
+                  >
+                    {isRtl ? "الخامة" : "Material"}
+                  </th>
+                )}
+
+                {/* 3. المقاسات والأبعاد بالأرقام (تُفعّل فقط عند وجود مقاسات) */}
+                {hasDimensionsOrMaterial && (
+                  <th
+                    className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
+                    style={{
+                      width: "15%",
+                      ...(isRtl
+                        ? { borderLeft: "1px solid #1e293b" }
+                        : { borderRight: "1px solid #1e293b" }),
+                    }}
+                  >
+                    {isRtl ? "المقاس (الأبعاد)" : "Dimensions"}
+                  </th>
+                )}
+
+                {/* 4. العدد */}
                 <th
                   className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: "8.5%",
+                    width: hasDimensionsOrMaterial ? "8%" : "8.5%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -280,11 +318,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "العدد" : "Qty"}
                 </th>
 
-                {/* سعر الوحدة */}
+                {/* 5. سعر الوحدة */}
                 <th
                   className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: "12.5%",
+                    width: hasDimensionsOrMaterial ? "12%" : "12.5%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -293,10 +331,10 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "سعر الوحدة" : "Unit Price"}
                 </th>
 
-                {/* الإجمالي */}
+                {/* 6. الإجمالي */}
                 <th
                   className="py-2 px-3 text-center font-black italic text-[14px] text-black flex items-center justify-center"
-                  style={{ width: "16%" }}
+                  style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
                 >
                   {isRtl ? "الإجمالي" : "Total"}
                 </th>
@@ -314,26 +352,56 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     borderBottom: "1px solid #94a3b8",
                   }}
                 >
-                  {/* بيان البند */}
+                  {/* بيان البند (الوصف الذي كتبه المستخدم) */}
                   <td
-                    className={`py-0.5 px-3 font-bold text-black flex items-center justify-between h-full ${
-                      isRtl ? "text-right" : "text-left"
+                    className={`py-0.5 px-3 font-bold text-black flex items-center h-full ${
+                      isRtl ? "text-right justify-start" : "text-left justify-start"
                     }`}
                     style={{
-                      width: "63%",
+                      width: hasDimensionsOrMaterial ? "36%" : "63%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
                     }}
                   >
-                    <span>{item.description}</span>
+                    <span className="truncate">{item.description}</span>
                   </td>
+
+                  {/* كولوم الخامة */}
+                  {hasDimensionsOrMaterial && (
+                    <td
+                      className="py-0.5 px-2 text-center font-bold text-black flex items-center justify-center h-full"
+                      style={{
+                        width: "14%",
+                        ...(isRtl
+                          ? { borderLeft: "1px solid #94a3b8" }
+                          : { borderRight: "1px solid #94a3b8" }),
+                      }}
+                    >
+                      <span className="truncate">{item.material || "-"}</span>
+                    </td>
+                  )}
+
+                  {/* كولوم المقاسات بالأرقام */}
+                  {hasDimensionsOrMaterial && (
+                    <td
+                      className="py-0.5 px-2 text-center font-mono font-bold text-black flex items-center justify-center h-full tabular-nums"
+                      style={{
+                        width: "15%",
+                        ...(isRtl
+                          ? { borderLeft: "1px solid #94a3b8" }
+                          : { borderRight: "1px solid #94a3b8" }),
+                      }}
+                    >
+                      <span className="truncate">{item.dimensions || "-"}</span>
+                    </td>
+                  )}
 
                   {/* العدد */}
                   <td
                     className="py-0.5 px-1 text-center font-mono font-bold text-black flex items-center justify-center h-full"
                     style={{
-                      width: "8.5%",
+                      width: hasDimensionsOrMaterial ? "8%" : "8.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -348,7 +416,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                       isRtl ? "justify-start pl-3" : "justify-end pr-3"
                     }`}
                     style={{
-                      width: "12.5%",
+                      width: hasDimensionsOrMaterial ? "12%" : "12.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -362,7 +430,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     className={`py-0.5 px-3 font-mono font-black text-black flex items-center h-full ${
                       isRtl ? "justify-start" : "justify-end"
                     }`}
-                    style={{ width: "16%" }}
+                    style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
                   >
                     {formatNumber(item.total)}
                   </td>
@@ -383,7 +451,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   <td
                     className="py-0.5 px-3 text-transparent select-none h-full"
                     style={{
-                      width: "63%",
+                      width: hasDimensionsOrMaterial ? "36%" : "63%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -391,10 +459,36 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   >
                     -
                   </td>
+                  {hasDimensionsOrMaterial && (
+                    <td
+                      className="py-0.5 px-2 text-transparent select-none h-full"
+                      style={{
+                        width: "14%",
+                        ...(isRtl
+                          ? { borderLeft: "1px solid #94a3b8" }
+                          : { borderRight: "1px solid #94a3b8" }),
+                      }}
+                    >
+                      -
+                    </td>
+                  )}
+                  {hasDimensionsOrMaterial && (
+                    <td
+                      className="py-0.5 px-2 text-transparent select-none h-full"
+                      style={{
+                        width: "15%",
+                        ...(isRtl
+                          ? { borderLeft: "1px solid #94a3b8" }
+                          : { borderRight: "1px solid #94a3b8" }),
+                    }}
+                  >
+                    -
+                  </td>
+                  )}
                   <td
                     className="py-0.5 px-1 text-center text-transparent select-none flex items-center justify-center h-full"
                     style={{
-                      width: "8.5%",
+                      width: hasDimensionsOrMaterial ? "8%" : "8.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -405,7 +499,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   <td
                     className="py-0.5 px-2 text-transparent select-none flex items-center justify-end h-full"
                     style={{
-                      width: "12.5%",
+                      width: hasDimensionsOrMaterial ? "12%" : "12.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -415,7 +509,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   </td>
                   <td
                     className="py-0.5 px-3 text-transparent select-none flex items-center justify-end h-full"
-                    style={{ width: "16%" }}
+                    style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
                   >
                     -
                   </td>
@@ -435,7 +529,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                 {/* المساحة المتبقية من الجدول */}
                 <td
                   style={{
-                    width: "71.5%",
+                    width: hasDimensionsOrMaterial ? "73%" : "71.5%",
                     backgroundColor: "#E0E6E4",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
@@ -447,7 +541,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                 <td
                   className="flex items-center justify-center font-black italic text-[14.5px] text-black"
                   style={{
-                    width: "12.5%",
+                    width: hasDimensionsOrMaterial ? "12%" : "12.5%",
                     backgroundColor: "#ffffff",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
@@ -463,7 +557,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     isRtl ? "justify-start" : "justify-end"
                   }`}
                   style={{
-                    width: "16%",
+                    width: hasDimensionsOrMaterial ? "15%" : "16%",
                     backgroundColor: "#ffffff",
                   }}
                 >
@@ -507,13 +601,26 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
         </div>
 
         {/* ─── 6. صناديق التذييل (الإعداد، الرمز الشريطي QR الرسمي، والاعتماد) ─── */}
-        <div className="grid grid-cols-12 gap-3.5 items-end pt-1 shrink-0">
+        <div
+          className="grid grid-cols-12 gap-3.5 items-end pt-1 shrink-0"
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: "14px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
           {/* صندوق الإعداد */}
           <div
             className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white"
             style={{
+              flex: "5 5 0%",
+              minWidth: 0,
               border: "1px solid #1e293b",
               height: "76px",
+              boxSizing: "border-box",
             }}
           >
             <span className="text-[12px] font-bold italic text-black">
@@ -525,7 +632,19 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
           </div>
 
           {/* الرمز الشريطي QR الرسمي الجديد بدون إطار خارجي */}
-          <div className="col-span-2 flex flex-col items-center justify-center text-center">
+          <div
+            className="col-span-2 flex flex-col items-center justify-center text-center"
+            style={{
+              flex: "2 2 0%",
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              boxSizing: "border-box",
+            }}
+          >
             <div className="w-[66px] h-[66px] flex items-center justify-center bg-transparent">
               <img
                 src={TA_QR_CODE_BASE64}
@@ -542,8 +661,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
           <div
             className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white"
             style={{
+              flex: "5 5 0%",
+              minWidth: 0,
               border: "1px solid #1e293b",
               height: "76px",
+              boxSizing: "border-box",
             }}
           >
             <span className="text-[12px] font-bold italic text-black">

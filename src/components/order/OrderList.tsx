@@ -28,16 +28,23 @@ export function OrderList({
 
   const content = (full: boolean) => (
     <div className="flex flex-col h-full min-h-0 w-full max-w-full overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between border-b border-border/70 pb-3 mb-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="grid h-8 w-8 place-items-center rounded-xl bg-secondary text-foreground border border-border/60 shrink-0">
-            <Layers className="h-4 w-4" />
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 pb-3 mb-3">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+            <Layers className="h-4.5 w-4.5" />
           </div>
-          <div className="min-w-0">
-            <h2 className="text-xs sm:text-sm font-black text-foreground truncate">
-              سجل المقاسات المضافة ({items.length})
-            </h2>
-            <span className="text-[10px] font-bold text-muted-foreground tabular-nums block truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xs sm:text-sm font-black text-foreground truncate">
+                سجل المقاسات المضافة
+              </h2>
+              {items.length > 0 && (
+                <span className="text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full bg-primary/15 text-primary border border-primary/25 tabular-nums shrink-0">
+                  {items.length}
+                </span>
+              )}
+            </div>
+            <span className="text-[10.5px] font-bold text-muted-foreground tabular-nums block truncate mt-0.5">
               المساحة: {calculatedArea.toFixed(2)} م²
             </span>
           </div>
@@ -46,20 +53,23 @@ export function OrderList({
         <div className="flex items-center gap-1.5 shrink-0">
           {items.length > 0 && (
             <Button
-              variant="destructive"
-              size="xs"
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={onClear}
-              className="h-8 px-2.5 text-xs rounded-xl"
+              className="h-8 px-2.5 text-[11px] font-bold rounded-xl gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
+              title="مسح كافة المقاسات من السجل"
             >
-              <Trash2 className="h-3.5 w-3.5 ml-1" />
-              مسح
+              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+              <span>مسح</span>
             </Button>
           )}
           <Button
+            type="button"
             variant="outline"
             size="icon-sm"
             onClick={() => setExpanded(!full)}
-            className="h-8 w-8 rounded-xl"
+            className="h-8 w-8 rounded-xl text-muted-foreground hover:text-foreground"
             aria-label={full ? "إغلاق التوسيع" : "توسيع الطلبية"}
           >
             {full ? <X className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}

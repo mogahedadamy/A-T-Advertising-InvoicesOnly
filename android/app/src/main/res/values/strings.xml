@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">T.A فواتير وحاسبة</string>
-    <string name="title_activity_main">T.A فواتير وحاسبة</string>
+    <string name="app_name">A-T-Advertising</string>
+    <string name="title_activity_main">A-T-Advertising</string>
     <string name="package_name">com.taadvertising.invoicing</string>
     <string name="custom_url_scheme">com.taadvertising.invoicing</string>
 </resources>

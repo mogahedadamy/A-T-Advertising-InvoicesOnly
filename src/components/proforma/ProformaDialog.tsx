@@ -150,7 +150,7 @@ export function ProformaDialog({
       role="dialog"
       aria-modal="true"
       aria-label="فاتورة مبدئية"
-      className="fixed inset-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] md:items-center md:justify-center md:bg-black/75 md:p-4"
+      className="fixed inset-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] md:items-center md:justify-center md:bg-black/75 md:p-4"
       dir="rtl"
     >
       <div className="flex h-full w-full flex-col bg-card md:h-[94vh] md:max-h-[920px] md:max-w-6xl lg:max-w-7xl md:rounded-3xl md:border md:border-border/80 md:shadow-2xl overflow-hidden">

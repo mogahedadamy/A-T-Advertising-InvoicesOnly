@@ -2,10 +2,12 @@ export type CustomInvoiceType = "proforma" | "sales" | "purchase";
 
 export interface CustomInvoiceItem {
   id: string;
-  description: string; // التفاصيل
-  qty: number;         // العدد
-  unitPrice?: number | undefined;  // سعر الوحدة
-  total: number;       // القيمة
+  description: string;            // البيان / الوصف الذي كتبه المستخدم
+  material?: string | undefined;   // نوع الخامة (مثل: بنر كوري، فليكس، فينيل)
+  dimensions?: string | undefined; // أبعاد ومقاسات الرول (مثل: 3.00 × 1.50 م)
+  qty: number;                    // العدد
+  unitPrice?: number | undefined; // سعر الوحدة
+  total: number;                  // القيمة الإجمالية
 }
 
 export interface CustomInvoiceMeta {

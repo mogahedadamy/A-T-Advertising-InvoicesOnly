@@ -13,6 +13,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/useTheme";
 import { useOrders } from "@/lib/ordersStore";
 import { playTapSound } from "@/lib/soundEffects";
+import { HeaderTrialCountdown } from "@/components/common/TrialCountdownBadge";
 
 /* ─── Date formatter ──────────────────────────────────────────── */
 const dateFmt = new Intl.DateTimeFormat("ar", {
@@ -157,13 +158,16 @@ export function AppHeader() {
         "border-b border-border/60",
         "bg-nav-bar/95 backdrop-blur-xl",
         "shadow-[0_1px_0_hsl(var(--border)/0.4),0_4px_16px_-4px_hsl(0_0%_0%/0.06)]",
+        "pt-[env(safe-area-inset-top,0px)]",
+        "pl-[env(safe-area-inset-left,0px)]",
+        "pr-[env(safe-area-inset-right,0px)]",
       ].join(" ")}
       dir="rtl"
     >
       <div className="flex h-[58px] sm:h-[66px] md:h-[72px] items-center justify-between px-2.5 sm:px-4 md:px-6 gap-1.5 sm:gap-2">
 
-        {/* ── Right: Sidebar trigger + date ─────────────────── */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* ── Right: Sidebar trigger + Top Countdown Timer + date ── */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <SidebarTrigger
             aria-label="القائمة الرئيسية"
             className={[
@@ -174,9 +178,12 @@ export function AppHeader() {
             ].join(" ")}
           />
 
+          {/* عداد المهلة الصغير أعلى التطبيق بتصميم متناسق وجميل */}
+          <HeaderTrialCountdown />
+
           {/* Desktop date pill */}
           {today && (
-            <div className="hidden md:flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-xs font-bold text-muted-foreground">
+            <div className="hidden lg:flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-xs font-bold text-muted-foreground">
               <Calendar className="h-3.5 w-3.5 text-primary" />
               <span>{today}</span>
             </div>
@@ -189,12 +196,12 @@ export function AppHeader() {
             to="/calculator"
             onClick={() => playTapSound()}
             className="flex items-center justify-center group btn-tactile interactive py-0.5"
-            aria-label="الرئيسية — T.A للدعاية والإعلان"
+            aria-label="الرئيسية — A-T-Advertising"
           >
             <img
               key={isDark ? "dark-logo" : "light-logo"}
               src={isDark ? "/ta-logo-white.png" : "/ta-logo.png"}
-              alt="T.A Advertising Solution"
+              alt="A-T-Advertising"
               className={[
                 "h-[38px] xs:h-[42px] sm:h-[48px] md:h-[54px] w-auto max-h-full object-contain",
                 "transition-all duration-300",

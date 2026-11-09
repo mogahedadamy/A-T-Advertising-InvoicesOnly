@@ -62,10 +62,10 @@ export function OrderDetailsDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
         dir="rtl"
-        className="max-w-xl p-0 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-right"
+        className="max-w-xl max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] flex flex-col p-0 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl text-right"
       >
-        {/* الترويسة */}
-        <div className="flex items-center justify-between border-b border-border bg-secondary/40 px-5 py-3.5">
+        {/* الترويسة مع مساحة أمان لزر الإغلاق */}
+        <div className="flex items-center justify-between border-b border-border bg-secondary/40 px-5 pl-14 py-3.5 shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="font-mono text-base font-black text-foreground">
               أمر شغل #{order.orderNumber}
@@ -96,7 +96,7 @@ export function OrderDetailsDialog({
         </div>
 
         {/* محتوى التفاصيل */}
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-5 space-y-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {/* بيانات العميل والفرع */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/80 bg-secondary/30 p-3.5 text-xs">
             <div className="space-y-1">
@@ -108,7 +108,7 @@ export function OrderDetailsDialog({
               <p className="font-mono text-muted-foreground text-xs">{order.customerPhone}</p>
             </div>
 
-            <div className="space-y-1 text-left sm:text-right">
+            <div className="space-y-1 text-right">
               <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
                 <MapPin className="h-3 w-3 text-primary" />
                 الفرع وتاريخ الإنشاء

@@ -80,7 +80,7 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
     <div
       ref={containerRef}
       dir="ltr"
-      className={`relative h-full w-full min-h-[350px] overflow-hidden rounded-2xl bg-slate-900/95 dark:bg-zinc-950 flex items-center justify-center select-none ${
+      className={`relative h-full w-full min-h-[350px] overflow-hidden rounded-2xl bg-slate-900/95 dark:bg-zinc-950 flex flex-col items-center justify-start select-none ${
         className || ""
       }`}
     >
@@ -89,7 +89,9 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
           initialScale={fitScale}
           minScale={fitScale * 0.4}
           maxScale={fitScale * 4.5}
-          centerOnInit
+          centerOnInit={false}
+          initialPositionX={0}
+          initialPositionY={0}
           limitToBounds={false}
           doubleClick={{ mode: "reset" }}
           onTransform={(ref) => {
@@ -106,14 +108,18 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
                 }}
                 contentStyle={{
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: "flex-start",
+                  width: "100%",
                   minWidth: "100%",
-                  minHeight: "100%",
-                  padding: "16px",
+                  paddingTop: "10px",
+                  paddingBottom: "56px",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
                 }}
               >
-                <div className="rounded-md shadow-2xl ring-1 ring-black/40 overflow-hidden bg-white">
+                <div className="rounded-md shadow-2xl ring-1 ring-black/40 overflow-hidden bg-white origin-top">
                   <StandardInvoiceDocument invoice={invoice} />
                 </div>
               </TransformComponent>

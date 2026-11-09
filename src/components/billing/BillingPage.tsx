@@ -33,19 +33,15 @@ export function BillingPage() {
   const [editingProformaInvoice, setEditingProformaInvoice] = useState<ProformaInvoice | null>(null);
 
   const handleOpenCreate = (type: CustomInvoiceType) => {
-    if (type === "proforma") {
-      setNewProformaOpen(true);
-    } else {
-      setEditingCustomInvoice(null);
-      setDialogType(type);
-      setCustomDialogOpen(true);
-    }
+    setEditingCustomInvoice(null);
+    setDialogType(type);
+    setCustomDialogOpen(true);
   };
 
   return (
     <PageShell>
       <main
-        className="w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-5 min-w-0 scroll-smooth touch-pan-y pb-24 md:pb-10"
+        className="w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-5 min-w-0 scroll-smooth touch-pan-y pb-36 md:pb-16"
         dir="rtl"
       >
         <div className="mx-auto max-w-7xl space-y-3 sm:space-y-4 w-full max-w-full">

@@ -10,7 +10,7 @@ export function MobileHistoryPage() {
   return (
     <PageShell>
       <div className="flex flex-1 flex-col overflow-hidden bg-background" dir="rtl">
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain pb-28 md:pb-12">
           <InvoicesPageContent />
         </div>
       </div>

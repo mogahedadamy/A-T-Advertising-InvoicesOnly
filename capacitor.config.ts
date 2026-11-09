@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.taadvertising.invoicing",
-  appName: "T.A فواتير وحاسبة",
+  appName: "A-T-Advertising",
   webDir: "dist",
   server: {
     androidScheme: "https",

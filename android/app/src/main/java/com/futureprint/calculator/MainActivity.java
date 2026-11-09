@@ -68,7 +68,7 @@ public class MainActivity extends BridgeActivity {
                         try {
                             String jobName = (documentName != null && !documentName.trim().isEmpty())
                                 ? documentName
-                                : "فاتورة-فيوتشر";
+                                : "فاتورة-TA";
 
                             if (printWebView != null) {
                                 try {
@@ -87,30 +87,32 @@ public class MainActivity extends BridgeActivity {
                             pSettings.setSupportZoom(false);
 
                             final boolean isA5Landscape = "A5".equalsIgnoreCase(pageSize) ||
-                                (jobName != null && (jobName.contains("طلب") || jobName.contains("تشغيل") || jobName.contains("A5") || jobName.contains("a5")));
+                                (jobName != null && (jobName.contains("A5") || jobName.contains("a5")));
 
                             printWebView.setWebViewClient(new WebViewClient() {
                                 @Override
                                 public void onPageFinished(WebView view, String url) {
-                                    try {
-                                        PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                                        if (printManager != null) {
-                                            PrintDocumentAdapter printAdapter = printWebView.createPrintDocumentAdapter(jobName);
-                                            PrintAttributes.Builder builder = new PrintAttributes.Builder();
-                                            builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
-                                            builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
+                                    view.postDelayed(() -> {
+                                        try {
+                                            PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                                            if (printManager != null && printWebView != null) {
+                                                PrintDocumentAdapter printAdapter = printWebView.createPrintDocumentAdapter(jobName);
+                                                PrintAttributes.Builder builder = new PrintAttributes.Builder();
+                                                builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
+                                                builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
 
-                                            if (isA5Landscape) {
-                                                builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
-                                            } else {
-                                                builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
+                                                if (isA5Landscape) {
+                                                    builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
+                                                } else {
+                                                    builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
+                                                }
+
+                                                printManager.print(jobName, printAdapter, builder.build());
                                             }
-
-                                            printManager.print(jobName, printAdapter, builder.build());
+                                        } catch (Exception ex) {
+                                            ex.printStackTrace();
                                         }
-                                    } catch (Exception ex) {
-                                        ex.printStackTrace();
-                                    }
+                                    }, 200);
                                 }
                             });
 
@@ -128,14 +130,14 @@ public class MainActivity extends BridgeActivity {
                             byte[] pdfBytes = Base64.decode(base64Data, Base64.DEFAULT);
                             String safeName = (filename != null && !filename.trim().isEmpty())
                                 ? (filename.endsWith(".pdf") ? filename : filename + ".pdf")
-                                : "فاتورة-فيوتشر.pdf";
+                                : "فاتورة-TA.pdf";
 
-                            // على أندرويد 10 والأحدث: حفظ مباشر في مجلد Downloads/FuturePrint
+                            // على أندرويد 10 والأحدث: حفظ مباشر في مجلد Downloads/A-T-Advertising
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 ContentValues values = new ContentValues();
                                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, safeName);
                                 values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
-                                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/FuturePrint");
+                                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/A-T-Advertising");
 
                                 Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
                                 if (uri != null) {

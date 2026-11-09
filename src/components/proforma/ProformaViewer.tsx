@@ -65,14 +65,16 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
     <div
       ref={boxRef}
       dir="ltr"
-      className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 flex items-center justify-center select-none"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-950 flex flex-col items-center justify-start select-none"
     >
       {fit !== null && (
         <TransformWrapper
           initialScale={fit}
           minScale={fit * 0.4}
           maxScale={fit * 4.0}
-          centerOnInit
+          centerOnInit={false}
+          initialPositionX={0}
+          initialPositionY={0}
           limitToBounds={false}
           doubleClick={{ mode: "reset" }}
           onTransform={(ref) => {
@@ -85,14 +87,18 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
                 wrapperStyle={{ width: "100%", height: "100%" }}
                 contentStyle={{
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: "flex-start",
+                  width: "100%",
                   minWidth: "100%",
-                  minHeight: "100%",
-                  padding: "12px",
+                  paddingTop: "10px",
+                  paddingBottom: "56px",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
                 }}
               >
-                <div className="rounded-md shadow-2xl ring-1 ring-black/30 overflow-hidden bg-white">
+                <div className="rounded-md shadow-2xl ring-1 ring-black/30 overflow-hidden bg-white origin-top">
                   <ProformaDocument invoice={invoice} />
                 </div>
               </TransformComponent>

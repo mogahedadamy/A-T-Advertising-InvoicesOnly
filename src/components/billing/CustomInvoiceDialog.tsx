@@ -85,6 +85,7 @@ export function CustomInvoiceDialog({
   const [attn, setAttn] = useState<string>("");
   const [language, setLanguage] = useState<"auto" | "ar" | "en">("auto");
   const [items, setItems] = useState<CustomInvoiceItem[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // مزامنة الحقول عند فتح النافذة أو استقبال بيانات جديدة
   useEffect(() => {
@@ -202,14 +203,25 @@ export function CustomInvoiceDialog({
     onOpenChange(false);
   };
 
-  const handleSaveAndPrint = () => {
+  const handleSaveAndPrint = async () => {
+    if (isProcessing) return;
     const invoice = validateAndBuild();
     if (!invoice) return;
 
-    saveCustomInvoice(invoice);
-    setCurrentInvoiceId(invoice.id);
-    onSaved?.(invoice);
-    printCustomInvoiceDocument(invoice);
+    setIsProcessing(true);
+    try {
+      saveCustomInvoice(invoice);
+      setCurrentInvoiceId(invoice.id);
+      playSuccessSound();
+      toast({
+        title: "تم حفظ الفاتورة",
+        description: `تم حفظ ${INVOICE_TYPE_LABELS[type]} برقم #${invoice.meta.serial} وجاري تجهيز الطباعة...`,
+      });
+      onSaved?.(invoice);
+      await printCustomInvoiceDocument(invoice);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const previewInvoice = buildCurrentInvoice();
@@ -220,8 +232,8 @@ export function CustomInvoiceDialog({
         className="w-full sm:max-w-4xl h-[100dvh] sm:h-[90vh] max-h-[100dvh] sm:max-h-[90vh] flex flex-col p-0 overflow-hidden bg-card border-border/80 rounded-none sm:rounded-3xl shadow-2xl"
         dir="rtl"
       >
-        {/* 1. رأس النافذة */}
-        <DialogHeader className="p-3 sm:px-5 sm:py-3 border-b border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
+        {/* 1. رأس النافذة مع احترام مساحة الأمان العلوية (Notch / Status Bar) */}
+        <DialogHeader className="px-3 pl-14 py-2.5 pt-[max(0.75rem,env(safe-area-inset-top,0px))] sm:px-5 sm:pl-16 sm:py-3 border-b border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
           <div className="flex items-center gap-2">
             <span
               className={`grid h-8 w-8 place-items-center rounded-xl border text-xs ${
@@ -325,46 +337,52 @@ export function CustomInvoiceDialog({
           {/* تبويب المعاينة */}
           <TabsContent
             value="preview"
-            className="flex-1 overflow-y-auto p-2 sm:p-4 bg-muted/30 m-0 scroll-smooth touch-pan-y min-h-0"
+            className="flex-1 overflow-hidden p-2 sm:p-4 bg-muted/30 m-0 min-h-0 flex flex-col"
           >
-            <div className="max-w-3xl mx-auto shadow-lg rounded-2xl overflow-hidden border border-border/70 bg-white dark:bg-card">
+            <div className="w-full max-w-3xl mx-auto flex-1 min-h-0 shadow-lg rounded-2xl overflow-hidden border border-border/70 bg-white dark:bg-card">
               <StandardInvoiceViewer invoice={previewInvoice} />
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* 3. شريط أزرار الحفظ والإغلاق */}
-        <DialogFooter className="p-3 sm:px-5 sm:py-3 border-t border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9 px-4 rounded-xl font-bold text-xs"
-          >
-            إلغاء
-          </Button>
-
+        {/* 3. شريط أزرار الحفظ والإغلاق مع احترام مساحة الأمان السفلية (Navigation Bar) بتدرج RTL طبيعي */}
+        <DialogFooter className="px-3 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5 sm:py-3 border-t border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
           <div className="flex items-center gap-2">
             <Button
               type="button"
-              variant="outline"
-              onClick={handleSaveAndPrint}
-              className="h-9 px-3.5 rounded-xl font-black text-xs gap-1.5 border-primary/30 hover:bg-primary/5 text-primary"
-            >
-              <Printer className="h-4 w-4" />
-              <span className="hidden sm:inline">حفظ وطباعة فورية</span>
-              <span className="sm:hidden">طباعة</span>
-            </Button>
-
-            <Button
-              type="button"
               onClick={handleSave}
-              className="h-9 px-5 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30"
+              disabled={isProcessing}
+              className="h-9 px-5 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 cursor-pointer"
             >
               <Save className="h-4 w-4" />
               <span>حفظ الفاتورة</span>
             </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSaveAndPrint}
+              disabled={isProcessing}
+              className="h-9 px-3.5 rounded-xl font-black text-xs gap-1.5 border-primary/30 hover:bg-primary/5 text-primary cursor-pointer"
+            >
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {isProcessing ? "جاري التجهيز..." : "حفظ وطباعة فورية"}
+              </span>
+              <span className="sm:hidden">
+                {isProcessing ? "جاري..." : "طباعة"}
+              </span>
+            </Button>
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="h-9 px-4 rounded-xl font-bold text-xs cursor-pointer"
+          >
+            إلغاء
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

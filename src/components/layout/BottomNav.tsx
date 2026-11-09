@@ -116,7 +116,9 @@ export function BottomNav() {
         /* Glass background */
         "border-t border-border/60 bg-nav-bar/95 backdrop-blur-xl",
         /* Safe area for iOS & Android */
-        "pb-[env(safe-area-inset-bottom)]",
+        "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]",
+        "pl-[max(0.5rem,env(safe-area-inset-left,0px))]",
+        "pr-[max(0.5rem,env(safe-area-inset-right,0px))]",
         /* Shadow above */
         "shadow-[0_-1px_0_hsl(var(--border)/0.5),0_-8px_24px_-4px_hsl(0_0%_0%/0.06)]",
       ].join(" ")}

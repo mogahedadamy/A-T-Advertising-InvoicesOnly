@@ -27,10 +27,10 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[96vw] max-w-4xl h-[90dvh] max-h-[90dvh] flex flex-col p-0 rounded-3xl border-border/60 bg-card shadow-2xl overflow-hidden"
+        className="w-[98vw] sm:w-[96vw] max-w-4xl h-[94dvh] sm:h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-0.5rem)] flex flex-col p-0 rounded-2xl sm:rounded-3xl border-border/60 bg-card shadow-2xl overflow-hidden"
         dir="rtl"
       >
-        <DialogHeader className="p-3 sm:p-4 px-4 sm:px-6 shrink-0 border-b border-border/50 flex flex-row items-center justify-between text-right">
+        <DialogHeader className="p-3 sm:p-4 pr-3 pl-14 sm:pr-6 sm:pl-16 shrink-0 border-b border-border/50 flex flex-row items-center justify-between text-right bg-card z-10">
           <div className="min-w-0 pr-1 sm:pr-2">
             <DialogTitle className="text-base sm:text-lg font-black text-foreground truncate">
               معاينة {title} #{invoice.meta.serial}

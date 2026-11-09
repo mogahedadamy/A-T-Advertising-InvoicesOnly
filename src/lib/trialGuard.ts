@@ -60,7 +60,43 @@ async function safeSetStorage(key: string, value: string): Promise<void> {
 }
 
 /**
- * تقييم حالة المهلة التجريبية
+ * متغيرات الذاكرة الفورية (In-Memory Cache) لمنع أي استعلام متكرر لـ IPC Capacitor Bridge
+ * وتحقيق سرعة استجابة لحظية 0ms
+ */
+let cachedPermanentlyLocked: boolean | null = null;
+let cachedInstalledAt: number | null = null;
+let cachedHwm: number = 0;
+let lastHwmPersistTime = 0;
+let isStorageInitialized = false;
+
+async function initTrialStorage(): Promise<void> {
+  if (isStorageInitialized) return;
+  const { STORAGE_KEYS } = TRIAL_CONFIG;
+  try {
+    const lockedStr = await safeGetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED);
+    cachedPermanentlyLocked = lockedStr === "true";
+
+    const installedStr = await safeGetStorage(STORAGE_KEYS.INSTALLED_AT);
+    let inst = installedStr ? parseInt(installedStr, 10) : 0;
+    const now = Date.now();
+    if (!inst || isNaN(inst) || inst <= 0) {
+      inst = now;
+      safeSetStorage(STORAGE_KEYS.INSTALLED_AT, String(inst)).catch(() => {});
+      safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now)).catch(() => {});
+    }
+    cachedInstalledAt = inst;
+
+    const hwmStr = await safeGetStorage(STORAGE_KEYS.HIGH_WATER_MARK);
+    cachedHwm = hwmStr ? parseInt(hwmStr, 10) : inst;
+    isStorageInitialized = true;
+  } catch (err) {
+    cachedInstalledAt = Date.now();
+    isStorageInitialized = true;
+  }
+}
+
+/**
+ * تقييم حالة المهلة التجريبية بسرعة فائقة 0ms من الذاكرة
  */
 export async function evaluateTrialStatus(): Promise<TrialStatus> {
   // إذا كانت ميزة المهلة معطلة في الإعدادات: التطبيق دائم ومفتوح بالكامل
@@ -82,9 +118,12 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
   const now = Date.now();
 
   try {
-    // 1. فحص ما إذا كان التطبيق مقفلاً نهائياً من قبل
-    const isLocked = await safeGetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED);
-    if (isLocked === "true") {
+    if (!isStorageInitialized) {
+      await initTrialStorage();
+    }
+
+    // 1. فحص ما إذا كان التطبيق مقفلاً نهائياً
+    if (cachedPermanentlyLocked) {
       return {
         isEnabled: true,
         isExpired: true,
@@ -92,29 +131,18 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
         hoursLeft: 0,
         minutesLeft: 0,
         secondsLeft: 0,
-        installedAt: 0,
+        installedAt: cachedInstalledAt || 0,
         isTampered: false,
         isReady: true,
       };
     }
 
-    // 2. فحص تاريخ أول تشغيل
-    const installedAtStr = await safeGetStorage(STORAGE_KEYS.INSTALLED_AT);
-    let installedAt = installedAtStr ? parseInt(installedAtStr, 10) : 0;
+    const installedAt = cachedInstalledAt || now;
 
-    if (!installedAt || isNaN(installedAt) || installedAt <= 0) {
-      installedAt = now;
-      await safeSetStorage(STORAGE_KEYS.INSTALLED_AT, String(installedAt));
-      await safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now));
-    }
-
-    // 3. فحص التلاعب بساعة الهاتف (High-Water Mark)
-    const hwmStr = await safeGetStorage(STORAGE_KEYS.HIGH_WATER_MARK);
-    const hwm = hwmStr ? parseInt(hwmStr, 10) : installedAt;
-
-    // إذا أعيدت ساعة الجهاز لأكثر من 5 دقائق للخلف يُعتبر تلاعباً
-    if (now < hwm - 5 * 60 * 1000) {
-      await safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true");
+    // 2. فحص التلاعب بساعة الهاتف (High-Water Mark)
+    if (now < cachedHwm - 5 * 60 * 1000) {
+      cachedPermanentlyLocked = true;
+      safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true").catch(() => {});
       return {
         isEnabled: true,
         isExpired: true,
@@ -128,17 +156,23 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
       };
     }
 
-    // تحديث أعلى نقطة زمنية
-    const updatedHwm = Math.max(hwm, now);
-    await safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(updatedHwm));
+    // تحديث أعلى نقطة زمنية كل دقيقة على الأقل في الخلفية دون تعطيل واجهة المستخدم
+    if (now > cachedHwm) {
+      cachedHwm = now;
+      if (now - lastHwmPersistTime > 60 * 1000) {
+        lastHwmPersistTime = now;
+        safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now)).catch(() => {});
+      }
+    }
 
-    // 4. احتساب الوقت المتبقي
+    // 3. احتساب الوقت المتبقي في الذاكرة لحظياً (0ms)
     const elapsed = now - installedAt;
     const remainingMs = Math.max(0, DURATION_MS - elapsed);
     const isExpired = remainingMs <= 0;
 
     if (isExpired) {
-      await safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true");
+      cachedPermanentlyLocked = true;
+      safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true").catch(() => {});
     }
 
     const totalSeconds = Math.floor(remainingMs / 1000);
@@ -158,7 +192,6 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
       isReady: true,
     };
   } catch (err) {
-    // في حال حدوث أي خطأ غير متوقع، لا نجعل التطبيق ينهار
     console.warn("Trial evaluation fallback:", err);
     return {
       isEnabled: true,
@@ -175,7 +208,77 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
 }
 
 /**
- * خطاف تفاعلي لمراقبة حالة الـ 48 ساعة في واجهات React
+ * خطاف تفاعلي لفحص انتهاء الصلاحية فقط (بدون إعادة تصيير كل ثانية)
+ * مثالي لـ RootComponent لمنع أي وميض أو إعادة تشغيل لشاشة البداية
+ */
+export function useTrialExpiry(): {
+  isEnabled: boolean;
+  isExpired: boolean;
+  isTampered: boolean;
+  isReady: boolean;
+} {
+  const [expiry, setExpiry] = useState({
+    isEnabled: TRIAL_CONFIG.ENABLE_TRIAL_LOCK,
+    isExpired: false,
+    isTampered: false,
+    isReady: false,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkExpiry = async () => {
+      try {
+        const res = await evaluateTrialStatus();
+        if (isMounted) {
+          setExpiry((prev) => {
+            if (
+              prev.isExpired !== res.isExpired ||
+              prev.isTampered !== res.isTampered ||
+              prev.isReady !== res.isReady ||
+              prev.isEnabled !== res.isEnabled
+            ) {
+              return {
+                isEnabled: res.isEnabled,
+                isExpired: res.isExpired,
+                isTampered: res.isTampered,
+                isReady: res.isReady,
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        console.warn("Trial expiry check error:", e);
+      }
+    };
+
+    checkExpiry();
+
+    // فحص دوري خفيف كل 30 ثانية لتوفير موارد المعالج
+    const interval = setInterval(checkExpiry, 30000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkExpiry();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  return expiry;
+}
+
+/**
+ * خطاف تفاعلي لمراقبة عداد الوقت المتبقي (يُستخدم داخل شارات وعناصر العداد فقط)
+ * يتم تحديثه كل 10 ثوانٍ لضمان الدقة مع توفير فائق للأداء والبطارية
  */
 export function useTrialGuard(): TrialStatus {
   const [status, setStatus] = useState<TrialStatus>({
@@ -206,6 +309,7 @@ export function useTrialGuard(): TrialStatus {
 
     runCheck();
 
+    // تحديث كل ثانية لعرض الساعات والدقائق والثواني بدقة لحظية
     const interval = setInterval(runCheck, 1000);
 
     const onVisibilityChange = () => {
