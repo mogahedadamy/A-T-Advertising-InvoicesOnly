@@ -104,11 +104,12 @@ export async function prepareCustomInvoiceElement(
     staging.setAttribute("dir", "rtl");
     staging.style.position = "fixed";
     staging.style.top = "0";
-    staging.style.left = "-99999px";
+    staging.style.left = "0";
     staging.style.width = "794px";
     staging.style.height = "1123px";
-    staging.style.zIndex = "-9999";
+    staging.style.zIndex = "-99999";
     staging.style.backgroundColor = "#ffffff";
+    staging.style.opacity = "0.01";
     document.body.appendChild(staging);
 
     const root = createRoot(staging);

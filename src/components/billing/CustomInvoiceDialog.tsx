@@ -16,6 +16,7 @@ import {
   FileText,
   TrendingUp,
   ShoppingBag,
+  FileDown,
 } from "lucide-react";
 import type {
   CustomInvoice,
@@ -30,7 +31,11 @@ import {
   saveCustomInvoice,
 } from "@/lib/billing/store";
 import { StandardInvoiceViewer } from "./StandardInvoiceViewer";
-import { CustomInvoicePrintButton, printCustomInvoiceDocument } from "./CustomInvoicePrintButton";
+import {
+  CustomInvoicePrintButton,
+  printCustomInvoiceDocument,
+  saveCustomInvoiceAsPdf,
+} from "./CustomInvoicePrintButton";
 import { CustomInvoiceTypeSelector } from "./dialog/CustomInvoiceTypeSelector";
 import { CustomInvoiceMetaSection } from "./dialog/CustomInvoiceMetaSection";
 import { CustomInvoiceItemsTable } from "./dialog/CustomInvoiceItemsTable";
@@ -215,10 +220,31 @@ export function CustomInvoiceDialog({
       playSuccessSound();
       toast({
         title: "تم حفظ الفاتورة",
-        description: `تم حفظ ${INVOICE_TYPE_LABELS[type]} برقم #${invoice.meta.serial} وجاري تجهيز الطباعة...`,
+        description: `تم حفظ ${INVOICE_TYPE_LABELS[type]} برقم #${invoice.meta.serial} وجاري تشغيل أمر الطباعة...`,
       });
       onSaved?.(invoice);
       await printCustomInvoiceDocument(invoice);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSaveAndExportPdf = async () => {
+    if (isProcessing) return;
+    const invoice = validateAndBuild();
+    if (!invoice) return;
+
+    setIsProcessing(true);
+    try {
+      saveCustomInvoice(invoice);
+      setCurrentInvoiceId(invoice.id);
+      playSuccessSound();
+      toast({
+        title: "تم حفظ الفاتورة",
+        description: `تم حفظ ${INVOICE_TYPE_LABELS[type]} برقم #${invoice.meta.serial} وجاري تصدير وحفظ ملف PDF...`,
+      });
+      onSaved?.(invoice);
+      await saveCustomInvoiceAsPdf(invoice);
     } finally {
       setIsProcessing(false);
     }
@@ -347,31 +373,48 @@ export function CustomInvoiceDialog({
 
         {/* 3. شريط أزرار الحفظ والإغلاق مع احترام مساحة الأمان السفلية (Navigation Bar) بتدرج RTL طبيعي */}
         <DialogFooter className="px-3 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5 sm:py-3 border-t border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            {/* زر حفظ وتصدير PDF الأصلي في الجهاز */}
             <Button
               type="button"
-              onClick={handleSave}
+              onClick={handleSaveAndExportPdf}
               disabled={isProcessing}
-              className="h-9 px-5 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 cursor-pointer"
+              className="h-9 px-3.5 sm:px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 cursor-pointer"
+              title="حفظ الفاتورة بالسجل وتصدير ملف PDF أصلي في جهازك"
             >
-              <Save className="h-4 w-4" />
-              <span>حفظ الفاتورة</span>
+              <FileDown className="h-4 w-4" />
+              <span>{isProcessing ? "جاري التجهيز..." : "حفظ PDF أصلي"}</span>
             </Button>
 
+            {/* زر الحفظ والطباعة المباشرة */}
             <Button
               type="button"
               variant="outline"
               onClick={handleSaveAndPrint}
               disabled={isProcessing}
-              className="h-9 px-3.5 rounded-xl font-black text-xs gap-1.5 border-primary/30 hover:bg-primary/5 text-primary cursor-pointer"
+              className="h-9 px-3 sm:px-3.5 rounded-xl font-black text-xs gap-1.5 border-primary/30 hover:bg-primary/5 text-primary cursor-pointer"
+              title="حفظ الفاتورة وتشغيل الطابعة أو خدمة طباعة النظام فوراً"
             >
               <Printer className="h-4 w-4" />
               <span className="hidden sm:inline">
-                {isProcessing ? "جاري التجهيز..." : "حفظ وطباعة فورية"}
+                {isProcessing ? "جاري التجهيز..." : "طباعة فورية"}
               </span>
               <span className="sm:hidden">
-                {isProcessing ? "جاري..." : "طباعة"}
+                {isProcessing ? "..." : "طباعة"}
               </span>
+            </Button>
+
+            {/* زر حفظ بالسجل فقط */}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleSave}
+              disabled={isProcessing}
+              className="h-9 px-2 sm:px-3 rounded-xl font-bold text-xs gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
+              title="حفظ بيانات الفاتورة في السجل فقط دون تصدير ملف"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">حفظ بالسجل</span>
             </Button>
           </div>
 
@@ -379,7 +422,7 @@ export function CustomInvoiceDialog({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-9 px-4 rounded-xl font-bold text-xs cursor-pointer"
+            className="h-9 px-3.5 sm:px-4 rounded-xl font-bold text-xs cursor-pointer"
           >
             إلغاء
           </Button>

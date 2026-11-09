@@ -96,8 +96,6 @@ export function convertOklchToRgb(input: string): string {
  * - خالية تماماً من الـ Overrides التي تشوه الجداول أو التذييل
  */
 export const INVOICE_STANDALONE_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
-
 :root {
   --invoice-paper: #ffffff;
   --invoice-ink: #000000;
@@ -584,7 +582,15 @@ export function buildStandaloneInvoiceHtml(
     title.includes("A5") ||
     title.includes("a5");
 
-  const rawHtml = convertOklchToRgb(element.outerHTML);
+  const targetSheet =
+    (element.classList.contains("standard-invoice-sheet") ||
+     element.classList.contains("proforma-sheet") ||
+     element.classList.contains("invoice-paper"))
+      ? element
+      : element.querySelector<HTMLElement>(".standard-invoice-sheet, .proforma-sheet, .invoice-paper") ||
+        element;
+
+  const rawHtml = convertOklchToRgb(targetSheet.outerHTML);
   const viewportWidth = isA5 ? 760 : 794;
 
   return `<!DOCTYPE html>
@@ -686,37 +692,61 @@ export async function exportElementToPdf(
         pdf.addPage(actualFormat, actualOrientation);
       }
 
-      // بناء صندوق عزل مؤقت في الـ DOM بعرض وارتفاع قياسي ومثالي للكانفاس
+      // 1. استخراج العنصر الحقيقي للورقة (A4 / A5)
+      const sourceEl =
+        targetEl.classList.contains("standard-invoice-sheet") ||
+        targetEl.classList.contains("proforma-sheet") ||
+        targetEl.classList.contains("invoice-paper")
+          ? targetEl
+          : targetEl.querySelector<HTMLElement>(".standard-invoice-sheet, .proforma-sheet, .invoice-paper") ||
+            targetEl;
+
+      // 2. بناء صندوق عزل مرئي هندسياً عند (0, 0) لضمان التقاط الكانفاس بدون أي إزاحة أو بياض
       const staging = document.createElement("div");
+      staging.id = "canonical-pdf-capture-staging";
       staging.setAttribute("dir", "rtl");
       staging.style.position = "fixed";
-      staging.style.top = "0";
-      staging.style.left = "-99999px";
+      staging.style.top = "0px";
+      staging.style.left = "0px";
       staging.style.width = `${stageWidthPx}px`;
       staging.style.height = `${stageHeightPx}px`;
+      staging.style.minWidth = `${stageWidthPx}px`;
       staging.style.minHeight = `${stageHeightPx}px`;
+      staging.style.maxWidth = `${stageWidthPx}px`;
       staging.style.maxHeight = `${stageHeightPx}px`;
       staging.style.backgroundColor = "#ffffff";
-      staging.style.zIndex = "-9999";
+      staging.style.zIndex = "999999";
+      staging.style.pointerEvents = "none";
+      staging.style.overflow = "hidden";
       staging.style.margin = "0";
       staging.style.padding = "0";
       staging.style.boxSizing = "border-box";
-      staging.style.webkitTextSizeAdjust = "100%";
+      staging.style.opacity = "1";
+      staging.style.visibility = "visible";
 
-      const clone = targetEl.cloneNode(true) as HTMLElement;
-      clone.classList.remove("invoice-print-root", "proforma-print-root", "custom-invoice-print-root");
-      clone.style.setProperty("position", "relative", "important");
-      clone.style.setProperty("left", "0", "important");
-      clone.style.setProperty("top", "0", "important");
-      clone.style.setProperty("opacity", "1", "important");
-      clone.style.setProperty("visibility", "visible", "important");
-      clone.style.setProperty("display", isA5 ? "flex" : "flex", "important");
-      clone.style.setProperty("flex-direction", "column", "important");
-      clone.style.setProperty("justify-content", "space-between", "important");
-      clone.style.setProperty("margin", "0 auto", "important");
-      clone.style.setProperty("box-sizing", "border-box", "important");
-      clone.style.setProperty("background-color", "#ffffff", "important");
-      clone.style.setProperty("-webkit-text-size-adjust", "100%", "important");
+      const clone = sourceEl.cloneNode(true) as HTMLElement;
+      clone.classList.remove(
+        "invoice-print-root",
+        "proforma-print-root",
+        "custom-invoice-print-root",
+        "invoice-standalone-root"
+      );
+      clone.style.position = "relative";
+      clone.style.left = "0px";
+      clone.style.top = "0px";
+      clone.style.margin = "0 auto";
+      clone.style.width = `${stageWidthPx}px`;
+      clone.style.height = `${stageHeightPx}px`;
+      clone.style.minHeight = `${stageHeightPx}px`;
+      clone.style.maxHeight = `${stageHeightPx}px`;
+      clone.style.opacity = "1";
+      clone.style.visibility = "visible";
+      clone.style.display = "flex";
+      clone.style.flexDirection = "column";
+      clone.style.justifyContent = "space-between";
+      clone.style.boxSizing = "border-box";
+      clone.style.backgroundColor = "#ffffff";
+      clone.style.transform = "none";
 
       staging.appendChild(clone);
       document.body.appendChild(staging);
@@ -737,44 +767,51 @@ export async function exportElementToPdf(
           })
         );
 
-        // التقاط الكانفاس بدقة عالية 2.0x مع ألوان sRGB متوافقة
-        const canvas = await html2canvas(clone, {
+        // التقاط الكانفاس بدقة عالية 2.0x عند الإحداثيات (0, 0)
+        const canvas = await html2canvas(staging, {
           scale: 2.0,
           useCORS: true,
-          allowTaint: false,
+          allowTaint: true,
           backgroundColor: "#ffffff",
           logging: false,
+          x: 0,
+          y: 0,
+          width: stageWidthPx,
+          height: stageHeightPx,
           windowWidth: stageWidthPx,
           windowHeight: stageHeightPx,
+          scrollX: 0,
+          scrollY: 0,
           onclone: (clonedDoc) => {
+            // إزالة ملفات الـ css الخارجية لتجنب خطأ oklch
             clonedDoc.querySelectorAll("link[rel='stylesheet']").forEach((link) => {
               link.remove();
             });
 
-            clonedDoc.querySelectorAll("style").forEach((styleEl) => {
-              try {
-                if (styleEl.id === "standalone-pdf-styles") return;
-                if (styleEl.textContent && styleEl.textContent.includes("oklch")) {
-                  styleEl.textContent = convertOklchToRgb(styleEl.textContent);
-                }
-              } catch (e) {
-                console.warn("Style oklch conversion note:", e);
-              }
-            });
+            // التأكد من ظهور وتطابق صندوق الالتقاط في المستند المستنسخ
+            const clonedStaging = clonedDoc.getElementById("canonical-pdf-capture-staging");
+            if (clonedStaging) {
+              clonedStaging.style.position = "absolute";
+              clonedStaging.style.top = "0px";
+              clonedStaging.style.left = "0px";
+              clonedStaging.style.width = `${stageWidthPx}px`;
+              clonedStaging.style.height = `${stageHeightPx}px`;
+              clonedStaging.style.zIndex = "999999";
+              clonedStaging.style.opacity = "1";
+              clonedStaging.style.visibility = "visible";
+            }
 
-            clonedDoc.querySelectorAll<HTMLElement>("*").forEach((el) => {
-              const s = el.getAttribute("style");
-              if (s && s.includes("oklch")) {
-                el.setAttribute("style", convertOklchToRgb(s));
-              }
-            });
-
+            // حقن الأنماط المستقلة الشاملة التي تحتوي كل فئات التنسيق
             const styleTag = clonedDoc.createElement("style");
-            styleTag.id = "standalone-pdf-styles";
+            styleTag.id = "canonical-standalone-pdf-styles";
             styleTag.textContent = INVOICE_STANDALONE_CSS;
             clonedDoc.head.appendChild(styleTag);
           },
         });
+
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+          throw new Error("فشل إنشاء كانفاس الفاتورة بدقة صحيحة");
+        }
 
         // استخدام PNG لضمان نصوص حادة وخطوط نقية بدون أي تشويش JPEG
         const imgData = canvas.toDataURL("image/png");
@@ -862,10 +899,21 @@ export function triggerPrintWithElement(
     try {
       const html = buildStandaloneInvoiceHtml(element, documentTitle, actualPageSize);
       androidPrint.printHtml(html, documentTitle, actualPageSize.toUpperCase());
-      setTimeout(cleanup, 1500);
+      setTimeout(cleanup, 1200);
       return;
     } catch (e) {
       console.warn("AndroidPrint.printHtml error:", e);
+    }
+  }
+
+  // Fallback للطباعة المباشرة في أندرويد
+  if (androidPrint && typeof androidPrint.print === "function") {
+    try {
+      androidPrint.print(documentTitle);
+      setTimeout(cleanup, 1200);
+      return;
+    } catch (e) {
+      console.warn("AndroidPrint.print error:", e);
     }
   }
 

@@ -33,12 +33,17 @@ export function ProformaPrintButton({
     commitProformaSerial(serial);
 
     const el =
-      document.querySelector<HTMLElement>(".proforma-print-root .proforma-sheet") ||
       document.querySelector<HTMLElement>(".proforma-sheet") ||
       document.querySelector<HTMLElement>("#proforma-document") ||
+      document.querySelector<HTMLElement>(".proforma-print-root .proforma-sheet") ||
       document.querySelector<HTMLElement>(".proforma-print-root");
 
-    return el;
+    const sheet =
+      el && el.classList.contains("proforma-sheet")
+        ? el
+        : el?.querySelector<HTMLElement>(".proforma-sheet") || el;
+
+    return sheet;
   };
 
   const handlePrint = async () => {

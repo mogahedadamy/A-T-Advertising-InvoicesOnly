@@ -31,9 +31,16 @@ export function InvoicePrintButton({
     commitSerial(serial);
 
     const el =
-      document.querySelector<HTMLElement>(".invoice-print-root") ||
-      document.querySelector<HTMLElement>(".invoice-paper");
-    return el;
+      document.querySelector<HTMLElement>(".invoice-paper") ||
+      document.querySelector<HTMLElement>(".invoice-print-root .invoice-paper") ||
+      document.querySelector<HTMLElement>(".invoice-print-root");
+
+    const paper =
+      el && el.classList.contains("invoice-paper")
+        ? el
+        : el?.querySelector<HTMLElement>(".invoice-paper") || el;
+
+    return paper;
   };
 
   const handlePrint = async () => {

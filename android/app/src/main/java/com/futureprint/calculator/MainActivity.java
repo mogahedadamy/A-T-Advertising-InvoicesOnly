@@ -72,10 +72,22 @@ public class MainActivity extends BridgeActivity {
 
                             if (printWebView != null) {
                                 try {
+                                    android.view.ViewGroup parent = (android.view.ViewGroup) printWebView.getParent();
+                                    if (parent != null) {
+                                        parent.removeView(printWebView);
+                                    }
                                     printWebView.destroy();
                                 } catch (Exception ignored) {}
+                                printWebView = null;
                             }
+
                             printWebView = new WebView(MainActivity.this);
+                            printWebView.setVisibility(android.view.View.INVISIBLE);
+
+                            // إلحاق الـ WebView بشجرة العرض لتمكين محرك أندرويد من التخطيط والطباعة الحقيقية
+                            android.view.ViewGroup decor = (android.view.ViewGroup) getWindow().getDecorView();
+                            decor.addView(printWebView, new android.view.ViewGroup.LayoutParams(1080, 1920));
+
                             WebSettings pSettings = printWebView.getSettings();
                             pSettings.setJavaScriptEnabled(true);
                             pSettings.setDomStorageEnabled(true);
@@ -89,36 +101,46 @@ public class MainActivity extends BridgeActivity {
                             final boolean isA5Landscape = "A5".equalsIgnoreCase(pageSize) ||
                                 (jobName != null && (jobName.contains("A5") || jobName.contains("a5")));
 
+                            final boolean[] hasPrinted = {false};
+                            Runnable triggerPrint = () -> {
+                                if (hasPrinted[0]) return;
+                                hasPrinted[0] = true;
+                                try {
+                                    PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                                    if (printManager != null && printWebView != null) {
+                                        PrintDocumentAdapter printAdapter = printWebView.createPrintDocumentAdapter(jobName);
+                                        PrintAttributes.Builder builder = new PrintAttributes.Builder();
+                                        builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
+                                        builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
+
+                                        if (isA5Landscape) {
+                                            builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
+                                        } else {
+                                            builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
+                                        }
+
+                                        printManager.print(jobName, printAdapter, builder.build());
+                                    }
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                    Toast.makeText(MainActivity.this, "خطأ في تشغيل الطابعة: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                                }
+                            };
+
                             printWebView.setWebViewClient(new WebViewClient() {
                                 @Override
                                 public void onPageFinished(WebView view, String url) {
-                                    view.postDelayed(() -> {
-                                        try {
-                                            PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                                            if (printManager != null && printWebView != null) {
-                                                PrintDocumentAdapter printAdapter = printWebView.createPrintDocumentAdapter(jobName);
-                                                PrintAttributes.Builder builder = new PrintAttributes.Builder();
-                                                builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
-                                                builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
-
-                                                if (isA5Landscape) {
-                                                    builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
-                                                } else {
-                                                    builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
-                                                }
-
-                                                printManager.print(jobName, printAdapter, builder.build());
-                                            }
-                                        } catch (Exception ex) {
-                                            ex.printStackTrace();
-                                        }
-                                    }, 200);
+                                    view.postDelayed(triggerPrint, 200);
                                 }
                             });
+
+                            // صمام أمان زمني لضمان استدعاء الطابعة حتى في حال تأخر أحداث الصفحة
+                            printWebView.postDelayed(triggerPrint, 1000);
 
                             printWebView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null);
                         } catch (Exception e) {
                             e.printStackTrace();
+                            Toast.makeText(MainActivity.this, "تعذر تشغيل أمر الطباعة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
                 }

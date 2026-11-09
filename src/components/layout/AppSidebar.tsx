@@ -36,7 +36,7 @@ interface NavItem {
 
 // بيانات المطور والإصدار
 export const APP_VERSION_INFO = {
-  version: "v1.2.4-INVOICE",
+  version: "v1.2.5-INVOICE",
   edition: "نسخة الفواتير والحاسبة",
   developer: "من تطوير مجاهد ادم - 2027",
   copyright: "جميع الحقوق محفوظة © 2027",
