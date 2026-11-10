@@ -5,6 +5,7 @@ import {
   TA_LOGO_GREEN_BASE64,
   TA_STAMP_BASE64,
   TA_QR_CODE_BASE64,
+  TA_SIGNATURE_TARIG_BASE64,
 } from "@/assets/invoiceImagesBase64";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
 
@@ -472,20 +473,41 @@ export const ProformaDocument = React.forwardRef<HTMLDivElement, Props>(
 
         {/* ─── 6. Footer Boxes (Prepared By, Official QR Code, Client's Approval) ─── */}
         <div className="grid grid-cols-12 gap-3.5 items-end pt-1 shrink-0">
-          {/* Prepared By Box */}
+          {/* Prepared By Box With Authentic Digital Signature */}
           <div
-            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white"
+            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative overflow-hidden"
             style={{
               border: "1px solid #1e293b",
               height: "76px",
+              textAlign: isRtl ? "right" : "left",
             }}
           >
-            <span className="text-[12px] font-bold italic text-black">
-              {isRtl ? "إعداد: " : "Prepared by: "}
-              <span className="not-italic font-extrabold">
-                {meta.accountName || (isRtl ? "طارق عثمان علي" : "Tarig osman Ali")}
+            <div className="relative z-10">
+              <span className="text-[12px] font-bold italic text-black">
+                {isRtl ? "إعداد: " : "Prepared by: "}
               </span>
-            </span>
+              <span className="relative inline-block not-italic font-extrabold text-[12.5px] text-black">
+                <span className="relative z-10">
+                  {meta.accountName || (isRtl ? "طارق عثمان علي" : "Tarig Osman Ali")}
+                </span>
+                <img
+                  src={TA_SIGNATURE_TARIG_BASE64}
+                  alt="التوقيع الرسمي"
+                  className="pointer-events-none select-none z-20"
+                  style={{
+                    position: "absolute",
+                    top: "-22px",
+                    ...(isRtl ? { right: "-16px" } : { left: "-16px" }),
+                    height: "72px",
+                    width: "auto",
+                    maxWidth: "165px",
+                    objectFit: "contain",
+                    transform: "rotate(-2deg)",
+                    mixBlendMode: "multiply",
+                  }}
+                />
+              </span>
+            </div>
           </div>
 
           {/* Official QR Code (Center - NO OUTER FRAME) */}

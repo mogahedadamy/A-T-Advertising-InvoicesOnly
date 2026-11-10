@@ -5,6 +5,7 @@ import {
   TA_LOGO_GREEN_BASE64,
   TA_STAMP_BASE64,
   TA_QR_CODE_BASE64,
+  TA_SIGNATURE_TARIG_BASE64,
 } from "@/assets/invoiceImagesBase64";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
 import { getInvoiceTafqeet } from "@/lib/proforma/tafqeet";
@@ -53,11 +54,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
 
     // عنوان شارة الفاتورة حسب النوع واللغة
     const badgeTitle = (() => {
-      if (meta.type === "sales") {
-        return isRtl ? "فاتورة مبيعات" : "Sales Invoice";
-      }
       if (meta.type === "purchase") {
         return isRtl ? "فاتورة مشتريات" : "Purchase Invoice";
+      }
+      if (meta.type === "sales") {
+        return isRtl ? "فاتورة مبيعات" : "Sales Invoice";
       }
       return isRtl ? "فاتورة مبدئية" : "Pro. Invoice";
     })();
@@ -161,10 +162,12 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               height: "68px",
             }}
           >
-            {/* سطر اسم الشركة أو المؤسسة */}
+            {/* سطر اسم الشركة أو المؤسسة أو المورد */}
             <div className="flex items-baseline text-[12px] leading-tight mb-2.5">
-              <span className={`font-bold text-black shrink-0 ${isRtl ? "w-[62px]" : "w-[58px]"}`}>
-                {isRtl ? "العميل :" : "Client :"}
+              <span className={`font-bold text-black shrink-0 ${isRtl ? "w-[62px]" : "w-[62px]"}`}>
+                {isRtl
+                  ? (meta.type === "purchase" ? "المورد :" : "العميل :")
+                  : (meta.type === "purchase" ? "Supplier :" : "Client :")}
               </span>
               <div
                 className={`flex-1 border-b border-black pb-0.5 font-bold text-[13.5px] text-black px-1 truncate ${
@@ -550,9 +553,9 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
             boxSizing: "border-box",
           }}
         >
-          {/* صندوق الإعداد */}
+          {/* صندوق الإعداد مع التوقيع الرقمي الحي متراكباً فوق الاسم مباشرة */}
           <div
-            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white"
+            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative overflow-hidden"
             style={{
               flex: "5 5 0%",
               minWidth: 0,
@@ -562,18 +565,43 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
               textAlign: isRtl ? "right" : "left",
             }}
           >
-            <span
-              className={`text-[12px] font-bold italic text-black ${
-                isRtl ? "text-right" : "text-left"
-              }`}
-            >
-              {isRtl ? "إعداد: " : "Prepared by: "}
-              <span className="not-italic font-extrabold">
-                {isRtl
-                  ? (meta.accountName || "طارق عثمان علي")
-                  : "Tarig Osman Ali"}
+            <div className="relative z-10">
+              <span
+                className={`text-[12px] font-bold italic text-black ${
+                  isRtl ? "text-right" : "text-left"
+                }`}
+              >
+                {isRtl ? "إعداد: " : "Prepared by: "}
               </span>
-            </span>
+
+              {/* حاوية الاسم والتوقيع المكتوب يدوياً فوقه مباشرة */}
+              <span className="relative inline-block not-italic font-extrabold text-[12.5px] text-black">
+                {/* الاسم المطبوع */}
+                <span className="relative z-10">
+                  {isRtl
+                    ? (meta.accountName || "طارق عثمان علي")
+                    : "Tarig Osman Ali"}
+                </span>
+
+                {/* التوقيع الأزرق الرقمي الحقيقي المتراكب فوق الاسم بالضبط */}
+                <img
+                  src={TA_SIGNATURE_TARIG_BASE64}
+                  alt="التوقيع الرسمي"
+                  className="pointer-events-none select-none z-20"
+                  style={{
+                    position: "absolute",
+                    top: "-22px",
+                    ...(isRtl ? { right: "-16px" } : { left: "-16px" }),
+                    height: "72px",
+                    width: "auto",
+                    maxWidth: "165px",
+                    objectFit: "contain",
+                    transform: "rotate(-2deg)",
+                    mixBlendMode: "multiply",
+                  }}
+                />
+              </span>
+            </div>
           </div>
 
           {/* الرمز الشريطي QR الرسمي الجديد بدون إطار خارجي */}
@@ -602,7 +630,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
             </span>
           </div>
 
-          {/* صندوق اعتماد العميل */}
+          {/* صندوق اعتماد واستلام العميل / المورد */}
           <div
             className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white"
             style={{
@@ -619,7 +647,9 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                 isRtl ? "text-right" : "text-left"
               }`}
             >
-              {isRtl ? "اعتماد واستلام العميل:" : "Client's approval:"}
+              {isRtl
+                ? (meta.type === "purchase" ? "اعتماد واستلام المشتريات:" : "اعتماد واستلام العميل:")
+                : (meta.type === "purchase" ? "Received & Approved by:" : "Client's approval:")}
             </span>
           </div>
         </div>
