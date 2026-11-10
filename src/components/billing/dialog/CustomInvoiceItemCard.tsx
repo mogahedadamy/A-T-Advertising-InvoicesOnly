@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Trash2, Ruler, Layers } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { CustomInvoiceItem } from "@/lib/billing/types";
 
@@ -7,24 +7,22 @@ interface Props {
   item: CustomInvoiceItem;
   index: number;
   canDelete: boolean;
-  showDimensions: boolean;
   onFieldChange: (
-    field: "description" | "material" | "dimensions" | "qty" | "unitPrice" | "total",
+    field: "description" | "qty" | "unitPrice" | "total",
     val: string
   ) => void;
   onRemove: () => void;
 }
 
 /**
- * بطاقة البند التفاعلية المريحة للفاتورة (Mobile-First Card):
- * تلغي تماماً مشكلة التمرير الأفقي وضيق المساحة في شاشات الهواتف
- * وتوفر إدخالاً سلساً للبيان والكمية والسعر مع الحساب التلقائي اللحظي
+ * بطاقة البند الكلاسيكية النقية للفاتورة (Classic Invoice Item Card):
+ * تحتوي فقط على (البيان / الوصف، العدد، سعر الوحدة، والإجمالي)
+ * مع الحساب التلقائي اللحظي وملاءمة تامة للهواتف الذكية بدون أي تعقيد أو مقاسات
  */
 export function CustomInvoiceItemCard({
   item,
   index,
   canDelete,
-  showDimensions,
   onFieldChange,
   onRemove,
 }: Props) {
@@ -85,7 +83,7 @@ export function CustomInvoiceItemCard({
       className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 space-y-3 shadow-xs hover:border-primary/40 transition-colors"
       dir="rtl"
     >
-      {/* 1. ترويسة البند: الرقم + شارة المقاسات + زر الحذف */}
+      {/* 1. ترويسة البند: الرقم وزر الحذف */}
       <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
         <div className="flex items-center gap-2">
           <span className="grid h-6 w-6 place-items-center rounded-lg bg-primary/10 text-primary font-mono font-black text-xs border border-primary/25">
@@ -94,12 +92,6 @@ export function CustomInvoiceItemCard({
           <span className="text-xs font-black text-foreground">
             بند الفاتورة
           </span>
-          {showDimensions && (item.dimensions || item.material) && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10.5px] font-bold text-blue-600 dark:text-blue-400 border border-blue-500/20">
-              <Ruler className="h-3 w-3" />
-              مقاسات وخامة
-            </span>
-          )}
         </div>
 
         <button
@@ -115,20 +107,20 @@ export function CustomInvoiceItemCard({
         </button>
       </div>
 
-      {/* 2. حقل البيان / التفاصيل عريض ومريح بكامل العرض */}
+      {/* 2. حقل البيان / تفاصيل العمل بكامل العرض */}
       <div className="space-y-1">
         <label className="text-[11px] font-black text-muted-foreground block text-right">
-          البيان / تفاصيل العمل أو الخدمة *
+          البيان / تفاصيل الصنف أو الخدمة *
         </label>
         <Input
           value={item.description}
           onChange={(e) => onFieldChange("description", e.target.value)}
-          placeholder="اكتب اسم الصنف، المطبوعة، أو الخدمة المقدمة..."
+          placeholder="اكتب اسم الصنف أو البيان أو تفاصيل الخدمة المقدمة..."
           className="h-10 text-xs sm:text-sm font-semibold rounded-xl bg-background border-border/80 focus:border-primary text-right"
         />
       </div>
 
-      {/* 3. شبكة الحسابات المريحة (العدد × سعر الوحدة = الإجمالي) */}
+      {/* 3. شبكة الحسابات الكلاسيكية (العدد × سعر الوحدة = الإجمالي) */}
       <div className="grid grid-cols-12 gap-2 pt-0.5">
         {/* العدد / الكمية */}
         <div className="col-span-3 space-y-1">
@@ -175,37 +167,6 @@ export function CustomInvoiceItemCard({
           />
         </div>
       </div>
-
-      {/* 4. قسم المقاسات والخامات (يظهر فقط إذا كان مفعّلاً) */}
-      {showDimensions && (
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50 mt-1 animate-in fade-in duration-150">
-          <div className="space-y-1">
-            <label className="text-[10.5px] font-bold text-muted-foreground flex items-center gap-1">
-              <Layers className="h-3 w-3 text-muted-foreground" />
-              <span>الخامة</span>
-            </label>
-            <Input
-              value={item.material || ""}
-              onChange={(e) => onFieldChange("material", e.target.value)}
-              placeholder="مثال: بنر كوري، فليكس..."
-              className="h-9 text-xs rounded-xl bg-background border-border/70 text-right font-medium"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10.5px] font-bold text-muted-foreground flex items-center gap-1">
-              <Ruler className="h-3 w-3 text-muted-foreground" />
-              <span>المقاس والأبعاد</span>
-            </label>
-            <Input
-              value={item.dimensions || ""}
-              onChange={(e) => onFieldChange("dimensions", e.target.value)}
-              placeholder="مثال: 3.00 × 1.50 م"
-              className="h-9 text-xs rounded-xl bg-background border-border/70 text-center font-mono tabular-nums font-medium"
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

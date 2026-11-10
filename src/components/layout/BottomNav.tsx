@@ -1,7 +1,7 @@
 import {
-  Calculator,
-  ClipboardList,
   Receipt,
+  ClipboardList,
+  BarChart3,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
@@ -17,29 +17,29 @@ interface NavItem {
 }
 
 /**
- * شريط التنقل السفلي المخصص للإصدار النقي:
- * 1. الحاسبة والتسعير (الميزة الأساسية)
- * 2. الفواتير والمطالبات
- * 3. سجل الفواتير وأوامر الشغل
+ * شريط التنقل السفلي المخصص لنظام الفواتير الشامل:
+ * 1. مركز إصدار الفواتير (الرئيسية)
+ * 2. الأرشيف وسجل الفواتير
+ * 3. التقارير ومؤشرات الأداء المالي
  * 4. الإعدادات والأمان
  */
 const NAV_ITEMS: NavItem[] = [
   {
-    to: "/calculator",
-    label: "الحاسبة",
-    icon: Calculator,
-    also: ["/"],
-  },
-  {
-    to: "/billing",
+    to: "/",
     label: "الفواتير",
     icon: Receipt,
+    also: ["/billing"],
   },
   {
     to: "/orders",
     label: "الأرشيف",
     icon: ClipboardList,
     also: ["/invoices"],
+  },
+  {
+    to: "/reports",
+    label: "التقارير",
+    icon: BarChart3,
   },
   {
     to: "/settings",

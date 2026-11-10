@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Plus, Layers, ReceiptText, Sparkles } from "lucide-react";
+import React from "react";
+import { Plus, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoiceItem } from "@/lib/billing/types";
 import { formatAccountingNumber } from "../StandardInvoiceDocument";
@@ -14,11 +14,10 @@ interface Props {
 }
 
 /**
- * مكون بنود الفاتورة المعتمدة التفاعلي (Mobile-First Invoice Items):
- * - يلغي جداول التمرير الأفقي المرهقة تماماً
- * - يعتمد بطاقات إدخال رأسية مريحة وواسعة تناسب شاشات الهواتف
- * - يقدم إدخالاً سهلاً للبيان والكمية وسعر الوحدة مع الحساب التلقائي اللحظي
- * - يُخفي أعمدة المقاسات والخامات تلقائياً إلا إذا اختار المستخدم إظهارها أو كانت مستوردة من الحاسبة
+ * مكون بنود الفاتورة المعتمدة الكلاسيكي النقي (Invoice Items):
+ * - يحتوي فقط على بنود العمل العادية: البيان، العدد، السعر، والإجمالي
+ * - يعتمد بطاقات إدخال رأسية مريحة وواسعة تناسب شاشات الهواتف بنسبة 100%
+ * - حساب فوري تلقائي للإجمالي والتفقيط
  */
 export function CustomInvoiceItemsTable({
   items,
@@ -26,20 +25,11 @@ export function CustomInvoiceItemsTable({
   totalAmount,
   totalInWords,
 }: Props) {
-  const [forceShowDimensions, setForceShowDimensions] = useState(false);
-
-  // الكشف التلقائي: تظهر حقول المقاسات إذا وُجد مقاس أو خامة في أي بند، أو إذا طلب المستخدم ذلك
-  const hasDimensions =
-    forceShowDimensions ||
-    items.some((it) => Boolean(it.dimensions?.trim() || it.material?.trim()));
-
   const handleAddItem = () => {
     playAddSound();
     const newItem: CustomInvoiceItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       description: "",
-      material: "",
-      dimensions: "",
       qty: 1,
       unitPrice: 0,
       total: 0,
@@ -54,7 +44,7 @@ export function CustomInvoiceItemsTable({
 
   const handleFieldChange = (
     idx: number,
-    field: "description" | "material" | "dimensions" | "qty" | "unitPrice" | "total",
+    field: "description" | "qty" | "unitPrice" | "total",
     val: string
   ) => {
     const next = [...items];
@@ -63,10 +53,6 @@ export function CustomInvoiceItemsTable({
 
     if (field === "description") {
       target.description = val;
-    } else if (field === "material") {
-      target.material = val;
-    } else if (field === "dimensions") {
-      target.dimensions = val;
     } else if (field === "qty") {
       const cleaned = val.replace(/[^0-9]/g, "");
       const qty = cleaned === "" ? 0 : parseInt(cleaned, 10);
@@ -94,8 +80,8 @@ export function CustomInvoiceItemsTable({
 
   return (
     <div className="space-y-3.5 select-text" dir="rtl">
-      {/* 1. ترويسة قسم البنود + زر التبديل للمقاسات */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+      {/* 1. ترويسة قسم البنود */}
+      <div className="flex items-center justify-between gap-2 px-1">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-foreground font-black text-sm">
             <ReceiptText className="h-4 w-4 text-primary" />
@@ -104,25 +90,7 @@ export function CustomInvoiceItemsTable({
           <span className="text-[11px] font-mono font-bold text-muted-foreground px-2.5 py-0.5 rounded-full bg-secondary border border-border/60">
             {items.length} {items.length === 1 ? "بند" : "بنود"}
           </span>
-          {hasDimensions && (
-            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-              <Sparkles className="h-3 w-3" />
-              أبعاد وخامات مفعّلة
-            </span>
-          )}
         </div>
-
-        {/* زر التبديل الاختياري لأعمدة المقاسات والخامات */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setForceShowDimensions((v) => !v)}
-          className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1.5 cursor-pointer border-border/80 hover:bg-secondary transition-colors"
-        >
-          <Layers className="h-3.5 w-3.5 text-primary" />
-          <span>{hasDimensions ? "إخفاء الخامات والأبعاد" : "+ إضافة خامات ومقاسات"}</span>
-        </Button>
       </div>
 
       {/* 2. قائمة بطاقات البنود الرأسية المريحة (بدون أي تمرير أفقي) */}
@@ -133,7 +101,6 @@ export function CustomInvoiceItemsTable({
             item={item}
             index={idx}
             canDelete={items.length > 1}
-            showDimensions={hasDimensions}
             onFieldChange={(field, val) => handleFieldChange(idx, field, val)}
             onRemove={() => handleRemoveItem(idx)}
           />

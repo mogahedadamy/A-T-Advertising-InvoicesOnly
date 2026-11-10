@@ -69,11 +69,6 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
 
     const attnPerson = meta.attn?.trim() || "";
 
-    // فحص ما إذا كانت الفاتورة تتضمن أبعاد مقاسات أو خامات لتفعيل الأعمدة المخصصة
-    const hasDimensionsOrMaterial = items.some(
-      (it) => Boolean(it.dimensions?.trim() || it.material?.trim())
-    );
-
     return (
       <div
         id={id}
@@ -283,7 +278,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                 <th
                   className="py-2 px-3 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: hasDimensionsOrMaterial ? "36%" : "63%",
+                    width: "63%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -292,41 +287,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "البيان والمواصفات" : "Description"}
                 </th>
 
-                {/* 2. الخامة (تُفعّل فقط عند وجود خامات أو مقاسات) */}
-                {hasDimensionsOrMaterial && (
-                  <th
-                    className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
-                    style={{
-                      width: "14%",
-                      ...(isRtl
-                        ? { borderLeft: "1px solid #1e293b" }
-                        : { borderRight: "1px solid #1e293b" }),
-                    }}
-                  >
-                    {isRtl ? "الخامة" : "Material"}
-                  </th>
-                )}
-
-                {/* 3. المقاسات والأبعاد بالأرقام (تُفعّل فقط عند وجود مقاسات) */}
-                {hasDimensionsOrMaterial && (
-                  <th
-                    className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
-                    style={{
-                      width: "15%",
-                      ...(isRtl
-                        ? { borderLeft: "1px solid #1e293b" }
-                        : { borderRight: "1px solid #1e293b" }),
-                    }}
-                  >
-                    {isRtl ? "المقاس (الأبعاد)" : "Dimensions"}
-                  </th>
-                )}
-
-                {/* 4. العدد */}
+                {/* 2. العدد */}
                 <th
                   className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: hasDimensionsOrMaterial ? "8%" : "8.5%",
+                    width: "8.5%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -335,11 +300,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "العدد" : "Qty"}
                 </th>
 
-                {/* 5. سعر الوحدة */}
+                {/* 3. سعر الوحدة */}
                 <th
                   className="py-2 px-2 text-center font-black italic text-[14px] text-black flex items-center justify-center"
                   style={{
-                    width: hasDimensionsOrMaterial ? "12%" : "12.5%",
+                    width: "12.5%",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
                       : { borderRight: "1px solid #1e293b" }),
@@ -348,10 +313,10 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   {isRtl ? "سعر الوحدة" : "Unit Price"}
                 </th>
 
-                {/* 6. الإجمالي */}
+                {/* 4. الإجمالي */}
                 <th
                   className="py-2 px-3 text-center font-black italic text-[14px] text-black flex items-center justify-center"
-                  style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
+                  style={{ width: "16%" }}
                 >
                   {isRtl ? "الإجمالي" : "Total"}
                 </th>
@@ -369,13 +334,13 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     borderBottom: "1px solid #94a3b8",
                   }}
                 >
-                  {/* بيان البند (الوصف الذي كتبه المستخدم) */}
+                  {/* بيان البند (الوصف) */}
                   <td
                     className={`py-0.5 px-3 font-bold text-black flex items-center h-full ${
                       isRtl ? "text-right justify-start" : "text-left justify-start"
                     }`}
                     style={{
-                      width: hasDimensionsOrMaterial ? "36%" : "63%",
+                      width: "63%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -384,41 +349,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     <span className="truncate">{item.description}</span>
                   </td>
 
-                  {/* كولوم الخامة */}
-                  {hasDimensionsOrMaterial && (
-                    <td
-                      className="py-0.5 px-2 text-center font-bold text-black flex items-center justify-center h-full"
-                      style={{
-                        width: "14%",
-                        ...(isRtl
-                          ? { borderLeft: "1px solid #94a3b8" }
-                          : { borderRight: "1px solid #94a3b8" }),
-                      }}
-                    >
-                      <span className="truncate">{item.material || "-"}</span>
-                    </td>
-                  )}
-
-                  {/* كولوم المقاسات بالأرقام */}
-                  {hasDimensionsOrMaterial && (
-                    <td
-                      className="py-0.5 px-2 text-center font-mono font-bold text-black flex items-center justify-center h-full tabular-nums"
-                      style={{
-                        width: "15%",
-                        ...(isRtl
-                          ? { borderLeft: "1px solid #94a3b8" }
-                          : { borderRight: "1px solid #94a3b8" }),
-                      }}
-                    >
-                      <span className="truncate">{item.dimensions || "-"}</span>
-                    </td>
-                  )}
-
                   {/* العدد */}
                   <td
                     className="py-0.5 px-1 text-center font-mono font-bold text-black flex items-center justify-center h-full"
                     style={{
-                      width: hasDimensionsOrMaterial ? "8%" : "8.5%",
+                      width: "8.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -433,7 +368,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                       isRtl ? "justify-start pl-3" : "justify-end pr-3"
                     }`}
                     style={{
-                      width: hasDimensionsOrMaterial ? "12%" : "12.5%",
+                      width: "12.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -447,7 +382,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     className={`py-0.5 px-3 font-mono font-black text-black flex items-center h-full ${
                       isRtl ? "justify-start" : "justify-end"
                     }`}
-                    style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
+                    style={{ width: "16%" }}
                   >
                     {formatNumber(item.total)}
                   </td>
@@ -468,7 +403,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   <td
                     className="py-0.5 px-3 text-transparent select-none h-full"
                     style={{
-                      width: hasDimensionsOrMaterial ? "36%" : "63%",
+                      width: "63%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -476,36 +411,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   >
                     -
                   </td>
-                  {hasDimensionsOrMaterial && (
-                    <td
-                      className="py-0.5 px-2 text-transparent select-none h-full"
-                      style={{
-                        width: "14%",
-                        ...(isRtl
-                          ? { borderLeft: "1px solid #94a3b8" }
-                          : { borderRight: "1px solid #94a3b8" }),
-                      }}
-                    >
-                      -
-                    </td>
-                  )}
-                  {hasDimensionsOrMaterial && (
-                    <td
-                      className="py-0.5 px-2 text-transparent select-none h-full"
-                      style={{
-                        width: "15%",
-                        ...(isRtl
-                          ? { borderLeft: "1px solid #94a3b8" }
-                          : { borderRight: "1px solid #94a3b8" }),
-                    }}
-                  >
-                    -
-                  </td>
-                  )}
+
                   <td
                     className="py-0.5 px-1 text-center text-transparent select-none flex items-center justify-center h-full"
                     style={{
-                      width: hasDimensionsOrMaterial ? "8%" : "8.5%",
+                      width: "8.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -516,7 +426,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   <td
                     className="py-0.5 px-2 text-transparent select-none flex items-center justify-end h-full"
                     style={{
-                      width: hasDimensionsOrMaterial ? "12%" : "12.5%",
+                      width: "12.5%",
                       ...(isRtl
                         ? { borderLeft: "1px solid #94a3b8" }
                         : { borderRight: "1px solid #94a3b8" }),
@@ -526,7 +436,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   </td>
                   <td
                     className="py-0.5 px-3 text-transparent select-none flex items-center justify-end h-full"
-                    style={{ width: hasDimensionsOrMaterial ? "15%" : "16%" }}
+                    style={{ width: "16%" }}
                   >
                     -
                   </td>
@@ -549,7 +459,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     isRtl ? "text-right justify-start" : "text-left justify-start"
                   }`}
                   style={{
-                    width: hasDimensionsOrMaterial ? "73%" : "71.5%",
+                    width: "71.5%",
                     backgroundColor: "#E0E6E4",
                     textAlign: isRtl ? "right" : "left",
                     ...(isRtl
@@ -569,7 +479,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                 <td
                   className="flex items-center justify-center font-black italic text-[14px] text-black"
                   style={{
-                    width: hasDimensionsOrMaterial ? "12%" : "12.5%",
+                    width: "12.5%",
                     backgroundColor: "#ffffff",
                     ...(isRtl
                       ? { borderLeft: "1px solid #1e293b" }
@@ -585,7 +495,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                     isRtl ? "justify-start" : "justify-end"
                   }`}
                   style={{
-                    width: hasDimensionsOrMaterial ? "15%" : "16%",
+                    width: "16%",
                     backgroundColor: "#ffffff",
                   }}
                 >

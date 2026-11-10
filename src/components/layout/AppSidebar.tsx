@@ -1,9 +1,7 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
-  Calculator,
   ClipboardList,
   Receipt,
-  Layers,
   Settings as SettingsIcon,
   ChevronLeft,
   X,
@@ -36,8 +34,8 @@ interface NavItem {
 
 // بيانات المطور والإصدار
 export const APP_VERSION_INFO = {
-  version: "v1.2.7-INVOICE",
-  edition: "نسخة الفواتير والحاسبة",
+  version: "v1.3.0-INVOICE",
+  edition: "النظام الشامل لإدارة وإصدار الفواتير",
   developer: "من تطوير مجاهد ادم - 2027",
   copyright: "جميع الحقوق محفوظة © 2027",
 };
@@ -54,19 +52,12 @@ export function AppSidebar() {
   const totalInvoicesCount =
     (calcInvoices || []).length + (customInvoices || []).length;
 
-  // اختصارات أدوات النسخة الحالية فقط (حاسبة وفواتير معتمدة)
+  // اختصارات أدوات نظام الفواتير الشامل المعتمد
   const NAV_ITEMS: NavItem[] = [
     {
-      to: "/calculator",
-      label: "حاسبة المقاسات والتسعير",
-      subtitle: "حساب تكلفة ومقاسات الرولات واستخراج الفواتير",
-      icon: Calculator,
-      gradient: "from-[#0D4A39] to-[#168063] shadow-[#0D4A39]/30",
-    },
-    {
-      to: "/billing",
-      label: "إصدار الفواتير والمطالبات",
-      subtitle: "فواتير مبيعات، مشتريات، وعروض أسعار A5",
+      to: "/",
+      label: "مركز إصدار الفواتير",
+      subtitle: "إصدار فواتير المبيعات، المشتريات، والمبدئية الرسمية",
       icon: Receipt,
       gradient: "from-[#168063] to-[#22A07E] shadow-[#168063]/30",
     },
@@ -84,13 +75,6 @@ export function AppSidebar() {
       subtitle: "مراقبة الإيرادات، التحصيلات، وسرعة إنجاز الفواتير",
       icon: BarChart3,
       gradient: "from-[#0F766E] to-[#0D9488] shadow-teal-500/20",
-    },
-    {
-      to: "/materials",
-      label: "دليل الخامات والأسعار",
-      subtitle: "أبعاد الرولات والأسعار المعتمدة للمتر المربع",
-      icon: Layers,
-      gradient: "from-[#1A453A] to-[#2D7362] shadow-[#1A453A]/30",
     },
     {
       to: "/settings",
@@ -126,7 +110,7 @@ export function AppSidebar() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              to="/calculator"
+              to="/"
               onClick={handleNavClick}
               className="flex items-center justify-center shrink-0 transition-transform active:scale-95"
             >
