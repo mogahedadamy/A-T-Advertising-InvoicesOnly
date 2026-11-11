@@ -34,7 +34,7 @@ import {
 } from "@/lib/biometricDiagnostics";
 import { BiometricDiagnosticsDialog } from "@/components/settings/BiometricDiagnosticsDialog";
 import { PasswordChangeCard } from "@/components/settings/PasswordChangeCard";
-import { InvoiceBackupCard } from "@/components/settings/InvoiceBackupCard";
+import { BackupManagerCard } from "@/components/settings/BackupManagerCard";
 
 const Settings: React.FC = () => {
   const { theme, toggle } = useTheme();
@@ -311,7 +311,7 @@ const Settings: React.FC = () => {
         </section>
 
         {/* Invoice Data Safety & Backup */}
-        <InvoiceBackupCard />
+        <BackupManagerCard />
 
         {/* Password Change Component */}
         <PasswordChangeCard />

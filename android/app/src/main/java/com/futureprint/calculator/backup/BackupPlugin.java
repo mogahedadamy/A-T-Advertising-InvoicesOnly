@@ -1,0 +1,339 @@
+package com.futureprint.calculator.backup;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.util.Log;
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * Bridge between the Arabic RTL web UI and the native backup engine.
+ *
+ * Every method that touches storage runs on a dedicated single-thread executor,
+ * so the WebView thread is never blocked by a large snapshot or a slow SD card.
+ * The URI-picker methods must run on the UI thread (SAF requires an Activity).
+ */
+@CapacitorPlugin(name = "TaBackup")
+public class BackupPlugin extends Plugin {
+
+    private static final String TAG = "BackupPlugin";
+    private static final int REQUEST_PICK_FOLDER = 9001;
+    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+
+    private volatile BackupEngine engine;
+
+    /** Kept so the worker and engine can reach the bridge for connection closing. */
+    @Override
+    public void load() {
+        BridgeAccess.set(getBridge());
+        if (engine == null) engine = new BackupEngine(getContext());
+        engine.ensureSchemaVersion();
+        Log.i(TAG, "TaBackup plugin loaded");
+    }
+
+    private void background(PluginCall call, final CallTask task) {
+        EXECUTOR.execute(() -> {
+            try {
+                JSObject result = task.run();
+                call.resolve(result);
+            } catch (Exception e) {
+                Log.e(TAG, "plugin task failed", e);
+                JSObject err = new JSObject();
+                err.put("ok", false);
+                err.put("errorCode", "IO_FAILED");
+                err.put("message", String.valueOf(e.getMessage()));
+                call.resolve(err);
+            }
+        });
+    }
+
+    private interface CallTask {
+        JSObject run() throws Exception;
+    }
+
+    private BackupEngine engine() {
+        if (engine == null) {
+            synchronized (BackupPlugin.class) {
+                if (engine == null) engine = new BackupEngine(getContext());
+            }
+        }
+        return engine;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Folder selection
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @PluginMethod
+    public void chooseFolder(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            JSObject err = new JSObject();
+            err.put("ok", false);
+            err.put("errorCode", "IO_FAILED");
+            err.put("message", "النشاط غير متاح.");
+            call.resolve(err);
+            return;
+        }
+        Intent intent = new BackupStorage(getContext()).buildOpenDocumentTreeIntent();
+        startActivityForResult(call, intent, "folderPicked");
+    }
+
+    @com.getcapacitor.annotation.ActivityCallback
+    private void folderPicked(PluginCall call, androidx.activity.result.ActivityResult result) {
+        if (call == null) return;
+        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            JSObject cancelled = new JSObject();
+            cancelled.put("ok", false);
+            cancelled.put("errorCode", "CANCELLED");
+            cancelled.put("message", "لم يتم اختيار مجلد.");
+            call.resolve(cancelled);
+            return;
+        }
+        final Uri treeUri = result.getData().getData();
+        background(call, () -> {
+            BackupStorage storage = new BackupStorage(getContext());
+            storage.persistFolder(treeUri);
+            engine().rememberPreferredFolder(treeUri.toString());
+            BackupEngine.prefs(getContext())
+                .edit()
+                .putString("folder_uri", treeUri.toString())
+                .putString("folder_label", storage.getFolderLabel())
+                .commit();
+            scheduleWork();
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            out.put("folderUri", treeUri.toString());
+            out.put("folderLabel", storage.getFolderLabel());
+            return out;
+        });
+    }
+
+    /** Re-binds a previously persisted folder (after reinstall the grant is gone). */
+    @PluginMethod
+    public void restoreFolderPermission(PluginCall call) {
+        final String uriString = call.getString("treeUri", "");
+        background(call, () -> {
+            BackupStorage storage = new BackupStorage(getContext());
+            storage.rememberFolderIfGranted(uriString);
+            JSObject out = new JSObject();
+            boolean granted = !storage.getFolderUri().isEmpty();
+            out.put("ok", granted);
+            out.put("folderUri", storage.getFolderUri());
+            out.put("folderLabel", storage.getFolderLabel());
+            return out;
+        });
+    }
+
+    @PluginMethod
+    public void getFolder(PluginCall call) {
+        background(call, () -> {
+            BackupStorage storage = new BackupStorage(getContext());
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            out.put("folderUri", storage.getFolderUri());
+            out.put("folderLabel", storage.getFolderLabel());
+            out.put("preferredFolderUri", engine().getPreferredFolder());
+            return out;
+        });
+    }
+
+    @PluginMethod
+    public void forgetFolder(PluginCall call) {
+        background(call, () -> {
+            new BackupStorage(getContext()).forget();
+            BackupEngine.prefs(getContext()).edit().remove("folder_uri").remove("folder_label").commit();
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            return out;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Status / backups
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @PluginMethod
+    public void getStatus(PluginCall call) {
+        background(call, () -> new JSObject(engine().status().toString()));
+    }
+
+    @PluginMethod
+    public void listBackups(PluginCall call) {
+        background(call, () -> new JSObject(engine().listBackups().toString()));
+    }
+
+    @PluginMethod
+    public void createBackup(PluginCall call) {
+        final JSONObject options = optionsOf(call);
+        background(call, () -> new JSObject(engine().createBackup(options).toString()));
+    }
+
+    @PluginMethod
+    public void verifyBackup(PluginCall call) {
+        final String fileName = call.getString("fileName", "");
+        background(call, () -> new JSObject(engine().verifyBackup(fileName).toString()));
+    }
+
+    @PluginMethod
+    public void restoreBackup(PluginCall call) {
+        final JSONObject options = optionsOf(call);
+        background(call, () -> new JSObject(engine().restore(options).toString()));
+    }
+
+    @PluginMethod
+    public void discoverBackups(PluginCall call) {
+        background(call, () -> new JSObject(engine().discover().toString()));
+    }
+
+    @PluginMethod
+    public void exportArchive(PluginCall call) {
+        final String fileName = call.getString("fileName", "");
+        background(call, () -> new JSObject(engine().exportArchive(fileName).toString()));
+    }
+
+    @PluginMethod
+    public void importArchive(PluginCall call) {
+        final String base64 = call.getString("base64", "");
+        final String fileName = call.getString("fileName", "");
+        background(call, () -> new JSObject(engine().importArchive(base64, fileName).toString()));
+    }
+
+    @PluginMethod
+    public void getDbCounts(PluginCall call) {
+        background(call, () -> {
+            JSObject out = new JSObject();
+            JSONObject status = engine().status();
+            JSONObject database = status.optJSONObject("database");
+            out.put("ok", true);
+            out.put("counts", database == null ? new JSONObject() : database.optJSONObject("counts"));
+            out.put("invoiceCount", database == null ? 0 : database.optInt("invoiceCount", 0));
+            out.put("schemaVersion", database == null ? 0 : database.optInt("schemaVersion", 0));
+            return out;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Settings & scheduling
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @PluginMethod
+    public void saveSettings(PluginCall call) {
+        final JSONObject settings = optionsOf(call);
+        background(call, () -> {
+            BackupEngine.prefs(getContext())
+                .edit()
+                .putBoolean("encryption_enabled", settings.optBoolean("encryptionEnabled", false))
+                .putBoolean("auto_daily", settings.optBoolean("autoDaily", true))
+                .putInt("retention_daily", settings.optInt("retentionDaily", 7))
+                .putInt("retention_weekly", settings.optInt("retentionWeekly", 4))
+                .putInt("retention_monthly", settings.optInt("retentionMonthly", 12))
+                .putInt("retention_min", Math.max(1, settings.optInt("retentionMinimum", 2)))
+                .putInt("stale_after_hours", Math.max(1, settings.optInt("staleAfterHours", 48)))
+                .putInt("transaction_throttle_minutes", Math.max(1, settings.optInt("transactionThrottleMinutes", 15)))
+                .commit();
+            if (settings.has("transactionThrottleMinutes")) {
+                BackupEngine.prefs(getContext())
+                    .edit()
+                    .putLong(
+                        "transaction_throttle_ms",
+                        Math.max(1, settings.optInt("transactionThrottleMinutes", 15)) * 60000L
+                    )
+                    .commit();
+            }
+            scheduleForSettings(settings.optBoolean("autoDaily", true));
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            return out;
+        });
+    }
+
+    @PluginMethod
+    public void getEngineInfo(PluginCall call) {
+        background(call, () -> {
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            out.put("engineVersion", BackupEngine.ENGINE_VERSION);
+            out.put("sdkInt", Build.VERSION.SDK_INT);
+            out.put("model", Build.MANUFACTURER + " " + Build.MODEL);
+            out.put("supported", true);
+            out.put("scheduleSupported", true);
+            return out;
+        });
+    }
+
+    private void scheduleWork() {
+        scheduleForSettings(BackupEngine.prefs(getContext()).getBoolean("auto_daily", true));
+    }
+
+    private void scheduleForSettings(boolean enabled) {
+        try {
+            WorkManager wm = WorkManager.getInstance(getContext());
+            if (!enabled) {
+                wm.cancelUniqueWork(BackupWorker.WORK_NAME);
+                return;
+            }
+            PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(BackupWorker.class, 24, TimeUnit.HOURS)
+                .setInitialDelay(15, TimeUnit.MINUTES)
+                .setConstraints(new Constraints.Builder().setRequiresBatteryNotLow(true).setRequiredNetworkType(NetworkType.NOT_REQUIRED).build())
+                .addTag(BackupWorker.WORK_NAME)
+                .build();
+            wm.enqueueUniquePeriodicWork(BackupWorker.WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request);
+        } catch (Throwable t) {
+            Log.e(TAG, "could not schedule backups", t);
+        }
+    }
+
+    @PluginMethod
+    public void setScheduledBackupEnabled(PluginCall call) {
+        final boolean enabled = call.getBoolean("enabled", true);
+        background(call, () -> {
+            BackupEngine.prefs(getContext()).edit().putBoolean("auto_daily", enabled).commit();
+            scheduleForSettings(enabled);
+            JSObject out = new JSObject();
+            out.put("ok", true);
+            out.put("enabled", enabled);
+            return out;
+        });
+    }
+
+    @PluginMethod
+    public void getBackupRecords(PluginCall call) {
+        background(call, () -> {
+            JSObject out = new JSObject();
+            JSONObject listed = engine().listBackups();
+            out.put("ok", listed.optBoolean("ok", false));
+            out.put("backups", listed.optJSONArray("backups") == null ? new JSONArray() : listed.getJSONArray("backups"));
+            if (!listed.optBoolean("ok", false)) {
+                out.put("errorCode", listed.optString("errorCode", "IO_FAILED"));
+                out.put("message", listed.optString("message", ""));
+            }
+            return out;
+        });
+    }
+
+    private JSONObject optionsOf(PluginCall call) {
+        try {
+            JSONObject options = call.getObject("options");
+            return options == null ? new JSONObject() : options;
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+}

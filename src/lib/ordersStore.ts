@@ -45,7 +45,13 @@ export interface PrintOrder {
   invoiceSerial?: string;
 }
 
-import { getStoredJsonSync, setStoredJson } from "./nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
+import {
+  upsertOrder as repoUpsertOrder,
+  deleteOrder as repoDeleteOrder,
+  updateOrderStatus as repoUpdateOrderStatus,
+} from "./repositories/OrderRepository";
 
 const STORAGE_KEY = "future_print_orders_v2";
 
@@ -101,7 +107,7 @@ if (typeof window !== "undefined") {
 }
 
 function notify() {
-  setStoredJson(STORAGE_KEY, ordersSnapshot).catch(console.warn);
+  setMemoryCacheJson(STORAGE_KEY, ordersSnapshot);
   subscribers.forEach((fn) => fn());
 }
 
@@ -128,17 +134,32 @@ export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintO
   };
   ordersSnapshot = [order, ...ordersSnapshot];
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpsertOrder(order).catch((err) =>
+      console.warn("[OrdersStore] SQLite add failed:", err)
+    );
+  }
   return order;
 }
 
 export function updateOrderStatus(orderId: string, status: OrderStatus) {
   ordersSnapshot = ordersSnapshot.map((o) => (o.id === orderId ? { ...o, status } : o));
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpdateOrderStatus(orderId, status).catch((err) =>
+      console.warn("[OrdersStore] SQLite status update failed:", err)
+    );
+  }
 }
 
 export function deleteOrder(orderId: string) {
   ordersSnapshot = ordersSnapshot.filter((o) => o.id !== orderId);
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoDeleteOrder(orderId).catch((err) =>
+      console.warn("[OrdersStore] SQLite delete failed:", err)
+    );
+  }
 }
 
 export const STATUS_CONFIG: Record<

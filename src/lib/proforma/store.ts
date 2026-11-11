@@ -3,7 +3,13 @@ import type { ProformaInvoice, ProformaLine, ProformaMeta } from "./types";
 import { tafqeetSDG } from "./tafqeet";
 import { saveInvoice } from "@/lib/invoicesStore";
 import { addOrder } from "@/lib/ordersStore";
-import { getStoredJsonSync, setStoredJson } from "@/lib/nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "@/lib/sqliteStorage";
+import {
+  upsertProforma as repoUpsertProforma,
+  deleteProforma as repoDeleteProforma,
+  updateProformaStatus as repoUpdateProformaStatus,
+} from "@/lib/repositories/ProformaRepository";
 
 const STORAGE_KEY = "future_proforma_invoices_v2";
 
@@ -94,7 +100,7 @@ if (typeof window !== "undefined") {
 }
 
 function notify() {
-  setStoredJson(STORAGE_KEY, snapshot).catch(console.warn);
+  setMemoryCacheJson(STORAGE_KEY, snapshot);
   subscribers.forEach((fn) => fn());
 }
 
@@ -143,6 +149,11 @@ export function saveProformaInvoice(
     newList[idx] = updated;
     snapshot = newList;
     notify();
+    if (Capacitor.isNativePlatform()) {
+      repoUpsertProforma(updated).catch((err) =>
+        console.warn("[ProformaStore] SQLite save failed:", err)
+      );
+    }
     return updated;
   }
 
@@ -159,12 +170,22 @@ export function saveProformaInvoice(
 
   snapshot = [record, ...snapshot];
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpsertProforma(record).catch((err) =>
+      console.warn("[ProformaStore] SQLite save failed:", err)
+    );
+  }
   return record;
 }
 
 export function deleteProformaInvoice(id: string) {
   snapshot = snapshot.filter((p) => p.id !== id);
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoDeleteProforma(id).catch((err) =>
+      console.warn("[ProformaStore] SQLite delete failed:", err)
+    );
+  }
 }
 
 /**
@@ -234,6 +255,11 @@ export function convertProformaToOperatingInvoice(proformaId: string) {
     };
     snapshot = [...snapshot];
     notify();
+    if (Capacitor.isNativePlatform()) {
+      repoUpdateProformaStatus(proformaId, "converted", orderRecord.id).catch((err) =>
+        console.warn("[ProformaStore] SQLite status update failed:", err)
+      );
+    }
   }
 
   return { invRecord, orderRecord };

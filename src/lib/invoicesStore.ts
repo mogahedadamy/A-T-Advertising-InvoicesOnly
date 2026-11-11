@@ -18,7 +18,12 @@ export interface InvoiceRecord {
   createdAt: string;
 }
 
-import { getStoredJsonSync, setStoredJson } from "./nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
+import {
+  upsertPrintInvoice as repoUpsertPrintInvoice,
+  deletePrintInvoice as repoDeletePrintInvoice,
+} from "./repositories/PrintInvoiceRepository";
 
 const STORAGE_KEY = "future_print_invoices_v2";
 
@@ -77,7 +82,7 @@ if (typeof window !== "undefined") {
 }
 
 function notify() {
-  setStoredJson(STORAGE_KEY, invoicesSnapshot).catch(console.warn);
+  setMemoryCacheJson(STORAGE_KEY, invoicesSnapshot);
   subscribers.forEach((fn) => fn());
 }
 
@@ -102,8 +107,9 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
   const paymentStatus: "paid" | "partial" | "unpaid" =
     paid >= total ? "paid" : paid > 0 ? "partial" : "unpaid";
 
+  const existingIdx = invoicesSnapshot.findIndex((x) => x.serial === invoice.meta.serial);
   const record: InvoiceRecord = {
-    id: `inv-${invoice.meta.serial}-${Date.now()}`,
+    id: existingIdx >= 0 ? invoicesSnapshot[existingIdx].id : `inv-${invoice.meta.serial}-${Date.now()}`,
     serial: invoice.meta.serial,
     date: invoice.meta.date,
     customerName: invoice.meta.customerName || "عميل بدون اسم",
@@ -115,21 +121,32 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
     total,
     paidAmount: paid,
     paymentStatus,
-    createdAt: new Date().toISOString(),
+    createdAt: existingIdx >= 0 ? invoicesSnapshot[existingIdx].createdAt : new Date().toISOString(),
   };
 
   // Replace if exists with same serial or prepend
-  const existingIdx = invoicesSnapshot.findIndex((x) => x.serial === record.serial);
   if (existingIdx >= 0) {
-    invoicesSnapshot[existingIdx] = record;
+    const next = [...invoicesSnapshot];
+    next[existingIdx] = record;
+    invoicesSnapshot = next;
   } else {
     invoicesSnapshot = [record, ...invoicesSnapshot];
   }
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpsertPrintInvoice(record).catch((err) =>
+      console.warn("[InvoicesStore] SQLite save failed:", err)
+    );
+  }
   return record;
 }
 
 export function deleteInvoice(id: string): void {
   invoicesSnapshot = invoicesSnapshot.filter((inv) => inv.id !== id);
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoDeletePrintInvoice(id).catch((err) =>
+      console.warn("[InvoicesStore] SQLite delete failed:", err)
+    );
+  }
 }

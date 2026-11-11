@@ -2,7 +2,12 @@ import { useSyncExternalStore } from "react";
 import type { CustomInvoice, CustomInvoiceItem, CustomInvoiceType } from "./types";
 import { tafqeetSDG } from "@/lib/proforma/tafqeet";
 
-import { getStoredJsonSync, setStoredJson } from "@/lib/nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "@/lib/sqliteStorage";
+import {
+  upsertCustomInvoice as repoUpsertCustomInvoice,
+  deleteCustomInvoice as repoDeleteCustomInvoice,
+} from "@/lib/repositories/CustomInvoiceRepository";
 
 const STORAGE_KEY = "future_custom_invoices_v2";
 
@@ -21,8 +26,10 @@ function sanitizeCustomInvoice(raw: any): CustomInvoice {
     ? raw.items.map((it: any) => ({
         id: String(it?.id || `item-${Math.random()}`),
         description: String(it?.description || ""),
+        material: it?.material ? String(it.material) : undefined,
+        dimensions: it?.dimensions ? String(it.dimensions) : undefined,
         qty: Number(it?.qty) || 1,
-        unitPrice: Number(it?.unitPrice) || 0,
+        unitPrice: it?.unitPrice !== undefined ? Number(it.unitPrice) : undefined,
         total: Number(it?.total) || 0,
       }))
     : [];
@@ -34,11 +41,15 @@ function sanitizeCustomInvoice(raw: any): CustomInvoice {
     date: String(raw?.meta?.date || new Date().toISOString().slice(0, 10)),
     partyName: String(raw?.meta?.partyName || "عميل غير محدد"),
     partyEnName: raw?.meta?.partyEnName ? String(raw.meta.partyEnName) : undefined,
+    attn: raw?.meta?.attn ? String(raw.meta.attn) : undefined,
+    phone: raw?.meta?.phone ? String(raw.meta.phone) : undefined,
     salutation: String(raw?.meta?.salutation || "بعد التحية والاحترام ،،،،،،،،"),
     closingNote: String(raw?.meta?.closingNote || "لكم جزيل الشكر والتقدير ،،،،،،،،،،،،،،،،،،،،،،،"),
     accountNumber: String(raw?.meta?.accountNumber || "3768914"),
     accountName: String(raw?.meta?.accountName || "طارق عثمان علي / T.A Advertising"),
     signatoryTitle: String(raw?.meta?.signatoryTitle || "الإدارة"),
+    notes: raw?.meta?.notes ? String(raw.meta.notes) : undefined,
+    language: raw?.meta?.language || "ar",
   };
 
   return {
@@ -78,7 +89,7 @@ if (typeof window !== "undefined") {
 }
 
 function notify() {
-  setStoredJson(STORAGE_KEY, snapshot).catch(console.warn);
+  setMemoryCacheJson(STORAGE_KEY, snapshot);
   subscribers.forEach((fn) => fn());
 }
 
@@ -109,31 +120,41 @@ export function saveCustomInvoice(invoice: CustomInvoice): void {
       (inv.meta?.type === invoice.meta?.type && inv.meta?.serial === invoice.meta?.serial)
   );
   const now = new Date().toISOString();
+  let savedRecord: CustomInvoice;
   if (existingIdx >= 0) {
     const updated = [...snapshot];
-    updated[existingIdx] = {
+    savedRecord = {
       ...snapshot[existingIdx],
       ...invoice,
       id: snapshot[existingIdx].id,
       updatedAt: now,
     };
+    updated[existingIdx] = savedRecord;
     snapshot = updated;
   } else {
-    snapshot = [
-      {
-        ...invoice,
-        createdAt: invoice.createdAt || now,
-        updatedAt: now,
-      },
-      ...snapshot,
-    ];
+    savedRecord = {
+      ...invoice,
+      createdAt: invoice.createdAt || now,
+      updatedAt: now,
+    };
+    snapshot = [savedRecord, ...snapshot];
   }
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpsertCustomInvoice(savedRecord).catch((err) =>
+      console.warn("[BillingStore] SQLite save failed:", err)
+    );
+  }
 }
 
 export function deleteCustomInvoice(id: string): void {
   snapshot = snapshot.filter((inv) => inv.id !== id);
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoDeleteCustomInvoice(id).catch((err) =>
+      console.warn("[BillingStore] SQLite delete failed:", err)
+    );
+  }
 }
 
 export function getCustomInvoice(id: string): CustomInvoice | undefined {

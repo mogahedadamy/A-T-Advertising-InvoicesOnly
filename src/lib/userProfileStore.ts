@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getStoredSync, setStoredItem } from "./nativeStorage";
+import { getStoredSync, setStoredItem } from "./sqliteStorage";
 
 const STORAGE_KEY_NAME = "future_print_user_name";
 const STORAGE_KEY_ONBOARDED = "future_print_onboarded";
@@ -64,9 +64,11 @@ export function useUserProfile() {
     if (typeof window !== "undefined") {
       window.addEventListener(EVENT_NAME, handleUpdate);
       window.addEventListener("storage", handleUpdate);
+      window.addEventListener("native-storage-ready", handleUpdate);
       return () => {
         window.removeEventListener(EVENT_NAME, handleUpdate);
         window.removeEventListener("storage", handleUpdate);
+        window.removeEventListener("native-storage-ready", handleUpdate);
       };
     }
     return undefined;

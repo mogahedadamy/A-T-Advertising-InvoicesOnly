@@ -1,6 +1,8 @@
 // نظام المؤثرات الصوتية الاحترافية باستخدام Web Audio API
 // خفيف جداً (0 كيلوبايت)، بدون ملفات خارجية، ويعمل 100% دون اتصال بالإنترنت وبسرعة استجابة 0ms
 
+import { getStoredSync, setStoredItem } from "./sqliteStorage";
+
 const SOUND_STORAGE_KEY = "future_print_sound_enabled";
 
 let audioCtx: AudioContext | null = null;
@@ -26,13 +28,24 @@ function getAudioContext(): AudioContext | null {
 
 let cachedSoundEnabled: boolean | null = null;
 
+if (typeof window !== "undefined") {
+  window.addEventListener("native-storage-ready", () => {
+    cachedSoundEnabled = null;
+  });
+}
+
 /** فحص هل الأصوات مفعلة في الإعدادات بسرعة استجابة لحظية 0ms وبدون I/O متكرر */
 export function isSoundEnabled(): boolean {
   if (typeof window === "undefined") return true;
   if (cachedSoundEnabled === null) {
     try {
-      const stored = localStorage.getItem(SOUND_STORAGE_KEY);
-      cachedSoundEnabled = stored !== "false"; // مفعل افتراضياً
+      const stored = getStoredSync(SOUND_STORAGE_KEY, "");
+      if (stored) {
+        cachedSoundEnabled = stored !== "false";
+      } else {
+        const local = localStorage.getItem(SOUND_STORAGE_KEY);
+        cachedSoundEnabled = local !== "false"; // مفعل افتراضياً
+      }
     } catch {
       cachedSoundEnabled = true;
     }
@@ -42,10 +55,12 @@ export function isSoundEnabled(): boolean {
 
 /** تفعيل أو كتم الأصوات مع تحديث الكاش الفوري */
 export function setSoundEnabled(enabled: boolean): void {
+  const val = enabled ? "true" : "false";
   cachedSoundEnabled = enabled;
+  setStoredItem(SOUND_STORAGE_KEY, val).catch(() => {});
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(SOUND_STORAGE_KEY, enabled ? "true" : "false");
+    localStorage.setItem(SOUND_STORAGE_KEY, val);
   } catch {}
 }
 

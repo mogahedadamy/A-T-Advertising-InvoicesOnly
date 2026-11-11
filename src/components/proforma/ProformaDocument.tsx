@@ -98,7 +98,7 @@ export const ProformaDocument = React.forwardRef<HTMLDivElement, Props>(
                 fontSize: isRtl ? "22px" : "26px",
               }}
             >
-              {isRtl ? "فاتورة مبدئية" : "Pro. Invoice"}
+              {isRtl ? "فاتورة مبدئية" : "Pro-invoice"}
             </div>
           </div>
 
@@ -475,7 +475,7 @@ export const ProformaDocument = React.forwardRef<HTMLDivElement, Props>(
         <div className="grid grid-cols-12 gap-3.5 items-end pt-1 shrink-0">
           {/* Prepared By Box With Authentic Digital Signature */}
           <div
-            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative overflow-hidden"
+            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative"
             style={{
               border: "1px solid #1e293b",
               height: "76px",
@@ -496,11 +496,11 @@ export const ProformaDocument = React.forwardRef<HTMLDivElement, Props>(
                   className="pointer-events-none select-none z-20"
                   style={{
                     position: "absolute",
-                    top: "-22px",
-                    ...(isRtl ? { right: "-16px" } : { left: "-16px" }),
-                    height: "72px",
+                    top: "-18px",
+                    ...(isRtl ? { right: "-12px" } : { left: "-12px" }),
+                    height: "66px",
                     width: "auto",
-                    maxWidth: "165px",
+                    maxWidth: "160px",
                     objectFit: "contain",
                     transform: "rotate(-2deg)",
                     mixBlendMode: "multiply",

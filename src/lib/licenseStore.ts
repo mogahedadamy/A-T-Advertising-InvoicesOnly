@@ -11,7 +11,7 @@
  * مفتاح التخزين: future_print_license_v1 (معزول كلياً عن بيانات الأعمال)
  */
 
-import { getStoredSync, setStoredItem, getStoredJsonSync, setStoredJson } from "./nativeStorage";
+import { getStoredSync, setStoredItem, getStoredJsonSync, setStoredJson, removeStoredItem } from "./sqliteStorage";
 import { verifyLicenseSignature } from "./licenseCrypto";
 
 // ─── ثوابت ───────────────────────────────────────────────────────────────────
@@ -91,7 +91,8 @@ export function getOrCreateInstallationId(): string {
 
   const uuid = `inst_${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 
-  // حفظ متزامن
+  // حفظ متزامن وفي SQLite
+  setStoredItem(INSTALL_ID_KEY, uuid).catch(() => {});
   if (typeof localStorage !== "undefined") {
     try {
       localStorage.setItem(INSTALL_ID_KEY, uuid);
@@ -120,6 +121,7 @@ export function checkAndUpdateTimeAudit(): boolean {
 
   // حدّث العلامة إذا تقدم الوقت
   if (now > hwm) {
+    setStoredItem(HWM_KEY, String(now)).catch(() => {});
     if (typeof localStorage !== "undefined") {
       try {
         localStorage.setItem(HWM_KEY, String(now));
@@ -141,6 +143,7 @@ export async function saveStoredLicense(lic: StoredLicense): Promise<void> {
 }
 
 export async function clearLicense(): Promise<void> {
+  await removeStoredItem(LICENSE_STORAGE_KEY);
   if (typeof localStorage !== "undefined") {
     try {
       localStorage.removeItem(LICENSE_STORAGE_KEY);

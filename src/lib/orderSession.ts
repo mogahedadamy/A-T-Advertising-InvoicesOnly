@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { OrderItem } from "@/lib/invoice/fromCalc";
-import { getStoredJsonSync, setStoredJson } from "@/lib/nativeStorage";
+import { getStoredJsonSync, setStoredJson } from "@/lib/sqliteStorage";
 
 export type { OrderItem } from "@/lib/invoice/fromCalc";
 

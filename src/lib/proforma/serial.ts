@@ -1,4 +1,6 @@
-import { getStoredSync, setStoredItem } from "@/lib/nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredSync, setMemoryCacheString } from "@/lib/sqliteStorage";
+import { setSequence } from "@/lib/repositories/SettingsRepository";
 
 // الترقيم التسلسلي للفواتير المبدئية — يُحفظ على الجهاز
 const KEY = "future_proforma_seq";
@@ -16,6 +18,10 @@ export function commitProformaSerial(serial: string) {
   if (!Number.isFinite(n)) return;
   const cur = parseInt(getStoredSync(KEY, "0"), 10) || 0;
   if (n > cur) {
-    setStoredItem(KEY, String(n)).catch(() => {});
+    const val = String(n);
+    setMemoryCacheString(KEY, val);
+    if (Capacitor.isNativePlatform()) {
+      setSequence(KEY, val).catch(() => {});
+    }
   }
 }

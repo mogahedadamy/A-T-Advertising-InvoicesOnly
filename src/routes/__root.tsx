@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import PasswordLock from "@/components/PasswordLock";
 import SplashScreen from "@/components/common/SplashScreen";
+import { RecoveryDiscoveryGate } from "@/components/settings/RecoveryDiscoveryGate";
 import { useTrialExpiry } from "@/lib/trialGuard";
 import { TrialExpiredScreen } from "@/components/common/TrialExpiredScreen";
 import { CustomInvoicePrintPortal } from "@/components/billing/CustomInvoicePrintButton";
@@ -92,13 +93,19 @@ function RootComponent() {
         ) : !splashFinished ? (
           /* شاشة البداية الملكية تعمل دون انقطاع لكامل مدتها (6 ثوانٍ) لمنع أي انهيار */
           <SplashScreen duration={6000} onFinish={handleFinishSplash} />
-        ) : isExpired ? (
-          /* شاشة الإيقاف النهائي بمجرد انقضاء الـ 48 ساعة */
-          <TrialExpiredScreen isTampered={isTampered} />
-        ) : !unlocked ? (
-          <PasswordLock onUnlock={handleUnlock} />
         ) : (
-          <Outlet />
+          /* اكتشاف النسخ الاحتياطية من إصدار سابق قبل قفل كلمة المرور،
+             لأن كلمة المرور نفسها قد تكون محفوظة داخل النسخة المستعادة */
+          <RecoveryDiscoveryGate>
+            {isExpired ? (
+              /* شاشة الإيقاف النهائي بمجرد انقضاء الـ 48 ساعة */
+              <TrialExpiredScreen isTampered={isTampered} />
+            ) : !unlocked ? (
+              <PasswordLock onUnlock={handleUnlock} />
+            ) : (
+              <Outlet />
+            )}
+          </RecoveryDiscoveryGate>
         )}
       </TooltipProvider>
     </QueryClientProvider>

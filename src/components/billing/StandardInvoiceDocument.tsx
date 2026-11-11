@@ -53,14 +53,13 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
     const emptyRowsCount = Math.max(0, rowCount - items.length);
 
     // عنوان شارة الفاتورة حسب النوع واللغة
+    // النسخة الإنجليزية تعرض عنواناً موحّداً "Pro-invoice" لكل الأنواع
+    // (مبيعات / مشتريات / مبدئية) — لا تُكتب Sale Invoice ولا Purchase Invoice.
     const badgeTitle = (() => {
-      if (meta.type === "purchase") {
-        return isRtl ? "فاتورة مشتريات" : "Purchase Invoice";
-      }
-      if (meta.type === "sales") {
-        return isRtl ? "فاتورة مبيعات" : "Sales Invoice";
-      }
-      return isRtl ? "فاتورة مبدئية" : "Pro. Invoice";
+      if (!isRtl) return "Pro-invoice";
+      if (meta.type === "purchase") return "فاتورة مشتريات";
+      if (meta.type === "sales") return "فاتورة مبيعات";
+      return "فاتورة مبدئية";
     })();
 
     // اسم العميل المعروض
@@ -555,7 +554,7 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
         >
           {/* صندوق الإعداد مع التوقيع الرقمي الحي متراكباً فوق الاسم مباشرة */}
           <div
-            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative overflow-hidden"
+            className="col-span-5 rounded-[12px] p-3 flex flex-col justify-between bg-white relative"
             style={{
               flex: "5 5 0%",
               minWidth: 0,
@@ -590,11 +589,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
                   className="pointer-events-none select-none z-20"
                   style={{
                     position: "absolute",
-                    top: "-22px",
-                    ...(isRtl ? { right: "-16px" } : { left: "-16px" }),
-                    height: "72px",
+                    top: "-18px",
+                    ...(isRtl ? { right: "-12px" } : { left: "-12px" }),
+                    height: "66px",
                     width: "auto",
-                    maxWidth: "165px",
+                    maxWidth: "160px",
                     objectFit: "contain",
                     transform: "rotate(-2deg)",
                     mixBlendMode: "multiply",

@@ -5,6 +5,7 @@ import { Printer, FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoice } from "@/lib/billing/types";
 import { INVOICE_TYPE_LABELS } from "@/lib/billing/types";
+import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
 import { StandardInvoiceDocument } from "./StandardInvoiceDocument";
 import { triggerPrintWithElement, exportElementToPdf } from "@/lib/pdfExport";
 import { toast } from "sonner";
@@ -38,11 +39,19 @@ export function CustomInvoicePrintPortal() {
   const invoice = useCustomInvoiceToPrint();
   if (!invoice || typeof document === "undefined") return null;
 
+  const isRtl =
+    detectInvoiceLanguage(
+      invoice.meta.language,
+      invoice.meta.partyName,
+      invoice.meta.partyEnName,
+      invoice.items
+    ) === "ar";
+
   return createPortal(
     <div
       id="custom-invoice-print-portal"
       className="custom-invoice-print-root"
-      dir="rtl"
+      dir={isRtl ? "rtl" : "ltr"}
     >
       <StandardInvoiceDocument
         invoice={invoice}
@@ -174,9 +183,18 @@ export async function printCustomInvoiceDocument(
   }
 
   const { element, cleanup } = prep;
-  const label = INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة";
+  const isEn =
+    detectInvoiceLanguage(
+      invoice.meta.language,
+      invoice.meta.partyName,
+      invoice.meta.partyEnName,
+      invoice.items
+    ) === "en";
+  const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
   const serial = invoice.meta.serial || "001";
-  const party = invoice.meta.partyName || "عميل";
+  const party = isEn
+    ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
+    : (invoice.meta.partyName || "عميل");
   const docTitle = `${label}-${serial}-${party}`;
 
   document.body.classList.add("printing-custom-invoice");
@@ -200,9 +218,18 @@ export async function saveCustomInvoiceAsPdf(
   }
 
   const { element, cleanup } = prep;
-  const label = INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة";
+  const isEn =
+    detectInvoiceLanguage(
+      invoice.meta.language,
+      invoice.meta.partyName,
+      invoice.meta.partyEnName,
+      invoice.items
+    ) === "en";
+  const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
   const serial = invoice.meta.serial || "001";
-  const party = invoice.meta.partyName || "عميل";
+  const party = isEn
+    ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
+    : (invoice.meta.partyName || "عميل");
 
   try {
     const success = await exportElementToPdf(element, {

@@ -6,23 +6,30 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { triggerBack } from "./lib/backButtonHandler";
-import { initNativeStorage } from "./lib/nativeStorage";
+import { initSQLiteStorage } from "./lib/sqliteStorage";
+import { ensureScheduledBackups } from "./lib/backup/autoBackup";
+import { runPreUpdateBackupIfNeeded } from "./lib/backup/restoreService";
 import { toast } from "sonner";
 import "./styles.css";
 
-// تحميل واستعادة كافة البيانات المخزنة من نظام أندرويد الأصلي فور تشغيل التطبيق
-initNativeStorage([
-  "future_print_orders_v2",
-  "future_print_invoices_v2",
-  "future_custom_invoices_v2",
-  "future_proforma_invoices_v2",
-  "future_print_customers_v2",
-  "future_calculator_order_session",
-  "future_invoice_seq",
-  "future_proforma_seq",
-  "future_calc_app_password_hash",
-  "future_print_sound_enabled",
-]).catch(console.warn);
+// تهيئة قاعدة بيانات SQLite وترحيل أي بيانات سابقة قبل عرض التطبيق
+const storageInitPromise = initSQLiteStorage().catch((err) => {
+  console.warn("SQLite storage init warning:", err);
+});
+
+/**
+ * نسخة احتياطية قبل أي ترقية لقاعدة البيانات + إعادة تثبيت الجدولة اليومية.
+ * تعمل بعد نجاح تهيئة قاعدة البيانات وقبل أن يلمس المستخدم أي بيانات.
+ */
+storageInitPromise.then(async () => {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await runPreUpdateBackupIfNeeded(true);
+    await ensureScheduledBackups();
+  } catch (err) {
+    console.warn("Backup startup tasks warning:", err);
+  }
+});
 
 // ربط أمر الطباعة العام بجسر أندرويد الأصلي مع منع ظهور صفحة بيضاء
 if (typeof window !== "undefined" && (window as any).AndroidPrint) {
@@ -96,9 +103,17 @@ if (Capacitor.isNativePlatform()) {
 
 const rootEl = document.getElementById("root");
 if (rootEl) {
-  ReactDOM.createRoot(rootEl).render(
-    <React.StrictMode>
-      <RouterProvider router={router} />
-    </React.StrictMode>
-  );
+  const renderApp = () => {
+    ReactDOM.createRoot(rootEl).render(
+      <React.StrictMode>
+        <RouterProvider router={router} />
+      </React.StrictMode>
+    );
+  };
+
+  // انتظار تهيئة SQLite (بحد أقصى 1.5 ثانية لضمان سرعة الإقلاع)
+  Promise.race([
+    storageInitPromise,
+    new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+  ]).finally(renderApp);
 }

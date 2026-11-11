@@ -19,6 +19,8 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.BridgeActivity;
+import com.futureprint.calculator.backup.BackupPlugin;
+import com.futureprint.calculator.backup.BridgeAccess;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
@@ -28,7 +30,13 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Native backup engine must be registered before the bridge is created.
+        registerPlugin(BackupPlugin.class);
         super.onCreate(savedInstanceState);
+
+        if (getBridge() != null) {
+            BridgeAccess.set(getBridge());
+        }
 
         WebView webView = getBridge().getWebView();
         if (webView != null) {
@@ -147,38 +155,59 @@ public class MainActivity extends BridgeActivity {
 
                 @JavascriptInterface
                 public void savePdf(String base64Data, String filename) {
+                    String safeName = (filename != null && !filename.trim().isEmpty())
+                        ? (filename.endsWith(".pdf") ? filename : filename + ".pdf")
+                        : "فاتورة-TA.pdf";
+                    saveFileInternal(base64Data, safeName, "application/pdf", true);
+                }
+
+                @JavascriptInterface
+                public void saveFile(String base64Data, String filename, String mimeType) {
+                    String resolvedMime = (mimeType != null && !mimeType.trim().isEmpty())
+                        ? mimeType
+                        : "application/octet-stream";
+                    String safeName = (filename != null && !filename.trim().isEmpty())
+                        ? filename.trim()
+                        : "backup.json";
+                    boolean openViewer = "application/pdf".equalsIgnoreCase(resolvedMime);
+                    saveFileInternal(base64Data, safeName, resolvedMime, openViewer);
+                }
+
+                private void saveFileInternal(String base64Data, String safeName, String mimeType, boolean openViewer) {
                     runOnUiThread(() -> {
                         try {
-                            byte[] pdfBytes = Base64.decode(base64Data, Base64.DEFAULT);
-                            String safeName = (filename != null && !filename.trim().isEmpty())
-                                ? (filename.endsWith(".pdf") ? filename : filename + ".pdf")
-                                : "فاتورة-TA.pdf";
+                            byte[] fileBytes = Base64.decode(base64Data, Base64.DEFAULT);
+                            String successMsg = openViewer
+                                ? "تم حفظ الفاتورة في مجلد التنزيلات بنجاح"
+                                : "تم حفظ النسخة الاحتياطية في مجلد التنزيلات بنجاح";
 
                             // على أندرويد 10 والأحدث: حفظ مباشر في مجلد Downloads/A-T-Advertising
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 ContentValues values = new ContentValues();
                                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, safeName);
-                                values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+                                values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
                                 values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/A-T-Advertising");
 
                                 Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
                                 if (uri != null) {
                                     try (OutputStream os = getContentResolver().openOutputStream(uri)) {
                                         if (os != null) {
-                                            os.write(pdfBytes);
+                                            os.write(fileBytes);
                                             os.flush();
                                         }
                                     }
 
-                                    Toast.makeText(MainActivity.this, "تم حفظ الفاتورة في مجلد التنزيلات بنجاح", Toast.LENGTH_LONG).show();
+                                    Toast.makeText(MainActivity.this, successMsg, Toast.LENGTH_LONG).show();
 
-                                    try {
-                                        Intent intent = new Intent(Intent.ACTION_VIEW);
-                                        intent.setDataAndType(uri, "application/pdf");
-                                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                        startActivity(Intent.createChooser(intent, "عرض الفاتورة"));
-                                    } catch (Exception ignored) {}
+                                    if (openViewer) {
+                                        try {
+                                            Intent intent = new Intent(Intent.ACTION_VIEW);
+                                            intent.setDataAndType(uri, mimeType);
+                                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                            startActivity(Intent.createChooser(intent, "عرض الفاتورة"));
+                                        } catch (Exception ignored) {}
+                                    }
 
                                     return;
                                 }
@@ -189,28 +218,30 @@ public class MainActivity extends BridgeActivity {
                             if (docsDir == null) docsDir = getCacheDir();
                             File targetFile = new File(docsDir, safeName);
                             try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                                fos.write(pdfBytes);
+                                fos.write(fileBytes);
                                 fos.flush();
                             }
 
-                            Toast.makeText(MainActivity.this, "تم حفظ الفاتورة بنجاح", Toast.LENGTH_LONG).show();
+                            Toast.makeText(MainActivity.this, successMsg, Toast.LENGTH_LONG).show();
 
-                            try {
-                                Uri fileUri = FileProvider.getUriForFile(
-                                    MainActivity.this,
-                                    getPackageName() + ".fileprovider",
-                                    targetFile
-                                );
+                            if (openViewer) {
+                                try {
+                                    Uri fileUri = FileProvider.getUriForFile(
+                                        MainActivity.this,
+                                        getPackageName() + ".fileprovider",
+                                        targetFile
+                                    );
 
-                                Intent intent = new Intent(Intent.ACTION_VIEW);
-                                intent.setDataAndType(fileUri, "application/pdf");
-                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(Intent.createChooser(intent, "عرض الفاتورة"));
-                            } catch (Exception ignored) {}
+                                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                                    intent.setDataAndType(fileUri, mimeType);
+                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(Intent.createChooser(intent, "عرض الفاتورة"));
+                                } catch (Exception ignored) {}
+                            }
                         } catch (Exception e) {
                             e.printStackTrace();
-                            Toast.makeText(MainActivity.this, "خطأ في حفظ الفاتورة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "خطأ في حفظ الملف: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
                 }

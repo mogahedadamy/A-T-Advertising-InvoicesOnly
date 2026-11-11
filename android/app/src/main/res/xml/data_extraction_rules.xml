@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ equivalent of backup_rules.xml (cloud + device-to-device).
+  See backup_rules.xml: Auto Backup is not a trust boundary for this app.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="ta_invoicing_dbSQLite.db" />
+        <include domain="database" path="ta_invoicing_dbSQLite.db-wal" />
+        <include domain="database" path="ta_invoicing_dbSQLite.db-shm" />
+        <exclude domain="sharedpref" path="ta_backup_keystore.xml" />
+        <exclude domain="sharedpref" path="ta_backup_storage.xml" />
+        <exclude domain="sharedpref" path="ta_backup_identity.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="ta_invoicing_dbSQLite.db" />
+        <include domain="database" path="ta_invoicing_dbSQLite.db-wal" />
+        <exclude domain="sharedpref" path="ta_backup_keystore.xml" />
+    </device-transfer>
+</data-extraction-rules>

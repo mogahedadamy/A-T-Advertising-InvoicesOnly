@@ -38,7 +38,12 @@ export const CUSTOMER_TYPE_CONFIG: Record<CustomerType, { label: string; color: 
   },
 };
 
-import { getStoredJsonSync, setStoredJson } from "./nativeStorage";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
+import {
+  upsertCustomer as repoUpsertCustomer,
+  deleteCustomer as repoDeleteCustomer,
+} from "./repositories/CustomerRepository";
 
 const STORAGE_KEY = "future_print_customers_v2";
 
@@ -60,7 +65,7 @@ if (typeof window !== "undefined") {
 }
 
 function notify() {
-  setStoredJson(STORAGE_KEY, customersSnapshot).catch(console.warn);
+  setMemoryCacheJson(STORAGE_KEY, customersSnapshot);
   subscribers.forEach((fn) => fn());
 }
 
@@ -89,15 +94,37 @@ export function addCustomer(data: Omit<CustomerRecord, "id" | "createdAt" | "tot
   };
   customersSnapshot = [customer, ...customersSnapshot];
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoUpsertCustomer(customer).catch((err) =>
+      console.warn("[CustomersStore] SQLite add failed:", err)
+    );
+  }
   return customer;
 }
 
 export function updateCustomer(id: string, updates: Partial<CustomerRecord>) {
-  customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, ...updates } : c));
+  let updatedRecord: CustomerRecord | undefined;
+  customersSnapshot = customersSnapshot.map((c) => {
+    if (c.id === id) {
+      updatedRecord = { ...c, ...updates };
+      return updatedRecord;
+    }
+    return c;
+  });
   notify();
+  if (updatedRecord && Capacitor.isNativePlatform()) {
+    repoUpsertCustomer(updatedRecord).catch((err) =>
+      console.warn("[CustomersStore] SQLite update failed:", err)
+    );
+  }
 }
 
 export function deleteCustomer(id: string) {
   customersSnapshot = customersSnapshot.filter((c) => c.id !== id);
   notify();
+  if (Capacitor.isNativePlatform()) {
+    repoDeleteCustomer(id).catch((err) =>
+      console.warn("[CustomersStore] SQLite delete failed:", err)
+    );
+  }
 }

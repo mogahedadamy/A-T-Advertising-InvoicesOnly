@@ -8,6 +8,7 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/test/**/*",
+    "src/**/*.spec.ts",
     "node_modules",
     "dist"
   ],

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Auto Backup rules (API 23-30).
+
+  Auto Backup is a CONVENIENCE layer only: it is rate-limited, device-bound and
+  often disabled by the vendor, so the app never relies on it for invoice data.
+  The independent SAF folder written by the native backup engine is the real
+  protection. We still exclude the backup encryption key and the SAF folder
+  grant from Auto Backup so a restored copy never carries key material that
+  belongs to another install.
+-->
+<full-backup-content>
+    <include domain="database" path="ta_invoicing_dbSQLite.db" />
+    <include domain="database" path="ta_invoicing_dbSQLite.db-wal" />
+    <include domain="database" path="ta_invoicing_dbSQLite.db-shm" />
+    <exclude domain="sharedpref" path="ta_backup_keystore.xml" />
+    <exclude domain="sharedpref" path="ta_backup_storage.xml" />
+    <exclude domain="sharedpref" path="ta_backup_identity.xml" />
+</full-backup-content>
