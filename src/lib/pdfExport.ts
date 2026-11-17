@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import { toast } from "sonner";
 import { convertOklchToRgb, isCanvasBlank } from "./pdfColorUtils";
 import { INVOICE_STANDALONE_CSS } from "./pdfExportStyles";
+import { TA_QR_CODE_BASE64 } from "@/assets/invoiceImagesBase64";
 
 export { convertOklchToRgb, isCanvasBlank } from "./pdfColorUtils";
 export { INVOICE_STANDALONE_CSS } from "./pdfExportStyles";
@@ -95,6 +96,28 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 /**
+ * Returns the image content rectangle produced by object-fit: contain.
+ * Coordinates are CSS pixels relative to the image element's border box.
+ */
+function getContainedImageRect(
+  boxWidth: number,
+  boxHeight: number,
+  naturalWidth: number,
+  naturalHeight: number
+): { x: number; y: number; width: number; height: number } {
+  const ratio = naturalWidth / naturalHeight;
+  const boxRatio = boxWidth / boxHeight;
+  if (ratio > boxRatio) {
+    const width = boxWidth;
+    const height = width / ratio;
+    return { x: 0, y: (boxHeight - height) / 2, width, height };
+  }
+  const height = boxHeight;
+  const width = height * ratio;
+  return { x: (boxWidth - width) / 2, y: 0, width, height };
+}
+
+/**
  * توليد ملف PDF عالي الدقة بدون أي تشويه أو اقتطاع بالهواتف عبر إطار معزول (Isolated IFrame)
  */
 export async function generateInvoicePdf(
@@ -133,7 +156,7 @@ export async function generateInvoicePdf(
     overlay.style.cssText =
       "position:fixed;inset:0;background:rgba(13,74,57,0.95);backdrop-filter:blur(6px);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ffffff;pointer-events:all;direction:rtl;";
     overlay.innerHTML =
-      '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:system-ui,sans-serif;"><div style="width:38px;height:38px;border:4px solid rgba(255,255,255,0.25);border-top-color:#ffffff;border-radius:50%;animation:spin 0.9s linear infinite;"></div><div style="font-size:14px;font-weight:bold;">جاري تصدير الفاتورة بدقة عالية (> 300 DPI)...</div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:system-ui,sans-serif;"><div style="width:38px;height:38px;border:4px solid rgba(255,255,255,0.25);border-top-color:#ffffff;border-radius:50%;animation:spin 0.9s linear infinite;"></div><div style="font-size:14px;font-weight:bold;">جاري تجهيز الفاتورة بدقة 300 DPI مع الحفاظ على QR الأصلي...</div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
     document.body.appendChild(overlay);
 
     // إنشاء إطار عمل معزول تماماً عن شاشة الهاتف ومحاذاة RTL والوضع الداكن
@@ -176,37 +199,92 @@ export async function generateInvoicePdf(
         ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .invoice-standalone-root"
       ) || iframeDoc.body;
 
-      // حساب مقياس الدقة المحسن والمستهدف (DPI > 300 بمقدار 315 DPI، مع حجم مستند متوازن حول 15 إلى 25 ميغابايت)
-      // مقياس 3.25 يُنتج 2580×3650 بكسل (312 DPI حقيقي لـ A4)، مما يضمن حدة طباعة ممتازة بدون تضخم الحجم إلى 100 ميغابايت
-      const targetScale = 3.25;
+      // Render the invoice body at a measured 300 DPI. The QR asset is
+      // temporarily hidden from this raster pass and embedded separately below.
+      const sheetRect = sheetEl.getBoundingClientRect();
+      if (sheetRect.width <= 0 || sheetRect.height <= 0) {
+        throw new Error("أبعاد صفحة الفاتورة غير صالحة أثناء التصدير");
+      }
+
+      const targetPixelWidth = Math.round((targetWmm / 25.4) * 300);
+      const targetScale = targetPixelWidth / sheetRect.width;
+      const qrImages = Array.from(
+        sheetEl.querySelectorAll<HTMLImageElement>('img[alt="QR Code"]')
+      );
+
+      const qrPlacements = await Promise.all(qrImages.map(async (img) => {
+        try {
+          if (!img.complete || img.naturalWidth === 0) await img.decode();
+        } catch {
+          throw new Error("تعذر تحميل صورة QR الأصلية؛ تم إيقاف التصدير لحماية جودتها");
+        }
+
+        const source = img.getAttribute("src");
+        if (source !== TA_QR_CODE_BASE64 || img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+          throw new Error("مصدر QR في الفاتورة لا يطابق الملف الأصلي المعتمد");
+        }
+
+        const imageRect = img.getBoundingClientRect();
+        const contained = getContainedImageRect(
+          imageRect.width,
+          imageRect.height,
+          img.naturalWidth,
+          img.naturalHeight
+        );
+        const xCss = imageRect.left - sheetRect.left + contained.x;
+        const yCss = imageRect.top - sheetRect.top + contained.y;
+
+        return {
+          data: TA_QR_CODE_BASE64,
+          x: (xCss / sheetRect.width) * targetWmm,
+          y: (yCss / sheetRect.height) * targetHmm,
+          width: (contained.width / sheetRect.width) * targetWmm,
+          height: (contained.height / sheetRect.height) * targetHmm,
+        };
+      }));
 
       let canvas: HTMLCanvasElement | null = null;
+      const previousQrVisibility = qrImages.map((img) => img.style.visibility);
       try {
+        // visibility preserves the QR element's layout box, so the rest of the
+        // invoice keeps exactly the same geometry during rasterization.
+        qrImages.forEach((img) => { img.style.visibility = "hidden"; });
         canvas = await html2canvas(sheetEl, {
           scale: targetScale,
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           x: 0,
           y: 0,
-          width: stageWidthPx,
-          height: stageHeightPx,
+          width: sheetRect.width,
+          height: sheetRect.height,
           windowWidth: stageWidthPx,
           windowHeight: stageHeightPx,
           scrollX: 0,
           scrollY: 0,
         });
       } catch (errCapture) {
-        console.warn("[PDF Export] Target scale canvas allocation note:", errCapture);
+        console.warn("[PDF Export] 300 DPI capture failed:", errCapture);
+        // Never fall back to capturing the QR into a flattened page image.
+        if (qrImages.length > 0) {
+          throw new Error("فشل تصيير الفاتورة مع حماية QR Code؛ لم يتم إنشاء ملف بجودة QR منخفضة");
+        }
+      } finally {
+        qrImages.forEach((img, index) => {
+          img.style.visibility = previousQrVisibility[index];
+        });
       }
 
       if (!canvas || canvas.width === 0 || canvas.height === 0 || isCanvasBlank(canvas)) {
-        console.warn("[PDF Export] Direct element capture fallback at 3.125 scale (300 DPI).");
+        if (qrImages.length > 0) {
+          throw new Error("تعذر إنشاء صورة الفاتورة مع الحفاظ على QR Code الأصلي");
+        }
+        console.warn("[PDF Export] Retrying invoice capture at measured 300 DPI.");
         canvas = await html2canvas(targetEl, {
           scale: 3.125,
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           scrollX: 0,
@@ -218,9 +296,23 @@ export async function generateInvoicePdf(
         throw new Error("فشل إنشاء كانفاس الفاتورة بدقة صحيحة");
       }
 
+      const actualDpiX = (canvas.width / targetWmm) * 25.4;
+      const actualDpiY = (canvas.height / targetHmm) * 25.4;
+      if (actualDpiX < 295 || actualDpiY < 295) {
+        throw new Error(
+          `دقة تصدير الفاتورة أقل من المطلوب ( ${Math.round(actualDpiX)} × ${Math.round(actualDpiY)} DPI )`
+        );
+      }
+
       const imgData = canvas.toDataURL("image/png");
-      // ضغط NONE لحفظ كامل البكسلات الخام بدقة > 300 DPI وبدون أي فقدان أو تنعيم ضبابي بحجم متوازن 15-25 MB
-      pdf.addImage(imgData, "PNG", 0, 0, targetWmm, targetHmm, undefined, "NONE");
+      // PNG is lossless. FAST controls PDF stream compression, not image quality.
+      pdf.addImage(imgData, "PNG", 0, 0, targetWmm, targetHmm, undefined, "FAST");
+
+      // Re-embed the exact approved QR data URI as a separate lossless PNG.
+      // It never passes through html2canvas, page downsampling, or JPEG encoding.
+      for (const qr of qrPlacements) {
+        pdf.addImage(qr.data, "PNG", qr.x, qr.y, qr.width, qr.height, undefined, "NONE");
+      }
     } finally {
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
