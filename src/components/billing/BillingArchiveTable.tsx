@@ -10,7 +10,6 @@ import {
   TrendingUp,
   ShoppingBag,
   Calculator,
-  FileDown,
   Receipt,
   ArrowLeftRight,
   Share2,
@@ -29,7 +28,6 @@ import { deleteInvoice } from "@/lib/invoicesStore";
 import { formatAccountingNumber } from "./StandardInvoiceDocument";
 import {
   printCustomInvoiceDocument,
-  saveCustomInvoiceAsPdf,
   shareCustomInvoiceViaWhatsApp,
 } from "./CustomInvoicePrintButton";
 import { useToast } from "@/hooks/use-toast";
@@ -314,18 +312,6 @@ export function BillingArchiveTable({
                         >
                           <Printer className="h-4 w-4" />
                         </button>
-
-                        {/* زر حفظ ملف PDF أصلي */}
-                        {isCustom && (
-                          <button
-                            type="button"
-                            onClick={() => saveCustomInvoiceAsPdf(rec.raw)}
-                            title="حفظ ملف PDF أصلي"
-                            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors active:scale-90"
-                          >
-                            <FileDown className="h-4 w-4" />
-                          </button>
-                        )}
 
                         {/* زر مشاركة واتساب مباشرة */}
                         {isCustom && (

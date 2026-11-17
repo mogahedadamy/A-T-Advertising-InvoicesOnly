@@ -267,96 +267,146 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 /**
-                 * Prints the exact PDF bytes that will subsequently be shared.
-                 * Sharing is only started after Android reports the print job COMPLETED.
+                 * يطبع الفاتورة أو يولدها بنفس آلية زر الطباعة تماماً (عبر WebView الأصلي و PrintDocumentAdapter)
+                 * ثم يشارك ملف PDF الشعاعي عالي الدقة مباشرة عبر واتساب دون أي تشويه أو اقتصاص.
                  */
                 @JavascriptInterface
-                public void printPdfThenShare(String base64Data, String filename, String messageText, String requestId, String pageSize) {
+                public void printHtmlThenShare(String htmlContent, String documentName, String pageSize, String messageText) {
                     runOnUiThread(() -> {
                         try {
-                            if (base64Data == null || base64Data.trim().isEmpty()) {
-                                notifyPrintShareResult(requestId, false, "ملف الفاتورة غير صالح");
-                                return;
-                            }
-                            byte[] pdfBytes = Base64.decode(base64Data, Base64.DEFAULT);
-                            String jobName = (filename == null || filename.trim().isEmpty()) ? "فاتورة-TA" : filename;
-                            PrintManager manager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                            if (manager == null) {
-                                notifyPrintShareResult(requestId, false, "خدمة الطباعة غير متاحة");
+                            if (htmlContent == null || htmlContent.trim().isEmpty()) {
+                                Toast.makeText(MainActivity.this, "محتوى الفاتورة فارغ", Toast.LENGTH_SHORT).show();
                                 return;
                             }
 
-                            final boolean a5 = "A5".equalsIgnoreCase(pageSize);
-                            PrintDocumentAdapter adapter = new PrintDocumentAdapter() {
-                                @Override
-                                public void onLayout(PrintAttributes oldAttributes, PrintAttributes newAttributes,
-                                        CancellationSignal cancellationSignal, LayoutResultCallback callback, Bundle extras) {
-                                    if (cancellationSignal.isCanceled()) {
-                                        callback.onLayoutCancelled();
-                                        return;
-                                    }
-                                    PrintDocumentInfo info = new PrintDocumentInfo.Builder(jobName + ".pdf")
-                                        .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
-                                        .setPageCount(PrintDocumentInfo.PAGE_COUNT_UNKNOWN)
-                                        .build();
-                                    callback.onLayoutFinished(info, true);
-                                }
+                            final String jobName = (documentName != null && !documentName.trim().isEmpty())
+                                ? documentName.trim()
+                                : "فاتورة-TA";
+                            final String safeName = jobName.toLowerCase().endsWith(".pdf") ? jobName : jobName + ".pdf";
 
-                                @Override
-                                public void onWrite(PageRange[] pages, ParcelFileDescriptor destination,
-                                        CancellationSignal cancellationSignal, WriteResultCallback callback) {
-                                    try (FileOutputStream output = new FileOutputStream(destination.getFileDescriptor())) {
-                                        if (cancellationSignal.isCanceled()) {
-                                            callback.onWriteCancelled();
-                                            return;
-                                        }
-                                        output.write(pdfBytes);
-                                        output.flush();
-                                        callback.onWriteFinished(new PageRange[] { PageRange.ALL_PAGES });
-                                    } catch (Exception error) {
-                                        callback.onWriteFailed(error.getMessage());
-                                    } finally {
-                                        try { destination.close(); } catch (Exception ignored) {}
-                                    }
-                                }
-                            };
+                            final boolean isA5Landscape = "A5".equalsIgnoreCase(pageSize) ||
+                                (jobName.contains("A5") || jobName.contains("a5"));
 
-                            PrintAttributes.Builder attrs = new PrintAttributes.Builder()
-                                .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
-                                .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                                .setMediaSize(a5 ? PrintAttributes.MediaSize.ISO_A5.asLandscape() : PrintAttributes.MediaSize.ISO_A4);
-                            android.print.PrintJob job = manager.print(jobName, adapter, attrs.build());
-                            Handler handler = new Handler(Looper.getMainLooper());
-                            final long startedAt = System.currentTimeMillis();
-                            Runnable[] monitor = new Runnable[1];
-                            monitor[0] = () -> {
+                            WebView printWebView = new WebView(MainActivity.this);
+                            WebSettings pSettings = printWebView.getSettings();
+                            pSettings.setJavaScriptEnabled(true);
+                            pSettings.setDomStorageEnabled(true);
+                            pSettings.setLoadsImagesAutomatically(true);
+                            pSettings.setTextZoom(100);
+                            pSettings.setUseWideViewPort(true);
+                            pSettings.setLoadWithOverviewMode(true);
+                            pSettings.setSupportZoom(false);
+
+                            File shareDir = new File(getCacheDir(), "shared_invoices");
+                            if (!shareDir.exists()) shareDir.mkdirs();
+                            File targetFile = new File(shareDir, safeName);
+
+                            final boolean[] isDone = {false};
+                            Runnable generateAndShare = () -> {
+                                if (isDone[0]) return;
+                                isDone[0] = true;
                                 try {
-                                    int state = job.getInfo().getState();
-                                    if (state == android.print.PrintJobInfo.STATE_COMPLETED) {
-                                        if (messageText != null && !messageText.trim().isEmpty()) {
-                                            sharePdfInternal(base64Data, jobName, messageText, true);
-                                            notifyPrintShareResult(requestId, true, "اكتملت الطباعة وبدأت المشاركة");
-                                        } else {
-                                            notifyPrintShareResult(requestId, true, "اكتملت الطباعة");
-                                        }
-                                    } else if (state == android.print.PrintJobInfo.STATE_FAILED ||
-                                               state == android.print.PrintJobInfo.STATE_CANCELED) {
-                                        notifyPrintShareResult(requestId, false, "لم تكتمل الطباعة؛ أُلغيت المشاركة");
-                                    } else if (System.currentTimeMillis() - startedAt > 600000) {
-                                        notifyPrintShareResult(requestId, false, "انتهت مهلة انتظار اكتمال الطباعة");
+                                    PrintAttributes.Builder builder = new PrintAttributes.Builder();
+                                    builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
+                                    builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
+                                    builder.setResolution(new PrintAttributes.Resolution("pdf", "pdf", 300, 300));
+
+                                    if (isA5Landscape) {
+                                        builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
                                     } else {
-                                        handler.postDelayed(monitor[0], 500);
+                                        builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
                                     }
-                                } catch (Exception error) {
-                                    notifyPrintShareResult(requestId, false, "تعذر متابعة حالة الطباعة");
+
+                                    PrintAttributes attributes = builder.build();
+                                    PrintDocumentAdapter adapter = printWebView.createPrintDocumentAdapter(jobName);
+
+                                    android.print.PrintAdapterHelper.printAdapterToPdf(adapter, attributes, targetFile, new android.print.PrintAdapterHelper.PdfCallback() {
+                                        @Override
+                                        public void onSuccess(File file) {
+                                            runOnUiThread(() -> {
+                                                if (file.exists() && file.length() > 0) {
+                                                    sharePdfFileDirectly(file, messageText, true);
+                                                } else {
+                                                    Toast.makeText(MainActivity.this, "تعذر إنشاء ملف الفاتورة للمشاركة", Toast.LENGTH_SHORT).show();
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void onError(String error) {
+                                            runOnUiThread(() -> {
+                                                Toast.makeText(MainActivity.this, "خطأ في تجهيز الفاتورة: " + error, Toast.LENGTH_SHORT).show();
+                                            });
+                                        }
+                                    });
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                    Toast.makeText(MainActivity.this, "خطأ في معالجة الطباعة والمشاركة: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
                                 }
                             };
-                            handler.postDelayed(monitor[0], 500);
-                        } catch (Exception error) {
-                            error.printStackTrace();
-                            notifyPrintShareResult(requestId, false, "تعذر بدء الطباعة: " + error.getMessage());
+
+                            printWebView.setWebViewClient(new WebViewClient() {
+                                @Override
+                                public void onPageFinished(WebView view, String url) {
+                                    view.postDelayed(generateAndShare, 300);
+                                }
+                            });
+
+                            printWebView.postDelayed(generateAndShare, 1200);
+                            printWebView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            Toast.makeText(MainActivity.this, "تعذر بدء عملية المشاركة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
+                }
+
+                private void sharePdfFileDirectly(File targetFile, String messageText, boolean targetWhatsApp) {
+                    try {
+                        Uri fileUri = FileProvider.getUriForFile(
+                            MainActivity.this,
+                            getPackageName() + ".fileprovider",
+                            targetFile
+                        );
+
+                        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                        sendIntent.setType("application/pdf");
+                        sendIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+                        if (messageText != null && !messageText.trim().isEmpty()) {
+                            sendIntent.putExtra(Intent.EXTRA_TEXT, messageText);
+                        }
+                        sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                        if (targetWhatsApp) {
+                            sendIntent.setPackage("com.whatsapp");
+                            try {
+                                startActivity(sendIntent);
+                                return;
+                            } catch (Exception exWa) {
+                                try {
+                                    Intent waBusiness = new Intent(sendIntent);
+                                    waBusiness.setPackage("com.whatsapp.w4b");
+                                    startActivity(waBusiness);
+                                    return;
+                                } catch (Exception exWab) {
+                                    sendIntent.setPackage(null);
+                                }
+                            }
+                        }
+
+                        Intent chooser = Intent.createChooser(sendIntent, "مشاركة الفاتورة");
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(chooser);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                @JavascriptInterface
+                public void printPdfThenShare(String base64Data, String filename, String messageText, String requestId, String pageSize) {
+                    // للتوافق العكسي مع أي استدعاء قديم
+                    shareToWhatsApp(base64Data, filename, messageText);
                 }
 
                 private void notifyPrintShareResult(String requestId, boolean success, String message) {

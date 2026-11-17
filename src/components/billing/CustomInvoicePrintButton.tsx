@@ -17,13 +17,6 @@ export {
   prepareCustomInvoiceElement,
 } from "./customInvoicePrintEngine";
 
-export async function saveCustomInvoiceAsPdf(
-  invoice: CustomInvoice,
-  onBeforePrint?: () => void
-): Promise<boolean> {
-  return printCustomInvoiceDocument(invoice, onBeforePrint);
-}
-
 interface Props {
   invoice: CustomInvoice;
   onBeforePrint?: () => void;
@@ -67,6 +60,7 @@ export async function printCustomInvoiceDocument(
   return true;
 }
 
+export const saveCustomInvoiceAsPdf = printCustomInvoiceDocument;
 
 export async function shareCustomInvoiceViaWhatsApp(
   invoice: CustomInvoice,
