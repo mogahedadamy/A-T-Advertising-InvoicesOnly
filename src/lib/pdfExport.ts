@@ -61,9 +61,6 @@ export function buildStandaloneInvoiceHtml(
   <meta charset="utf-8">
   <meta name="viewport" content="width=${viewportWidth}, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${title}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800;900&display=block" rel="stylesheet">
   <style>
     ${INVOICE_STANDALONE_CSS}
 
@@ -98,45 +95,30 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 const ARABIC_FONT_SAMPLE = "فاتورة مبيعات شركة التقانة عناية السيد مدير المبيعات ١٢٣٤٥";
 
 /**
- * Wait for the standalone Google Fonts stylesheet and explicitly load every
- * Arabic weight used by invoice components. FontFaceSet.ready alone is not
- * enough: it can resolve after a failed font request and silently leave a
- * fallback font active.
+ * Load the bundled Tajawal font files from the app package.
+ * This deliberately has no network fallback: PDF output must be deterministic
+ * and offline-capable. A missing/corrupt local font stops export with a clear
+ * error instead of silently changing Arabic glyph metrics.
  */
 async function waitForInvoiceFonts(doc: Document): Promise<void> {
-  const fontLink = doc.querySelector<HTMLLinkElement>('link[href*="fonts.googleapis.com/css2"]');
-  if (!fontLink) throw new Error("رابط خطوط الفاتورة غير موجود");
-
-  if (!fontLink.sheet) {
-    await new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(
-        () => reject(new Error("انتهت مهلة تحميل خطوط الفاتورة العربية")),
-        12000
-      );
-      fontLink.addEventListener("load", () => {
-        window.clearTimeout(timeout);
-        resolve();
-      }, { once: true });
-      fontLink.addEventListener("error", () => {
-        window.clearTimeout(timeout);
-        reject(new Error("تعذر تحميل ملف الخطوط العربية"));
-      }, { once: true });
-    });
-  }
-
   if (!doc.fonts) throw new Error("المتصفح لا يدعم التحقق من تحميل الخطوط");
 
-  const weights = [400, 500, 600, 700, 800, 900];
-  const loadedFaces = await Promise.all(
-    weights.map((weight) => doc.fonts.load(`${weight} 16px "Tajawal"`, ARABIC_FONT_SAMPLE))
-  );
-  await doc.fonts.ready;
+  const weights = [200, 300, 400, 500, 600, 700, 800, 900];
+  try {
+    const loadedFaces = await Promise.all(
+      weights.map((weight) => doc.fonts.load(`${weight} 16px "Tajawal"`, ARABIC_FONT_SAMPLE))
+    );
+    await doc.fonts.ready;
 
-  const allWeightsLoaded = loadedFaces.every(
-    (faces) => faces.length > 0 && faces.every((face) => face.status === "loaded")
-  );
-  if (!allWeightsLoaded || !doc.fonts.check('400 16px "Tajawal"', ARABIC_FONT_SAMPLE)) {
-    throw new Error("لم تكتمل إتاحة أوزان خط Tajawal؛ أُوقف التصدير لمنع تشوه العربية");
+    const requiredFacesLoaded = loadedFaces.every(
+      (faces) => faces.length > 0 && faces.every((face) => face.status === "loaded")
+    );
+    if (!requiredFacesLoaded || !doc.fonts.check('400 16px "Tajawal"', ARABIC_FONT_SAMPLE)) {
+      throw new Error("لم يتم تحميل جميع ملفات Tajawal المحلية");
+    }
+  } catch (error) {
+    console.error("[PDF Export] Local Tajawal font loading failed:", error);
+    throw new Error("تعذر تحميل خطوط Tajawal المضمنة داخل التطبيق؛ لم يتم إنشاء فاتورة بخطوط بديلة");
   }
 }
 
