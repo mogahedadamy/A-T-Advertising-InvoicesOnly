@@ -5,12 +5,64 @@
  * - تغطي كافة فئات Tailwind والأبعاد لمستندات A4 و A5 بدقة مطلقة
  */
 export const INVOICE_STANDALONE_CSS = `
+/* Locally bundled Tajawal font family (SIL Open Font License 1.1). */
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-ExtraLight.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 200;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Light.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Medium.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-ExtraBold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 800;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Black.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+}
+
+
 :root {
   --invoice-paper: #ffffff;
   --invoice-ink: #000000;
   --invoice-accent: #0D4A39;
   --invoice-border: #1e293b;
-  --font-arabic: 'Tajawal', 'Cairo', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
+  --font-arabic: 'Tajawal', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
 }
 
 *, *::before, *::after {
@@ -37,7 +89,7 @@ html, body {
 [dir="rtl"], .printing-rtl {
   direction: rtl !important;
   text-align: right !important;
-  font-family: 'Tajawal', 'Cairo', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif !important;
+  font-family: 'Tajawal', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif !important;
   font-kerning: normal !important;
   font-synthesis: none !important;
   font-variant-ligatures: normal !important;
