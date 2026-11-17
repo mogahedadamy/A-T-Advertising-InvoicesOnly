@@ -52,7 +52,7 @@ export async function printCustomInvoiceDocument(
 
   document.body.classList.add("printing-custom-invoice");
 
-  triggerPrintWithElement(element, docTitle, "a4", () => {
+  await triggerPrintWithElement(element, docTitle, "a4", () => {
     document.body.classList.remove("printing-custom-invoice");
     cleanup();
   });
