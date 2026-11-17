@@ -1,6 +1,7 @@
 import { CustomInvoice } from "@/lib/billing/types";
 import { InvoiceRecord } from "@/lib/invoicesStore";
 import { ProformaInvoice } from "@/lib/proforma/types";
+import { AppCurrency } from "@/lib/currency/types";
 
 /**
  * الكيان الموحد الشامل لكافة الفواتير والإيصالات في النظام:
@@ -16,6 +17,7 @@ export type UnifiedInvoiceRecord =
       date: string;
       customerName: string;
       total: number;
+      currency: AppCurrency;
       type: "proforma" | "sales" | "purchase";
       typeLabel: string;
       badgeColor: string;
@@ -29,6 +31,7 @@ export type UnifiedInvoiceRecord =
       date: string;
       customerName: string;
       total: number;
+      currency: AppCurrency;
       type: "calculator";
       typeLabel: string;
       badgeColor: string;
@@ -42,6 +45,7 @@ export type UnifiedInvoiceRecord =
       date: string;
       customerName: string;
       total: number;
+      currency: AppCurrency;
       type: "proforma";
       typeLabel: string;
       badgeColor: string;
@@ -56,10 +60,9 @@ export interface InvoicesFilterTab {
 
 export const INVOICES_FILTER_TABS: InvoicesFilterTab[] = [
   { key: "all", label: "جميع الفواتير" },
-  { key: "proforma", label: "فواتير مبدئية Proforma" },
   { key: "sales", label: "فواتير مبيعات" },
-  { key: "calculator", label: "إيصالات الحاسبة" },
   { key: "purchase", label: "فواتير مشتريات" },
+  { key: "proforma", label: "فواتير مبدئية" },
 ];
 
 export interface InvoicesStats {

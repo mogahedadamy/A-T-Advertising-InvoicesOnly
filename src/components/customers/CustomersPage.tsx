@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Search,
@@ -15,6 +15,7 @@ import {
   PhoneCall,
   ExternalLink,
   ShieldCheck,
+  ChevronDown,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import {
@@ -42,13 +43,14 @@ const TABS: { key: string; label: string }[] = [
 export function CustomersPage() {
   const customers = useCustomers();
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [typeFilter, setTypeFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
 
   const filtered = useMemo(() => {
     return customers.filter((c) => {
-      const q = (search || "").trim().toLowerCase();
+      const q = (deferredSearch || "").trim().toLowerCase();
       const matchSearch =
         !q ||
         c.name.toLowerCase().includes(q) ||
@@ -59,7 +61,17 @@ export function CustomersPage() {
 
       return matchSearch && matchType;
     });
-  }, [customers, search, typeFilter]);
+  }, [customers, deferredSearch, typeFilter]);
+
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [deferredSearch, typeFilter]);
+
+  const visibleCustomers = useMemo(() => {
+    return filtered.slice(0, visibleCount);
+  }, [filtered, visibleCount]);
 
   const stats = useMemo(() => {
     const totalSpent = customers.reduce((s, c) => s + (c.totalSpent || 0), 0);
@@ -76,24 +88,36 @@ export function CustomersPage() {
     };
   }, [customers]);
 
-  const handleSave = (data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">) => {
-    if (editingCustomer) {
-      updateCustomer(editingCustomer.id, data);
-      playSuccessSound();
-      toast.success("تم تحديث بيانات العميل بنجاح");
-    } else {
-      addCustomer(data);
-      playSuccessSound();
-      toast.success("تمت إضافة العميل الجديد بنجاح");
+  const handleSave = async (data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">) => {
+    try {
+      if (editingCustomer) {
+        await updateCustomer(editingCustomer.id, data);
+        playSuccessSound();
+        toast.success("تم تحديث بيانات العميل بنجاح");
+      } else {
+        await addCustomer(data);
+        playSuccessSound();
+        toast.success("تمت إضافة العميل الجديد بنجاح");
+      }
+      setEditingCustomer(null);
+    } catch (err) {
+      toast.error("تعذّر حفظ بيانات العميل", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
-    setEditingCustomer(null);
   };
 
-  const handleDelete = (c: CustomerRecord) => {
+  const handleDelete = async (c: CustomerRecord) => {
     if (confirm(`هل أنت متأكد من حذف العميل "${c.name}"؟`)) {
-      playDeleteSound();
-      deleteCustomer(c.id);
-      toast.info(`تم حذف العميل "${c.name}"`);
+      try {
+        await deleteCustomer(c.id);
+        playDeleteSound();
+        toast.info(`تم حذف العميل "${c.name}"`);
+      } catch (err) {
+        toast.error("تعذّر حذف العميل", {
+          description: err instanceof Error ? err.message : undefined,
+        });
+      }
     }
   };
 
@@ -257,7 +281,7 @@ export function CustomersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {filtered.map((c) => {
+                    {visibleCustomers.map((c) => {
                       const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
 
                       return (
@@ -319,12 +343,12 @@ export function CustomersPage() {
                           <td className="py-3 pl-3 text-center">
                             <div className="inline-flex items-center gap-1.5 justify-center">
                               <Link
-                                to="/calculator"
-                                title="إنشاء طلب جديد لهذا العميل"
+                                to="/billing"
+                                title="إنشاء فاتورة جديدة لهذا العميل"
                                 className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-black text-primary hover:bg-primary hover:text-white transition active:scale-95"
                               >
                                 <PlusCircle className="h-3 w-3" />
-                                <span>طلب</span>
+                                <span>فاتورة</span>
                               </Link>
                               <button
                                 type="button"
@@ -363,7 +387,7 @@ export function CustomersPage() {
                   لا يوجد عملاء يطابقون معايير البحث
                 </div>
               ) : (
-                filtered.map((c) => {
+                visibleCustomers.map((c) => {
                   const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
 
                   return (
@@ -413,11 +437,11 @@ export function CustomersPage() {
 
                       <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
                         <Link
-                          to="/calculator"
+                          to="/billing"
                           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-xs font-black text-white shadow-xs active:scale-95 transition"
                         >
                           <PlusCircle className="h-3.5 w-3.5" />
-                          <span>طلب جديد</span>
+                          <span>فاتورة جديدة</span>
                         </Link>
                         <button
                           type="button"
@@ -445,6 +469,24 @@ export function CustomersPage() {
                 })
               )}
             </div>
+
+            {filtered.length > visibleCount && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTapSound();
+                    setVisibleCount((prev) => prev + 30);
+                  }}
+                  className="rounded-xl px-5 py-2 text-xs font-bold gap-2 border border-border/80 text-foreground hover:bg-muted inline-flex items-center cursor-pointer transition active:scale-95"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                  <span>
+                    عرض المزيد من العملاء (المتبقي: {filtered.length - visibleCount})
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </main>

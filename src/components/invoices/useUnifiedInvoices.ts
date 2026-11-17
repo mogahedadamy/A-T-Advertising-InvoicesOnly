@@ -21,6 +21,11 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
   const allRecords = useMemo<UnifiedInvoiceRecord[]>(() => {
     const list: UnifiedInvoiceRecord[] = [];
 
+    // بناء فهرس سريع لأرقام العروض المبدئية O(1) لتجنب الفحص الخطي O(N*M)
+    const proformaSerials = new Set(
+      (proformaInvoices || []).map((p) => p.meta?.serial).filter(Boolean)
+    );
+
     // أ. الفواتير المبدئية الرسمية المعتمدة (Proforma Invoices)
     (proformaInvoices || []).forEach((inv) => {
       list.push({
@@ -30,6 +35,7 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
         date: inv.meta?.date || inv.createdAt?.slice(0, 10) || "",
         customerName: inv.meta?.customerName || inv.meta?.customerEnName || "عميل بدون اسم",
         total: Number(inv.totalAmount) || 0,
+        currency: (inv.currency || inv.meta?.currency || "SDG") as any,
         type: "proforma",
         typeLabel: "فاتورة مبدئية Proforma",
         badgeColor: "border-[#C5A059]/40 text-[#C5A059] bg-[#C5A059]/10",
@@ -41,8 +47,8 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
     // ب. فواتير قسم الفواتير والمطالبات (Custom Invoices)
     (customInvoices || []).forEach((inv) => {
       const type = inv.meta?.type || "sales";
-      // منع تكرار الفواتير المبدئية إذا كانت موجودة بالفعل في سجل الـ Proforma الرسمي بنفس الرقم
-      if (type === "proforma" && (proformaInvoices || []).some((p) => p.meta?.serial === inv.meta?.serial)) {
+      // منع تكرار الفواتير المبدئية بفحص فوري O(1)
+      if (type === "proforma" && inv.meta?.serial && proformaSerials.has(inv.meta.serial)) {
         return;
       }
 
@@ -56,10 +62,12 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
       list.push({
         kind: "custom",
         id: inv.id,
-        serial: inv.meta?.serial || "001",
+        // المرجع الرسمي أولاً (PRD §5.3.6) مع الرقم التسلسلي القديم كاحتياط
+        serial: inv.reference || inv.meta?.serial || "001",
         date: inv.meta?.date || inv.createdAt?.slice(0, 10) || "",
         customerName: inv.meta?.partyName || inv.meta?.partyEnName || "عميل غير محدد",
         total: Number(inv.totalAmount) || 0,
+        currency: (inv.currency || inv.meta?.currency || "SDG") as any,
         type,
         typeLabel: INVOICE_TYPE_LABELS[type] || "فاتورة",
         badgeColor,
@@ -77,6 +85,7 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
         date: inv.date || inv.createdAt?.slice(0, 10) || "",
         customerName: inv.customerName || "عميل حاسبة",
         total: Number(inv.total) || 0,
+        currency: (inv.currency || "SDG") as any,
         type: "calculator",
         typeLabel: "إيصال حاسبة A5",
         badgeColor: "border-primary/30 text-primary bg-primary/10",
@@ -85,15 +94,13 @@ export function useUnifiedInvoices(searchQuery: string = "", activeFilter: strin
       });
     });
 
-    // د. إزالة أي تكرار ناتج عن حفظ متكرر (Deduplication)
-    const seenIds = new Set<string>();
+    // د. إزالة أي تكرار ناتج عن حفظ متكرر (بالاعتماد على id وليس serial لأن المرجع قد لا يكون مسنداً للأنواع الفرعية)
     const seenKeys = new Set<string>();
     const uniqueList: UnifiedInvoiceRecord[] = [];
 
     for (const rec of list) {
-      const uniqueKey = `${rec.kind}-${rec.serial}`;
-      if (!seenIds.has(rec.id) && !seenKeys.has(uniqueKey)) {
-        seenIds.add(rec.id);
+      const uniqueKey = `${rec.kind}-${rec.id}`;
+      if (!seenKeys.has(uniqueKey)) {
         seenKeys.add(uniqueKey);
         uniqueList.push(rec);
       }

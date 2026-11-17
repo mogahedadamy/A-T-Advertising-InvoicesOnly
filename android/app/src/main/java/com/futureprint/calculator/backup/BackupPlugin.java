@@ -193,8 +193,37 @@ public class BackupPlugin extends Plugin {
 
     @PluginMethod
     public void restoreBackup(PluginCall call) {
+        if (call == null) return;
         final JSONObject options = optionsOf(call);
-        background(call, () -> new JSObject(engine().restore(options).toString()));
+        String fName = call.getString("fileName");
+        if (fName == null || fName.trim().isEmpty()) {
+            fName = call.getString("name");
+        }
+        if (fName == null || fName.trim().isEmpty()) {
+            fName = options.optString("fileName", "");
+        }
+        if (fName == null || fName.trim().isEmpty()) {
+            fName = options.optString("name", "");
+        }
+        if (fName == null || fName.trim().isEmpty()) {
+            fName = options.optString("file", "");
+        }
+        try {
+            if (fName != null && !fName.trim().isEmpty()) {
+                options.put("fileName", fName.trim());
+            }
+        } catch (Exception ignored) {}
+
+        String mode = call.getString("mode");
+        if (mode == null || mode.trim().isEmpty()) {
+            mode = options.optString("mode", "replace");
+        }
+        try {
+            options.put("mode", mode);
+        } catch (Exception ignored) {}
+
+        final JSONObject finalOptions = options;
+        background(call, () -> new JSObject(engine().restore(finalOptions).toString()));
     }
 
     @PluginMethod
@@ -329,11 +358,17 @@ public class BackupPlugin extends Plugin {
     }
 
     private JSONObject optionsOf(PluginCall call) {
+        if (call == null) return new JSONObject();
         try {
             JSONObject options = call.getObject("options");
-            return options == null ? new JSONObject() : options;
+            if (options != null && options.length() > 0) {
+                return options;
+            }
+            JSObject data = call.getData();
+            return data != null ? data : new JSONObject();
         } catch (Exception e) {
-            return new JSONObject();
+            JSObject data = call.getData();
+            return data != null ? data : new JSONObject();
         }
     }
 }

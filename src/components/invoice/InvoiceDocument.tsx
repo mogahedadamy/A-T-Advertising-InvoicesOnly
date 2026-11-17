@@ -1,6 +1,8 @@
-import { TA_LOGO_GREEN_BASE64 } from "@/assets/invoiceImagesBase64";
+import { TA_LOGO_GREEN_BASE64, TA_STAMP_BASE64 } from "@/assets/invoiceImagesBase64";
 import { formatNumber } from "@/lib/printCalculator";
 import { CLIENT_TYPES, invoiceTotal, type Invoice, type InvoiceLine } from "@/lib/invoice/types";
+import { getCompanyEmail } from "@/lib/settings/companyProfileStore";
+import { formatBiDiDimensions } from "@/lib/bidiUtils";
 
 // مقاسات ورقة A5 عرضية قياسية بالنسبة 1.414 (210mm × 148mm)
 export const INVOICE_WIDTH = 760; // px
@@ -34,6 +36,7 @@ function InvoiceSheet({
   startIndex: number;
 }) {
   const { meta } = invoice;
+  const currency = invoice.currency || meta.currency || "SDG";
   const grandTotal = invoiceTotal(invoice.lines);
   const pageTotal = invoiceTotal(pageLines);
 
@@ -63,6 +66,9 @@ function InvoiceSheet({
           <div className="inv-brand-text">
             <div className="inv-brand-ar">T.A للدعاية والإعلان</div>
             <div className="inv-brand-en">T.A ADVERTISING SOLUTION</div>
+            <div className="text-[9px] font-mono text-muted-foreground/80 leading-none pt-0.5" dir="ltr">
+              {getCompanyEmail()}
+            </div>
           </div>
         </div>
 
@@ -140,7 +146,11 @@ function InvoiceSheet({
                 </td>
                 <td className="inv-num font-black">{l.qty}</td>
                 <td className="font-bold">{l.material}</td>
-                <td className="inv-desc">{l.description || "بند طباعة"}</td>
+                <td className="inv-desc">
+                  <bdi dir="auto" className="block truncate w-full" style={{ unicodeBidi: "isolate" }}>
+                    {formatBiDiDimensions(l.description || "بند طباعة")}
+                  </bdi>
+                </td>
                 <td className="inv-num font-bold">{formatNumber(l.unitPrice)}</td>
                 <td className="inv-num inv-strong font-black text-foreground">{formatNumber(l.total)}</td>
               </tr>
@@ -175,7 +185,7 @@ function InvoiceSheet({
               </td>
               <td className="inv-total-val text-center">
                 {formatNumber(totalPages > 1 && pageNumber < totalPages ? pageTotal : grandTotal)}{" "}
-                <span className="text-xs font-normal">ج.س</span>
+                <span className="text-xs font-bold font-mono mr-1">{currency}</span>
               </td>
             </tr>
           </tfoot>
@@ -199,9 +209,16 @@ function InvoiceSheet({
           </div>
         </div>
 
-        <p className="inv-note">
-          ملحوظة: البضاعة التي لا تُستلم خلال 15 يوماً من تاريخ الطباعة المطبعة غير مسؤولة عنها. هذه الفاتورة سند رسمي ومعتمد.
-        </p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="inv-note flex-1">
+            ملحوظة: البضاعة التي لا تُستلم خلال 15 يوماً من تاريخ الطباعة المطبعة غير مسؤولة عنها. هذه الفاتورة سند رسمي ومعتمد.
+          </p>
+          <img
+            src={TA_STAMP_BASE64}
+            alt="Official Stamp"
+            className="h-[62px] w-auto object-contain select-none opacity-90 ml-2"
+          />
+        </div>
       </footer>
     </div>
   );

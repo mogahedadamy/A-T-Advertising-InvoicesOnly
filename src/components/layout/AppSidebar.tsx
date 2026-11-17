@@ -1,5 +1,10 @@
-import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
+  Link,
+  useMatchRoute,
+  useLocation,
+} from "@tanstack/react-router";
+import {
+  Home,
   ClipboardList,
   Receipt,
   Settings as SettingsIcon,
@@ -10,7 +15,13 @@ import {
   Lock,
   BarChart3,
   ShieldCheck,
+  FolderKanban,
+  Users,
+  Truck,
+  Wallet,
+  BookOpen,
 } from "lucide-react";
+import { triggerOpenTour } from "@/lib/appTourStore";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +32,8 @@ import {
 import { useInvoices } from "@/lib/invoicesStore";
 import { useCustomInvoices } from "@/lib/billing/store";
 import { useTheme } from "@/hooks/useTheme";
-import { playTapSound } from "@/lib/soundEffects";
+
+import { SidebarTrialCountdown } from "@/components/common/TrialCountdownBadge";
 
 interface NavItem {
   to: string;
@@ -34,14 +46,16 @@ interface NavItem {
 
 // بيانات المطور والإصدار
 export const APP_VERSION_INFO = {
-  version: "v1.3.1-INVOICE",
+  version: "v1.3.4-INVOICE",
   edition: "النظام الشامل لإدارة وإصدار الفواتير",
-  developer: "من تطوير مجاهد ادم - 2027",
-  copyright: "جميع الحقوق محفوظة © 2027",
+  developer: "من تطوير MA Smart Solutions",
+  copyright: "جميع الحقوق محفوظة © 2026-2027",
 };
 
 export function AppSidebar() {
   const matchRoute = useMatchRoute();
+  const location = useLocation();
+  const pathname = location.pathname;
   const { setOpenMobile, setOpen, isMobile } = useSidebar();
   const { theme, toggle } = useTheme();
 
@@ -56,10 +70,52 @@ export function AppSidebar() {
   const NAV_ITEMS: NavItem[] = [
     {
       to: "/",
+      label: "الصفحة الرئيسية",
+      subtitle: "الرئيسية وأقسام الوكالة الإعلانية",
+      icon: Home,
+      gradient: "from-[#0D4A39] to-[#168063] shadow-[#168063]/30",
+    },
+    {
+      to: "/billing",
       label: "مركز إصدار الفواتير",
-      subtitle: "إصدار فواتير المبيعات، المشتريات، والمبدئية الرسمية",
+      subtitle: "إصدار فواتير المبيعات، المشتريات، وعروض الأسعار A4",
       icon: Receipt,
       gradient: "from-[#168063] to-[#22A07E] shadow-[#168063]/30",
+    },
+    {
+      to: "/projects",
+      label: "المشاريع",
+      subtitle: "المشروع كمحور: الفواتير، التكاليف، والملخص المالي",
+      icon: FolderKanban,
+      gradient: "from-[#168063] to-[#0F766E] shadow-emerald-500/20",
+    },
+    {
+      to: "/customers",
+      label: "العملاء",
+      subtitle: "سجل العملاء وكشوف حساباتهم",
+      icon: Users,
+      gradient: "from-[#0E7490] to-[#0891B2] shadow-cyan-500/20",
+    },
+    {
+      to: "/suppliers",
+      label: "الموردون",
+      subtitle: "الموردون ومقدّمو الخدمات الإعلانية وأرصدتهم",
+      icon: Truck,
+      gradient: "from-[#B45309] to-[#D97706] shadow-amber-500/20",
+    },
+    {
+      to: "/finance",
+      label: "المالية",
+      subtitle: "التحصيلات والمدفوعات والحسابات والذمم",
+      icon: Wallet,
+      gradient: "from-[#047857] to-[#10B981] shadow-emerald-500/20",
+    },
+    {
+      to: "/expenses",
+      label: "المصروفات",
+      subtitle: "تكاليف مباشرة للمشاريع ومصروفات تشغيلية",
+      icon: Receipt,
+      gradient: "from-[#BE123C] to-[#E11D48] shadow-rose-500/20",
     },
     {
       to: "/orders",
@@ -86,7 +142,6 @@ export function AppSidebar() {
   ];
 
   const handleClose = () => {
-    playTapSound();
     if (isMobile) {
       setOpenMobile(false);
     } else {
@@ -95,7 +150,6 @@ export function AppSidebar() {
   };
 
   const handleNavClick = () => {
-    playTapSound();
     if (isMobile) {
       setOpenMobile(false);
     } else if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -104,9 +158,9 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar side="right" collapsible="offcanvas" className="border-l border-border/80 bg-background/98 backdrop-blur-2xl">
+    <Sidebar side="right" collapsible="offcanvas" className="border-l border-border/80 bg-background/98">
       {/* 1. رأس القائمة: الشعار والعنوان وزر الإغلاق */}
-      <SidebarHeader className="border-b border-border/60 px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-3.5 bg-gradient-to-b from-card/90 to-card/40 backdrop-blur-md" dir="rtl">
+      <SidebarHeader className="border-b border-border/60 px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-3.5 bg-gradient-to-b from-card/90 to-card/40" dir="rtl">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Link
@@ -131,7 +185,7 @@ export function AppSidebar() {
                 A-T-Advertising
               </span>
               <span className="text-[10.5px] font-bold text-muted-foreground truncate">
-                نظام الحاسبة وإدارة الفواتير
+                نظام إدارة وإصدار الفواتير
               </span>
             </div>
           </div>
@@ -149,6 +203,9 @@ export function AppSidebar() {
 
       {/* 2. المحتوى: اختصارات أدوات النسخة الحالية فقط */}
       <SidebarContent className="px-4 py-3.5 space-y-2 overflow-y-auto flex-1 overscroll-contain select-none" dir="rtl">
+        {/* عداد الفترة التجريبية داخل الشريط الجانبي */}
+        <SidebarTrialCountdown />
+
         <div className="space-y-2">
           {NAV_ITEMS.map(({ to, label, subtitle, icon: Icon, gradient, badge }) => {
             const active = !!matchRoute({ to, fuzzy: to !== "/" });
@@ -157,11 +214,10 @@ export function AppSidebar() {
                 key={to}
                 to={to}
                 onClick={handleNavClick}
-                className={`group flex items-center justify-between gap-3 rounded-2xl p-3 transition-all border touch-manipulation ${
-                  active
+                className={`group flex items-center justify-between gap-3 rounded-2xl p-3 transition-all border touch-manipulation ${active
                     ? "bg-primary/10 border-primary/50 shadow-xs shadow-primary/10 ring-1 ring-primary/30"
                     : "bg-card/70 border-border/70 hover:bg-card hover:border-primary/40 active:scale-[0.98]"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div
@@ -172,9 +228,8 @@ export function AppSidebar() {
 
                   <div className="flex flex-col text-right min-w-0">
                     <span
-                      className={`truncate text-xs font-black tracking-tight ${
-                        active ? "text-primary" : "text-foreground"
-                      }`}
+                      className={`truncate text-xs font-black tracking-tight ${active ? "text-primary" : "text-foreground"
+                        }`}
                     >
                       {label}
                     </span>
@@ -191,9 +246,8 @@ export function AppSidebar() {
                     </span>
                   )}
                   <ChevronLeft
-                    className={`h-4 w-4 transition-transform group-hover:-translate-x-0.5 ${
-                      active ? "text-primary font-bold" : "text-muted-foreground/60"
-                    }`}
+                    className={`h-4 w-4 transition-transform group-hover:-translate-x-0.5 ${active ? "text-primary font-bold" : "text-muted-foreground/60"
+                      }`}
                   />
                 </div>
               </Link>
@@ -201,13 +255,43 @@ export function AppSidebar() {
           })}
         </div>
 
-        {/* الإجراءات السريعة (المظهر والقفل) */}
+        {/* الإجراءات السريعة (المساعد، المظهر، والقفل) */}
         <div className="pt-3 border-t border-border/60">
+          <button
+            type="button"
+            onClick={() => {
+              handleClose();
+              const sectionId = pathname.startsWith("/billing")
+                ? "billing"
+                : pathname.startsWith("/projects")
+                ? "projects"
+                : pathname.startsWith("/orders")
+                ? "orders"
+                : pathname.startsWith("/reports")
+                ? "reports"
+                : pathname.startsWith("/finance")
+                ? "finance"
+                : pathname.startsWith("/customers")
+                ? "customers"
+                : pathname.startsWith("/suppliers")
+                ? "suppliers"
+                : pathname.startsWith("/expenses")
+                ? "expenses"
+                : pathname.startsWith("/settings")
+                ? "settings"
+                : "home";
+              triggerOpenTour({ sectionId, mode: "context" });
+            }}
+            className="w-full flex h-10 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 px-3 text-xs font-black active:scale-[0.98] transition-all shadow-2xs cursor-pointer touch-manipulation mb-2"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>دليل الاستخدام والجولة التعليمية</span>
+          </button>
+
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
-                playTapSound();
                 toggle();
               }}
               className="flex h-9.5 items-center justify-center gap-2 rounded-xl border border-border/70 bg-secondary/60 px-2 text-[11px] font-bold text-foreground hover:bg-card active:scale-95 transition-all shadow-2xs cursor-pointer touch-manipulation"
@@ -228,7 +312,6 @@ export function AppSidebar() {
             <button
               type="button"
               onClick={() => {
-                playTapSound();
                 setOpenMobile(false);
                 window.dispatchEvent(new Event("app-lock"));
               }}
@@ -242,7 +325,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* 3. التذييل: المطور وتفاصيله فقط */}
-      <SidebarFooter className="border-t border-border/60 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] bg-card/80 backdrop-blur-md shrink-0" dir="rtl">
+      <SidebarFooter className="border-t border-border/60 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] bg-card/95 shrink-0" dir="rtl">
         <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1.5 text-center">
           <div className="flex items-center justify-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5 text-primary" />

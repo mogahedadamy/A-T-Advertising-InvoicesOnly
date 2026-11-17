@@ -111,9 +111,9 @@ if (rootEl) {
     );
   };
 
-  // انتظار تهيئة SQLite (بحد أقصى 1.5 ثانية لضمان سرعة الإقلاع)
+  // انتظار تهيئة SQLite وتحميل الإعدادات قبل عرض الواجهة لتجنّب شاشة الترحيب الوهمية
   Promise.race([
     storageInitPromise,
-    new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    new Promise<void>((resolve) => setTimeout(resolve, 4000)),
   ]).finally(renderApp);
 }

@@ -15,6 +15,8 @@ import {
   invoiceTotal,
 } from "@/lib/invoice/types";
 import { formatNumber } from "@/lib/printCalculator";
+import { CurrencySelector } from "@/components/currency/CurrencySelector";
+import type { AppCurrency } from "@/lib/currency/types";
 
 interface Props {
   meta: InvoiceMeta;
@@ -70,6 +72,16 @@ export function InvoiceForm({ meta, onChange, lines }: Props) {
             onChange={(e) => set("date", e.target.value)}
           />
         </label>
+      </div>
+
+      {/* Row 1.5: Currency selector */}
+      <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/80 p-2 px-3 shadow-2xs">
+        <span className="text-[11px] font-bold text-muted-foreground">عملة الحساب والفاتورة:</span>
+        <CurrencySelector
+          value={meta.currency || "SDG"}
+          onChange={(c) => set("currency", c)}
+          locale="ar"
+        />
       </div>
 
       {/* Row 2: Customer Name */}

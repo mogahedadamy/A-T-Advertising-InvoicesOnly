@@ -19,21 +19,38 @@ import { saveBackupSettings } from "@/lib/backup/settingsStore";
 import { formatBytes, formatDateTime } from "@/components/settings/BackupManagerCard";
 import { playSuccessSound, playTapSound } from "@/lib/soundEffects";
 
+function isPermanentlyDismissed(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    if (localStorage.getItem("ta_recovery_gate_dismissed") === "true") return true;
+    // التطبيق تم فتحه واستخدامه مسبقاً بنجاح — لا تزعج المستخدم بشاشة الاستعادة عند كل تشغيل
+    if (localStorage.getItem("ta_unlocked_at")) return true;
+    if (sessionStorage.getItem("future_calc_unlocked") === "true") return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 /**
  * First-launch recovery discovery.
  *
- * Runs before the password lock (the PIN itself may live in the backup being
- * restored — asking for it before restoring would lock the user out of their
- * own data). It never restores automatically: the user sees what was found
- * (invoice count, date, size, integrity), then explicitly confirms.
+ * Runs before the password lock on first install (the PIN itself may live in the backup being
+ * restored). Once dismissed or once the app has been used, it is permanently bypassed
+ * so it never interrupts the user on subsequent launches. Full restore is always
+ * accessible at any time inside Settings > Backup Center.
  */
 export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode }) {
-  const [checked, setChecked] = useState(!Capacitor.isNativePlatform() || !isBackupEngineAvailable());
+  const isAlreadyDismissed = isPermanentlyDismissed();
+  const [checked, setChecked] = useState(
+    isAlreadyDismissed || !Capacitor.isNativePlatform() || !isBackupEngineAvailable()
+  );
   const [discovery, setDiscovery] = useState<DiscoveryState | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(isAlreadyDismissed);
   const [busy, setBusy] = useState<"restore" | "folder" | null>(null);
 
   useEffect(() => {
+    if (isAlreadyDismissed) return;
     let cancelled = false;
     if (checked) return;
     (async () => {
@@ -50,7 +67,7 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
     return () => {
       cancelled = true;
     };
-  }, [checked]);
+  }, [checked, isAlreadyDismissed]);
 
   if (!checked) {
     return (
@@ -67,6 +84,24 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
   const needsReconnect = Boolean(discovery?.needsFolderReconnect);
   const showPrompt = !dismissed && (Boolean(newest && discovery?.decision?.shouldPrompt) || needsReconnect);
 
+  const handleDismiss = async () => {
+    setDismissed(true);
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ta_recovery_gate_dismissed", "true");
+        if (newest?.manifest?.backupId) {
+          localStorage.setItem("ta_recovery_dismissed_backup", newest.manifest.backupId);
+        }
+      }
+      await saveBackupSettings({
+        dismissedRecoveryBackupId: newest?.manifest?.backupId || "all",
+        onboardingCompletedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn("[Recovery] dismissal persistence failed:", err);
+    }
+  };
+
   const handleRestore = async () => {
     if (!newest) return;
     playTapSound();
@@ -76,6 +111,9 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
       if (result.ok) {
         playSuccessSound();
         toast.success("تمت استعادة بياناتك السابقة بنجاح.");
+        if (typeof window !== "undefined") {
+          localStorage.setItem("ta_recovery_gate_dismissed", "true");
+        }
         await saveBackupSettings({ onboardingCompletedAt: new Date().toISOString() });
         setDismissed(true);
         window.location.hash = "#/";
@@ -129,7 +167,7 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
           <button
             type="button"
             aria-label="تخطي"
-            onClick={() => setDismissed(true)}
+            onClick={handleDismiss}
             className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
           >
             <X className="h-4 w-4" />
@@ -210,7 +248,7 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setDismissed(true)}
+              onClick={handleDismiss}
               className="h-9 w-full rounded-xl text-[11px] font-bold text-muted-foreground"
             >
               البدء كتثبيت جديد بدون استعادة

@@ -49,15 +49,27 @@ export async function getAllOrders(): Promise<PrintOrder[]> {
   const db = await getDb();
   const res = await db.query("SELECT * FROM orders ORDER BY created_at DESC");
   const rows = res.values || [];
-  const orders: PrintOrder[] = [];
-  for (const row of rows) {
-    const itemsRes = await db.query(
-      "SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order ASC",
-      [row.id]
-    );
-    orders.push(rowToOrder(row, itemsRes.values || []));
+  if (rows.length === 0) return [];
+
+  // Batch-fetch all items in a single query instead of N+1 round trips
+  const itemsRes = await db.query(
+    `SELECT i.* FROM order_items i
+       JOIN orders o ON o.id = i.order_id
+      ORDER BY i.order_id, i.sort_order ASC`
+  );
+
+  const itemsByOrder = new Map<string, any[]>();
+  for (const item of itemsRes.values || []) {
+    const oId = String(item.order_id);
+    let list = itemsByOrder.get(oId);
+    if (!list) {
+      list = [];
+      itemsByOrder.set(oId, list);
+    }
+    list.push(item);
   }
-  return orders;
+
+  return rows.map((row) => rowToOrder(row, itemsByOrder.get(String(row.id)) || []));
 }
 
 export async function upsertOrder(order: PrintOrder): Promise<void> {

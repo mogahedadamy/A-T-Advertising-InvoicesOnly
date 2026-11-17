@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
 import { PlusCircle } from "lucide-react";
 import type { InvoiceRecord } from "@/lib/invoicesStore";
@@ -17,6 +17,7 @@ import { InvoicesModalsManager } from "./InvoicesModalsManager";
  */
 export function InvoicesPageContent() {
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [filterType, setFilterType] = useState("all");
 
   // الحالات النشطة للنوافذ المنبثقة
@@ -26,8 +27,15 @@ export function InvoicesPageContent() {
   const [previewProformaInvoice, setPreviewProformaInvoice] = useState<ProformaInvoice | null>(null);
   const [editingProformaInvoice, setEditingProformaInvoice] = useState<ProformaInvoice | null>(null);
 
-  // استخدام الخطاف الموحد لإدارة البيانات
-  const { filteredRecords, stats } = useUnifiedInvoices(search, filterType);
+  // استخدام الخطاف الموحد لإدارة البيانات مع معالجة غير معطلة لواجهة الإدخال
+  const { filteredRecords, stats } = useUnifiedInvoices(deferredSearch, filterType);
+
+  // تقطيع القائمة المعروضة تدريجياً لضمان خفة الـ DOM وسرعة الاستجابة اللحظية
+  const [visibleCount, setVisibleCount] = useState(40);
+
+  useEffect(() => {
+    setVisibleCount(40);
+  }, [deferredSearch, filterType]);
 
   return (
     <div className="mx-auto max-w-7xl p-3 space-y-3" dir="rtl">
@@ -36,7 +44,7 @@ export function InvoicesPageContent() {
         <div>
           <h2 className="text-base font-black text-foreground">سجل وأرشيف الفواتير والمطالبات</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            سجل موحد ودائم مرتبط بالحاسبة، الفواتير، وعروض الأسعار ({stats.totalCount} فاتورة محفوظة)
+            سجل موحد ودائم لكافة فواتير المبيعات، المشتريات، وعروض الأسعار ({stats.totalCount} فاتورة محفوظة)
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -62,12 +70,12 @@ export function InvoicesPageContent() {
           setFilterType={setFilterType}
         />
 
-        {/* شبكة بطاقات الفواتير */}
+        {/* شبكة بطاقات الفواتير مع التقطيع الذكي الخفيف */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
           {filteredRecords.length === 0 ? (
             <InvoicesEmptyState />
           ) : (
-            filteredRecords.map((item) => (
+            filteredRecords.slice(0, visibleCount).map((item) => (
               <InvoiceRecordCard
                 key={`${item.kind}-${item.id}`}
                 item={item}
@@ -80,6 +88,19 @@ export function InvoicesPageContent() {
             ))
           )}
         </div>
+
+        {/* زر عرض المزيد إذا كان هناك سجلات إضافية في الأرشيف */}
+        {filteredRecords.length > visibleCount && (
+          <div className="flex flex-col items-center justify-center pt-2 pb-1">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => prev + 40)}
+              className="px-4 py-2 rounded-xl text-xs font-black bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 transition-all cursor-pointer active:scale-95"
+            >
+              عرض المزيد من الفواتير ({filteredRecords.length - visibleCount} فاتورة إضافية)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 4. مدير النوافذ المنبثقة والمعاينة والطباعة */}

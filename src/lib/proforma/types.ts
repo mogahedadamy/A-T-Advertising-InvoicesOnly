@@ -22,6 +22,7 @@ export interface ProformaMeta {
   validityDays?: number;
   accountName?: string;
   language?: "ar" | "en" | "auto";
+  currency?: "SDG" | "USD" | "SAR" | "EGP";
 }
 
 export interface ProformaInvoice {
@@ -32,8 +33,11 @@ export interface ProformaInvoice {
   totalQty: number;
   totalAmount: number;
   totalInWords: string;
+  currency?: "SDG" | "USD" | "SAR" | "EGP";
   status: "draft" | "sent" | "approved" | "converted";
   convertedOrderId?: string;
+  /** المشروع المرتبط — علاقة حقيقية تُغذّي مساحة عمل المشروع (PRD §4.2) */
+  projectId?: string;
   createdAt: string;
   updatedAt: string;
 }

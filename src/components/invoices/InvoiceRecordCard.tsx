@@ -54,8 +54,8 @@ export const InvoiceRecordCard: React.FC<InvoiceRecordCardProps> = ({
       {/* رأس البطاقة: رقم الفاتورة ونوع السجل */}
       <div className="flex items-center justify-between border-b border-border/50 pb-2">
         <div className="flex items-center gap-2">
-          <span className="font-mono font-black text-foreground text-xs">
-            #{item.serial}
+          <span className="font-mono font-black text-foreground text-xs" dir="ltr">
+            {/^(INV|PINV|PRJ|RCV|PAY)-/.test(item.serial) ? item.serial : `#${item.serial}`}
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-black border ${item.badgeColor}`}
@@ -85,7 +85,7 @@ export const InvoiceRecordCard: React.FC<InvoiceRecordCardProps> = ({
           <p className="font-black text-primary text-sm leading-tight">
             {formatNumber(item.total)}
           </p>
-          <p className="text-[9px] font-bold text-muted-foreground">ج.س</p>
+          <p className="text-[9px] font-extrabold text-muted-foreground uppercase">{item.currency || "SDG"}</p>
         </div>
       </div>
 

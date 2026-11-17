@@ -128,8 +128,13 @@ export function normalizeLegacyBackup(doc: unknown, nowIso: string): LegacyNorma
       signatoryTitle: meta.signatoryTitle ?? null,
       notes: meta.notes ?? null,
       language: str(meta.language, "ar"),
+      currency: str(inv.currency ?? meta.currency, "SDG"),
       totalAmount: num(inv.totalAmount),
       totalInWords: inv.totalInWords ?? null,
+      reference: meta.reference ?? inv.reference ?? null,
+      projectId: meta.projectId ?? inv.projectId ?? null,
+      customerId: meta.customerId ?? inv.customerId ?? null,
+      supplierId: meta.supplierId ?? inv.supplierId ?? null,
       createdAt: str(inv.createdAt, nowIso),
       updatedAt: str(inv.updatedAt, nowIso),
     };
@@ -152,12 +157,14 @@ export function normalizeLegacyBackup(doc: unknown, nowIso: string): LegacyNorma
       validityDays: num(meta.validityDays, 7),
       accountName: meta.accountName ?? null,
       language: str(meta.language, "ar"),
+      currency: str(p.currency ?? meta.currency, "SDG"),
       status: str(p.status, "draft"),
       convertedOrderId: p.convertedOrderId ?? null,
       totalArea: num(p.totalArea),
       totalQty: num(p.totalQty),
       totalAmount: num(p.totalAmount),
       totalInWords: str(p.totalInWords),
+      projectId: meta.projectId ?? p.projectId ?? null,
       createdAt: str(p.createdAt, nowIso),
       updatedAt: str(p.updatedAt, nowIso),
     };
@@ -178,6 +185,7 @@ export function normalizeLegacyBackup(doc: unknown, nowIso: string): LegacyNorma
       total: num(inv.total),
       paidAmount: num(inv.paidAmount),
       paymentStatus: str(inv.paymentStatus, "paid"),
+      currency: str(inv.currency, "SDG"),
       createdAt: str(inv.createdAt, nowIso),
     };
   });

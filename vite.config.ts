@@ -19,6 +19,19 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("html2canvas") || id.includes("jspdf")) return "vendor-pdf";
+          if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+          if (id.includes("@tanstack")) return "vendor-tanstack";
+          if (id.includes("@radix-ui") || id.includes("lucide-react")) return "vendor-ui";
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     host: true,

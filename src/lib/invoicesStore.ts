@@ -15,10 +15,12 @@ export interface InvoiceRecord {
   total: number;
   paidAmount: number;
   paymentStatus: "paid" | "partial" | "unpaid";
+  currency?: "SDG" | "USD" | "SAR" | "EGP";
   createdAt: string;
 }
 
 import { Capacitor } from "@capacitor/core";
+import { toast } from "sonner";
 import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
 import {
   upsertPrintInvoice as repoUpsertPrintInvoice,
@@ -41,17 +43,18 @@ function sanitizeInvoice(raw: any): InvoiceRecord {
     clientTypes: Array.isArray(raw.clientTypes) ? raw.clientTypes : [],
     lines: Array.isArray(raw.lines)
       ? raw.lines.map((l: any) => ({
-          description: String(l.description || "بند طباعة"),
-          width: Number(l.width) || 0,
-          height: Number(l.height) || 0,
-          qty: Number(l.qty) || 1,
-          unitPrice: Number(l.unitPrice) || 0,
-          total: Number(l.total) || 0,
-        }))
+        description: String(l.description || "بند طباعة"),
+        width: Number(l.width) || 0,
+        height: Number(l.height) || 0,
+        qty: Number(l.qty) || 1,
+        unitPrice: Number(l.unitPrice) || 0,
+        total: Number(l.total) || 0,
+      }))
       : [],
     total: Number(raw.total) || 0,
     paidAmount: Number(raw.paidAmount) || 0,
     paymentStatus: raw.paymentStatus || "paid",
+    currency: (raw.currency as any) || "SDG",
     createdAt: raw.createdAt || new Date().toISOString(),
   };
 }
@@ -62,7 +65,7 @@ function loadInvoicesFromStorage(): InvoiceRecord[] {
   const seen = new Set<string>();
   const deduped: InvoiceRecord[] = [];
   for (const inv of safe) {
-    const key = inv.serial || inv.id;
+    const key = inv.id;
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(inv);
@@ -103,9 +106,12 @@ export function useInvoices() {
 
 export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecord {
   const total = invoiceTotal(invoice.lines);
-  const paid = paidAmount !== undefined ? paidAmount : total;
+  // إنشاء الفاتورة لا يعني استلام المال (PRD §5.1، §12.1).
+  // كان الافتراض الصامت هنا `?? total` فيُسجَّل المبلغ محصّلاً بلا أي دفعة؛
+  // الآن لا يُحتسب مدفوعاً إلا بمبلغ صريح يمرّره من له علم بالدفعة.
+  const paid = paidAmount !== undefined ? Math.max(0, Number(paidAmount) || 0) : 0;
   const paymentStatus: "paid" | "partial" | "unpaid" =
-    paid >= total ? "paid" : paid > 0 ? "partial" : "unpaid";
+    total > 0 && paid >= total ? "paid" : paid > 0 ? "partial" : "unpaid";
 
   const existingIdx = invoicesSnapshot.findIndex((x) => x.serial === invoice.meta.serial);
   const record: InvoiceRecord = {
@@ -121,9 +127,11 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
     total,
     paidAmount: paid,
     paymentStatus,
+    currency: invoice.currency || invoice.meta.currency || "SDG",
     createdAt: existingIdx >= 0 ? invoicesSnapshot[existingIdx].createdAt : new Date().toISOString(),
   };
 
+  const previousSnapshot = invoicesSnapshot;
   // Replace if exists with same serial or prepend
   if (existingIdx >= 0) {
     const next = [...invoicesSnapshot];
@@ -134,19 +142,26 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
   }
   notify();
   if (Capacitor.isNativePlatform()) {
-    repoUpsertPrintInvoice(record).catch((err) =>
-      console.warn("[InvoicesStore] SQLite save failed:", err)
-    );
+    repoUpsertPrintInvoice(record).catch((err) => {
+      console.warn("[InvoicesStore] SQLite save failed:", err);
+      invoicesSnapshot = previousSnapshot;
+      notify();
+      toast.error("تعذّر حفظ الفاتورة في قاعدة البيانات");
+    });
   }
   return record;
 }
 
 export function deleteInvoice(id: string): void {
+  const previousSnapshot = invoicesSnapshot;
   invoicesSnapshot = invoicesSnapshot.filter((inv) => inv.id !== id);
   notify();
   if (Capacitor.isNativePlatform()) {
-    repoDeletePrintInvoice(id).catch((err) =>
-      console.warn("[InvoicesStore] SQLite delete failed:", err)
-    );
+    repoDeletePrintInvoice(id).catch((err) => {
+      console.warn("[InvoicesStore] SQLite delete failed:", err);
+      invoicesSnapshot = previousSnapshot;
+      notify();
+      toast.error("تعذّر حذف الفاتورة من قاعدة البيانات");
+    });
   }
 }

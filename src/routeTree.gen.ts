@@ -11,15 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BillingRouteImport } from './routes/billing'
-import { Route as CalculatorRouteImport } from './routes/calculator'
 import { Route as CustomersRouteImport } from './routes/customers'
-import { Route as InvoicesRouteImport } from './routes/invoices'
-import { Route as MaterialsRouteImport } from './routes/materials'
+import { Route as ExpensesRouteImport } from './routes/expenses'
+import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as OrdersRouteImport } from './routes/orders'
-import { Route as ProductionRouteImport } from './routes/production'
-import { Route as ProformaInvoicesRouteImport } from './routes/proforma-invoices'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SuppliersRouteImport } from './routes/suppliers'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,24 +30,19 @@ const BillingRoute = BillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CalculatorRoute = CalculatorRouteImport.update({
-  id: '/calculator',
-  path: '/calculator',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CustomersRoute = CustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InvoicesRoute = InvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
+const ExpensesRoute = ExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MaterialsRoute = MaterialsRouteImport.update({
-  id: '/materials',
-  path: '/materials',
+const FinanceRoute = FinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrdersRoute = OrdersRouteImport.update({
@@ -56,19 +50,19 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProductionRoute = ProductionRouteImport.update({
-  id: '/production',
-  path: '/production',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProformaInvoicesRoute = ProformaInvoicesRouteImport.update({
-  id: '/proforma-invoices',
-  path: '/proforma-invoices',
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuppliersRoute = SuppliersRouteImport.update({
+  id: '/suppliers',
+  path: '/suppliers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -80,97 +74,90 @@ const SettingsRoute = SettingsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
-  '/calculator': typeof CalculatorRoute
   '/customers': typeof CustomersRoute
-  '/invoices': typeof InvoicesRoute
-  '/materials': typeof MaterialsRoute
+  '/expenses': typeof ExpensesRoute
+  '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/production': typeof ProductionRoute
-  '/proforma-invoices': typeof ProformaInvoicesRoute
+  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/suppliers': typeof SuppliersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
-  '/calculator': typeof CalculatorRoute
   '/customers': typeof CustomersRoute
-  '/invoices': typeof InvoicesRoute
-  '/materials': typeof MaterialsRoute
+  '/expenses': typeof ExpensesRoute
+  '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/production': typeof ProductionRoute
-  '/proforma-invoices': typeof ProformaInvoicesRoute
+  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/suppliers': typeof SuppliersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
-  '/calculator': typeof CalculatorRoute
   '/customers': typeof CustomersRoute
-  '/invoices': typeof InvoicesRoute
-  '/materials': typeof MaterialsRoute
+  '/expenses': typeof ExpensesRoute
+  '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/production': typeof ProductionRoute
-  '/proforma-invoices': typeof ProformaInvoicesRoute
+  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/suppliers': typeof SuppliersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/billing'
-    | '/calculator'
     | '/customers'
-    | '/invoices'
-    | '/materials'
+    | '/expenses'
+    | '/finance'
     | '/orders'
-    | '/production'
-    | '/proforma-invoices'
+    | '/projects'
     | '/reports'
     | '/settings'
+    | '/suppliers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/billing'
-    | '/calculator'
     | '/customers'
-    | '/invoices'
-    | '/materials'
+    | '/expenses'
+    | '/finance'
     | '/orders'
-    | '/production'
-    | '/proforma-invoices'
+    | '/projects'
     | '/reports'
     | '/settings'
+    | '/suppliers'
   id:
     | '__root__'
     | '/'
     | '/billing'
-    | '/calculator'
     | '/customers'
-    | '/invoices'
-    | '/materials'
+    | '/expenses'
+    | '/finance'
     | '/orders'
-    | '/production'
-    | '/proforma-invoices'
+    | '/projects'
     | '/reports'
     | '/settings'
+    | '/suppliers'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BillingRoute: typeof BillingRoute
-  CalculatorRoute: typeof CalculatorRoute
   CustomersRoute: typeof CustomersRoute
-  InvoicesRoute: typeof InvoicesRoute
-  MaterialsRoute: typeof MaterialsRoute
+  ExpensesRoute: typeof ExpensesRoute
+  FinanceRoute: typeof FinanceRoute
   OrdersRoute: typeof OrdersRoute
-  ProductionRoute: typeof ProductionRoute
-  ProformaInvoicesRoute: typeof ProformaInvoicesRoute
+  ProjectsRoute: typeof ProjectsRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
+  SuppliersRoute: typeof SuppliersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -189,13 +176,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BillingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/calculator': {
-      id: '/calculator'
-      path: '/calculator'
-      fullPath: '/calculator'
-      preLoaderRoute: typeof CalculatorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/customers': {
       id: '/customers'
       path: '/customers'
@@ -203,18 +183,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/invoices': {
-      id: '/invoices'
-      path: '/invoices'
-      fullPath: '/invoices'
-      preLoaderRoute: typeof InvoicesRouteImport
+    '/expenses': {
+      id: '/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof ExpensesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/materials': {
-      id: '/materials'
-      path: '/materials'
-      fullPath: '/materials'
-      preLoaderRoute: typeof MaterialsRouteImport
+    '/finance': {
+      id: '/finance'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof FinanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders': {
@@ -224,18 +204,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/production': {
-      id: '/production'
-      path: '/production'
-      fullPath: '/production'
-      preLoaderRoute: typeof ProductionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/proforma-invoices': {
-      id: '/proforma-invoices'
-      path: '/proforma-invoices'
-      fullPath: '/proforma-invoices'
-      preLoaderRoute: typeof ProformaInvoicesRouteImport
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -252,21 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/suppliers': {
+      id: '/suppliers'
+      path: '/suppliers'
+      fullPath: '/suppliers'
+      preLoaderRoute: typeof SuppliersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BillingRoute: BillingRoute,
-  CalculatorRoute: CalculatorRoute,
   CustomersRoute: CustomersRoute,
-  InvoicesRoute: InvoicesRoute,
-  MaterialsRoute: MaterialsRoute,
+  ExpensesRoute: ExpensesRoute,
+  FinanceRoute: FinanceRoute,
   OrdersRoute: OrdersRoute,
-  ProductionRoute: ProductionRoute,
-  ProformaInvoicesRoute: ProformaInvoicesRoute,
+  ProjectsRoute: ProjectsRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
+  SuppliersRoute: SuppliersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

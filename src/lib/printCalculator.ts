@@ -189,8 +189,10 @@ export function calculate(input: CalcInput): CalcOutcome {
   };
 }
 
+const integerNumberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
 export const formatNumber = (n: number) =>
-  Math.round(n).toLocaleString("en-US");
+  integerNumberFormatter.format(Math.round(Number(n) || 0));
 
 export const materialLabel = (key: MaterialKey) =>
   MATERIALS.find((m) => m.key === key)?.label ?? key;

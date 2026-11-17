@@ -52,6 +52,7 @@ import {
   deleteOrder as repoDeleteOrder,
   updateOrderStatus as repoUpdateOrderStatus,
 } from "./repositories/OrderRepository";
+import { toast } from "sonner";
 
 const STORAGE_KEY = "future_print_orders_v2";
 
@@ -127,6 +128,7 @@ export function useOrders() {
 }
 
 export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintOrder {
+  const previousSnapshot = ordersSnapshot;
   const order: PrintOrder = {
     ...newOrder,
     id: `ord-${Date.now()}`,
@@ -135,30 +137,41 @@ export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintO
   ordersSnapshot = [order, ...ordersSnapshot];
   notify();
   if (Capacitor.isNativePlatform()) {
-    repoUpsertOrder(order).catch((err) =>
-      console.warn("[OrdersStore] SQLite add failed:", err)
-    );
+    repoUpsertOrder(order).catch((err) => {
+      console.warn("[OrdersStore] SQLite add failed:", err);
+      ordersSnapshot = previousSnapshot;
+      notify();
+      toast.error("تعذّر حفظ الطلب في قاعدة البيانات");
+    });
   }
   return order;
 }
 
 export function updateOrderStatus(orderId: string, status: OrderStatus) {
+  const previousSnapshot = ordersSnapshot;
   ordersSnapshot = ordersSnapshot.map((o) => (o.id === orderId ? { ...o, status } : o));
   notify();
   if (Capacitor.isNativePlatform()) {
-    repoUpdateOrderStatus(orderId, status).catch((err) =>
-      console.warn("[OrdersStore] SQLite status update failed:", err)
-    );
+    repoUpdateOrderStatus(orderId, status).catch((err) => {
+      console.warn("[OrdersStore] SQLite status update failed:", err);
+      ordersSnapshot = previousSnapshot;
+      notify();
+      toast.error("تعذّر تحديث حالة الطلب في قاعدة البيانات");
+    });
   }
 }
 
 export function deleteOrder(orderId: string) {
+  const previousSnapshot = ordersSnapshot;
   ordersSnapshot = ordersSnapshot.filter((o) => o.id !== orderId);
   notify();
   if (Capacitor.isNativePlatform()) {
-    repoDeleteOrder(orderId).catch((err) =>
-      console.warn("[OrdersStore] SQLite delete failed:", err)
-    );
+    repoDeleteOrder(orderId).catch((err) => {
+      console.warn("[OrdersStore] SQLite delete failed:", err);
+      ordersSnapshot = previousSnapshot;
+      notify();
+      toast.error("تعذّر حذف الطلب من قاعدة البيانات");
+    });
   }
 }
 

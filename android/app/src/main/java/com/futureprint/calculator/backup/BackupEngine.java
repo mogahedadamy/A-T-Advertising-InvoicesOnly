@@ -43,7 +43,10 @@ public final class BackupEngine {
         "settings",
         "sequences",
         "db_meta",
+        "financial_accounts",
         "customers",
+        "suppliers",
+        "projects",
         "orders",
         "order_items",
         "custom_invoices",
@@ -52,6 +55,15 @@ public final class BackupEngine {
         "proforma_lines",
         "print_invoices",
         "print_invoice_lines",
+        "customer_payments",
+        "customer_payment_allocations",
+        "supplier_payments",
+        "supplier_payment_allocations",
+        "expenses",
+        "expense_payments",
+        "financial_transactions",
+        "document_sequences",
+        "audit_log",
     };
 
     private final Context context;
@@ -131,6 +143,7 @@ public final class BackupEngine {
 
                 // Re-read what actually landed in the folder and verify it.
                 byte[] stored = storage.readFile(fileName);
+                String archiveSha = BackupArchive.sha256Hex(archive);
                 String storedSha = BackupArchive.sha256Hex(stored);
                 JSONObject verifiedManifest;
                 try {
@@ -140,7 +153,7 @@ public final class BackupEngine {
                     throw new BackupException("VERIFY_FAILED", "تعذّر التحقق من النسخة بعد كتابتها: " + e.getMessage());
                 }
                 String expectedDatabaseSha = verifiedManifest.optString("sha256");
-                if (!storedSha.equals(storedSha) || !expectedDatabaseSha.equalsIgnoreCase(payloadSha)) {
+                if (!storedSha.equalsIgnoreCase(archiveSha) || !expectedDatabaseSha.equalsIgnoreCase(payloadSha)) {
                     storage.deleteQuietly(tree, fileName);
                     throw new BackupException("VERIFY_FAILED", "بصمة النسخة المكتوبة لا تطابق المحتوى.");
                 }
@@ -309,10 +322,11 @@ public final class BackupEngine {
                 r.issue = "ملف ليس نسخة من هذا التطبيق.";
                 return r;
             }
-            int schema = manifest.optInt("databaseSchemaVersion", 0);
-            if (schema < 1 || schema > currentSchema) {
+            int rawSchema = manifest.optInt("databaseSchemaVersion", 1);
+            int schema = rawSchema <= 0 ? 1 : rawSchema;
+            if (schema > currentSchema) {
                 r.status = "incompatible";
-                r.issue = "إصدار قاعدة البيانات (" + schema + ") غير متوافق مع التطبيق الحالي (" + currentSchema + ").";
+                r.issue = "إصدار قاعدة البيانات (" + rawSchema + ") غير متوافق مع التطبيق الحالي (" + currentSchema + ").";
                 return r;
             }
             String envelopeDatabaseB64 = envelopeDatabase(parsed, key);
@@ -448,6 +462,8 @@ public final class BackupEngine {
             JSONObject out = new JSONObject();
             try {
                 String fileName = options.optString("fileName", "");
+                if (fileName.isEmpty()) fileName = options.optString("name", "");
+                if (fileName.isEmpty()) fileName = options.optString("file", "");
                 String mode = options.optString("mode", "replace");
                 if (fileName.isEmpty()) return failure(out, "IO_FAILED", "لم يتم تحديد ملف النسخة.");
 
@@ -475,7 +491,10 @@ public final class BackupEngine {
 
                 String[] schemaOut = new String[1];
                 Map<String, Integer> imageCounts = snapshotter.inspectImage(image, schemaOut);
-                int targetSchema = schemaOut[0] == null || schemaOut[0].isEmpty() ? manifest.optInt("databaseSchemaVersion", 1) : Integer.parseInt(schemaOut[0]);
+                int rawTargetSchema = schemaOut[0] == null || schemaOut[0].isEmpty()
+                    ? manifest.optInt("databaseSchemaVersion", 1)
+                    : Integer.parseInt(schemaOut[0]);
+                int targetSchema = rawTargetSchema <= 0 ? 1 : rawTargetSchema;
                 int currentSchema = snapshotter.currentSchemaVersion();
                 if (targetSchema > currentSchema) {
                     return failure(out, "INCOMPATIBLE_BACKUP", "هذه النسخة من إصدار أحدث من التطبيق — يرجى تحديث التطبيق أولاً.");
@@ -622,11 +641,16 @@ public final class BackupEngine {
         if (columns.isEmpty()) return 0;
         if (table.equals("settings") || table.equals("sequences") || table.equals("db_meta")) {
             // Key/value tables: never overwrite the device's own runtime settings
-            // (license, install id, password) — only fill gaps.
-            return mergeKeyValueTable(db, table, columns);
+            // (license, install id, password) — only fill gaps, except numeric
+            // counters in `sequences` where keeping the higher value prevents collisions.
+            int count = mergeKeyValueTable(db, table, columns);
+            if (table.equals("sequences")) {
+                count += mergeHigherSequences(db);
+            }
+            return count;
         }
-        // Every entity table has a TEXT PRIMARY KEY named "id", so INSERT OR
-        // IGNORE skips rows that already exist (by id) and never overwrites them.
+        // Every entity table has a TEXT PRIMARY KEY (id, or composite PK on document_sequences),
+        // so INSERT OR IGNORE skips rows that already exist and never overwrites them.
         StringBuilder cols = new StringBuilder();
         StringBuilder sel = new StringBuilder();
         for (String c : columns) {
@@ -639,9 +663,21 @@ public final class BackupEngine {
         }
         String sql = "INSERT OR IGNORE INTO main.\"" + table + "\" (" + cols + ") SELECT " + sel + " FROM bk.\"" + table + "\" b";
         db.execSQL(sql);
+        int affected = 0;
         try (Cursor c = db.rawQuery("SELECT changes()", null)) {
-            return c.moveToFirst() ? c.getInt(0) : 0;
+            affected = c.moveToFirst() ? c.getInt(0) : 0;
         }
+        if (table.equals("document_sequences")) {
+            db.execSQL(
+                "UPDATE main.\"document_sequences\" " +
+                "SET last_number = (SELECT b.last_number FROM bk.\"document_sequences\" b WHERE b.scope = main.\"document_sequences\".scope AND b.date_key = main.\"document_sequences\".date_key) " +
+                "WHERE EXISTS (SELECT 1 FROM bk.\"document_sequences\" b WHERE b.scope = main.\"document_sequences\".scope AND b.date_key = main.\"document_sequences\".date_key AND b.last_number > main.\"document_sequences\".last_number)"
+            );
+            try (Cursor c = db.rawQuery("SELECT changes()", null)) {
+                if (c.moveToFirst()) affected += c.getInt(0);
+            }
+        }
+        return affected;
     }
 
     private List<String> sharedColumns(SQLiteDatabase db, String table) {
@@ -679,6 +715,29 @@ public final class BackupEngine {
             }
         }
         return inserted;
+    }
+
+    private int mergeHigherSequences(SQLiteDatabase db) {
+        int updated = 0;
+        try (
+            Cursor c = db.rawQuery(
+                "SELECT b.key, b.value FROM bk.\"sequences\" b " +
+                "JOIN main.\"sequences\" m ON m.key = b.key " +
+                "WHERE CAST(b.value AS INTEGER) > CAST(m.value AS INTEGER)",
+                null
+            )
+        ) {
+            while (c.moveToNext()) {
+                db.execSQL(
+                    "UPDATE main.\"sequences\" SET value = ? WHERE key = ?",
+                    new Object[] { c.getString(1), c.getString(0) }
+                );
+                updated++;
+            }
+        } catch (Exception ignored) {
+            // non-numeric values stay untouched
+        }
+        return updated;
     }
 
     private void closeAppConnection() throws InterruptedException {

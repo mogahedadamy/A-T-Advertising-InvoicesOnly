@@ -25,6 +25,12 @@ export interface CustomInvoiceMeta {
   signatoryTitle?: string | undefined;   // عنوان التوقيع (الإدارة / إدارة المبيعات)
   notes?: string | undefined;
   language?: "ar" | "en" | "auto" | undefined;
+  /** عملة الفاتورة المحددة (SDG, USD, SAR, EGP) */
+  currency?: "SDG" | "USD" | "SAR" | "EGP" | undefined;
+  /** تاريخ الاستحقاق (PRD §5.2) */
+  dueDate?: string | undefined;
+  /** الخصم على الفاتورة (PRD §5.2) */
+  discount?: number | undefined;
 }
 
 export interface CustomInvoice {
@@ -32,7 +38,26 @@ export interface CustomInvoice {
   meta: CustomInvoiceMeta;
   items: CustomInvoiceItem[];
   totalAmount: number;
+  /** المجموع قبل الخصم (PRD §5.2) */
+  subtotal?: number | undefined;
   totalInWords?: string | undefined;
+  /** عملة الفاتورة المحددة */
+  currency?: "SDG" | "USD" | "SAR" | "EGP" | undefined;
+  /**
+   * المرجع الرسمي للفاتورة (INV-DDMMYYYY-NNN / PINV-DDMMYYYY-NNN).
+   * يُسند مرة واحدة عند أول حفظ ناجح ولا يتغيّر بعد ذلك (PRD §5.3.3).
+   */
+  reference?: string | undefined;
+  referenceAssignedAt?: string | undefined;
+  /** ربط المشروع/العميل/المورد (PRD §4, §7.2) */
+  projectId?: string | undefined;
+  customerId?: string | undefined;
+  supplierId?: string | undefined;
+  /** رقم فاتورة المورد الأصلية — لا يُستبدل أبداً بالمرجع الداخلي (PRD §5.3.8) */
+  supplierInvoiceNumber?: string | undefined;
+  /** إلغاء ناعم: السجل يبقى ويُستبعد من العرض (PRD §12.7) */
+  cancelledAt?: string | undefined;
+  cancellationReason?: string | undefined;
   createdAt: string;
   updatedAt: string;
 }

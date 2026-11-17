@@ -1,67 +1,21 @@
-import React, { useState, useSyncExternalStore } from "react";
-import { createPortal, flushSync } from "react-dom";
-import { createRoot } from "react-dom/client";
-import { Printer, FileDown, Loader2 } from "lucide-react";
+import React, { useState } from "react";
+import { Printer, FileDown, Loader2, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoice } from "@/lib/billing/types";
 import { INVOICE_TYPE_LABELS } from "@/lib/billing/types";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
-import { StandardInvoiceDocument } from "./StandardInvoiceDocument";
-import { triggerPrintWithElement, exportElementToPdf } from "@/lib/pdfExport";
+import { formatDisplayReference } from "@/lib/domain/references";
+import { triggerPrintWithElement, exportElementToPdf, shareInvoiceViaWhatsApp } from "@/lib/pdfExport";
+import { saveCustomInvoice } from "@/lib/billing/store";
+import { prepareCustomInvoiceElement } from "./customInvoicePrintEngine";
 import { toast } from "sonner";
 
-// مخزن تفاعلي بسيط لحفظ الفاتورة النشطة الجاهزة للطباعة
-let currentPrintInvoice: CustomInvoice | null = null;
-const listeners = new Set<() => void>();
-
-export function setCustomInvoiceToPrint(invoice: CustomInvoice | null) {
-  currentPrintInvoice = invoice;
-  listeners.forEach((fn) => fn());
-}
-
-export function useCustomInvoiceToPrint(): CustomInvoice | null {
-  return useSyncExternalStore(
-    (callback) => {
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
-    },
-    () => currentPrintInvoice,
-    () => null
-  );
-}
-
-/**
- * بورتال الطباعة المعزول: يقوم بتركيب ورقة الفاتورة كابن لـ <body>
- */
-export function CustomInvoicePrintPortal() {
-  const invoice = useCustomInvoiceToPrint();
-  if (!invoice || typeof document === "undefined") return null;
-
-  const isRtl =
-    detectInvoiceLanguage(
-      invoice.meta.language,
-      invoice.meta.partyName,
-      invoice.meta.partyEnName,
-      invoice.items
-    ) === "ar";
-
-  return createPortal(
-    <div
-      id="custom-invoice-print-portal"
-      className="custom-invoice-print-root"
-      dir={isRtl ? "rtl" : "ltr"}
-    >
-      <StandardInvoiceDocument
-        invoice={invoice}
-        id="active-custom-invoice-print"
-        isPrintMode={true}
-      />
-    </div>,
-    document.body
-  );
-}
+export {
+  CustomInvoicePrintPortal,
+  setCustomInvoiceToPrint,
+  useCustomInvoiceToPrint,
+  prepareCustomInvoiceElement,
+} from "./customInvoicePrintEngine";
 
 interface Props {
   invoice: CustomInvoice;
@@ -69,107 +23,6 @@ interface Props {
   className?: string;
   variant?: "default" | "outline" | "secondary" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
-}
-
-export interface PreparedPrintResult {
-  element: HTMLElement;
-  cleanup: () => void;
-}
-
-/**
- * محضر المستند الكنسي الموحد للفاتورة:
- * يضمن 100% الحصول على عنصر الفاتورة الحقيقي جاهزاً للطباعة أو التصدير
- * حتى لو كانت النافذة في وضع التعديل (Edit Tab) أو غير معروضة في الصفحة
- */
-export async function prepareCustomInvoiceElement(
-  invoice: CustomInvoice,
-  onBeforePrint?: () => void
-): Promise<PreparedPrintResult | null> {
-  onBeforePrint?.();
-
-  // 1. محاولة التحديث المتزامن عبر بورتال الطباعة
-  try {
-    flushSync(() => {
-      setCustomInvoiceToPrint(invoice);
-    });
-  } catch {
-    setCustomInvoiceToPrint(invoice);
-  }
-
-  // إعطاء مهلة إطار شاشة للتأكد من اكتمال تركيب العناصر في الـ DOM
-  await new Promise((r) => setTimeout(r, 60));
-
-  let el =
-    document.getElementById("active-custom-invoice-print") ||
-    document.querySelector<HTMLElement>("#custom-invoice-print-portal .standard-invoice-sheet") ||
-    document.querySelector<HTMLElement>(".standard-invoice-sheet");
-
-  let cleanup = () => {};
-
-  // 2. إذا لم يتوفر العنصر في الـ DOM (مثلاً في تبويب التعديل أو صفحة أخرى)، نبنيه مستقلاً وفورياً
-  if (!el && typeof document !== "undefined") {
-    const staging = document.createElement("div");
-    staging.id = "canonical-invoice-staging-temp";
-    staging.setAttribute("dir", "rtl");
-    staging.style.position = "fixed";
-    staging.style.top = "0";
-    staging.style.left = "0";
-    staging.style.width = "794px";
-    staging.style.height = "1123px";
-    staging.style.zIndex = "-99999";
-    staging.style.backgroundColor = "#ffffff";
-    staging.style.opacity = "0.01";
-    document.body.appendChild(staging);
-
-    const root = createRoot(staging);
-    flushSync(() => {
-      root.render(
-        <StandardInvoiceDocument
-          invoice={invoice}
-          id="active-custom-invoice-print"
-          isPrintMode={true}
-        />
-      );
-    });
-
-    await new Promise((r) => setTimeout(r, 80));
-
-    el =
-      staging.querySelector<HTMLElement>(".standard-invoice-sheet") ||
-      (staging.firstElementChild as HTMLElement) ||
-      staging;
-
-    cleanup = () => {
-      try {
-        root.unmount();
-        if (staging.parentNode) {
-          staging.parentNode.removeChild(staging);
-        }
-      } catch {}
-    };
-  }
-
-  if (!el) {
-    return null;
-  }
-
-  // 3. انتظار اكتمال تحميل الخطوط والصور
-  try {
-    if (document.fonts) {
-      await document.fonts.ready;
-    }
-    const images = Array.from(el.querySelectorAll<HTMLImageElement>("img"));
-    await Promise.all(
-      images.map((img) => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-        return img.decode().catch(() => undefined);
-      })
-    );
-  } catch (e) {
-    console.warn("Print assets preparation note:", e);
-  }
-
-  return { element: el, cleanup };
 }
 
 export async function printCustomInvoiceDocument(
@@ -191,7 +44,7 @@ export async function printCustomInvoiceDocument(
       invoice.items
     ) === "en";
   const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
-  const serial = invoice.meta.serial || "001";
+  const serial = formatDisplayReference(invoice.reference, invoice.meta.serial, invoice.meta.date);
   const party = isEn
     ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
     : (invoice.meta.partyName || "عميل");
@@ -211,6 +64,13 @@ export async function saveCustomInvoiceAsPdf(
   invoice: CustomInvoice,
   onBeforePrint?: () => void
 ): Promise<boolean> {
+  // الحفظ التلقائي المباشر في النظام لضمان توثيق وأمان البيانات
+  try {
+    await saveCustomInvoice(invoice);
+  } catch (err) {
+    console.warn("Auto-save before PDF save note:", err);
+  }
+
   const prep = await prepareCustomInvoiceElement(invoice, onBeforePrint);
   if (!prep || !prep.element) {
     toast.error("تعذر تجهيز مستند الفاتورة لحفظ ملف PDF. يرجى المحاولة ثانية.");
@@ -226,7 +86,7 @@ export async function saveCustomInvoiceAsPdf(
       invoice.items
     ) === "en";
   const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
-  const serial = invoice.meta.serial || "001";
+  const serial = formatDisplayReference(invoice.reference, invoice.meta.serial, invoice.meta.date);
   const party = isEn
     ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
     : (invoice.meta.partyName || "عميل");
@@ -241,6 +101,90 @@ export async function saveCustomInvoiceAsPdf(
   } finally {
     cleanup();
   }
+}
+
+export async function shareCustomInvoiceViaWhatsApp(
+  invoice: CustomInvoice,
+  onBeforePrint?: () => void
+): Promise<boolean> {
+  // الحفظ التلقائي المباشر في النظام قبل المشاركة لضمان سلامة وأمان البيانات
+  try {
+    await saveCustomInvoice(invoice);
+  } catch (err) {
+    console.warn("Auto-save before WhatsApp share note:", err);
+  }
+
+  const prep = await prepareCustomInvoiceElement(invoice, onBeforePrint);
+  if (!prep || !prep.element) {
+    toast.error("تعذر تجهيز مستند الفاتورة للمشاركة. يرجى المحاولة ثانية.");
+    return false;
+  }
+
+  const { element, cleanup } = prep;
+  const isEn =
+    detectInvoiceLanguage(
+      invoice.meta.language,
+      invoice.meta.partyName,
+      invoice.meta.partyEnName,
+      invoice.items
+    ) === "en";
+  const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
+  const serial = formatDisplayReference(invoice.reference, invoice.meta.serial, invoice.meta.date);
+  const party = isEn
+    ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
+    : (invoice.meta.partyName || "عميل");
+
+  try {
+    const success = await shareInvoiceViaWhatsApp(element, {
+      filename: `${label}-${serial}-${party}`,
+      partyName: party,
+      invoiceRef: serial,
+      totalAmount: invoice.totalAmount,
+      currency: (invoice as any).currency || invoice.meta.currency || "SDG",
+      invoiceTypeLabel: label,
+      isRtl: !isEn,
+    });
+    return success;
+  } finally {
+    cleanup();
+  }
+}
+
+export function CustomInvoiceWhatsAppButton({
+  invoice,
+  onBeforePrint,
+  className,
+  size = "default",
+}: Props) {
+  const [isSharing, setIsSharing] = useState(false);
+
+  const handleShare = async () => {
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      await shareCustomInvoiceViaWhatsApp(invoice, onBeforePrint);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      size={size}
+      onClick={handleShare}
+      disabled={isSharing}
+      className={className || "font-bold shadow-xs bg-[#25D366] hover:bg-[#20bd5a] text-white gap-1.5 h-8 px-2.5 sm:px-3 text-xs rounded-xl cursor-pointer"}
+      title="حفظ ومشاركة الفاتورة مباشرة عبر واتساب"
+    >
+      {isSharing ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+      ) : (
+        <Share2 className="h-3.5 w-3.5" />
+      )}
+      <span>{isSharing ? "جاري المشاركة..." : "مشاركة واتساب"}</span>
+    </Button>
+  );
 }
 
 export function CustomInvoicePrintButton({

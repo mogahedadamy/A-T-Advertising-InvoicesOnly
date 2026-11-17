@@ -13,7 +13,7 @@ export const InvoicesEmptyState: React.FC = () => {
       </div>
       <p className="text-xs font-bold text-foreground">لا توجد فواتير أو سجلات مطابقة</p>
       <p className="text-[11px] text-muted-foreground">
-        يمكنك إنشاء فاتورة جديدة من قسم الفواتير أو حفظ تسعير من الحاسبة
+        يمكنك إنشاء فاتورة جديدة من قسم الفواتير في أي وقت
       </p>
       <div className="pt-2 flex justify-center gap-2">
         <Link
@@ -22,12 +22,6 @@ export const InvoicesEmptyState: React.FC = () => {
         >
           <PlusCircle className="h-3.5 w-3.5" />
           <span>فتح قسم الفواتير</span>
-        </Link>
-        <Link
-          to="/calculator"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-xs hover:bg-muted touch-manipulation"
-        >
-          <span>فتح الحاسبة</span>
         </Link>
       </div>
     </div>

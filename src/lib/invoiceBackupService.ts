@@ -374,8 +374,10 @@ export async function importInvoiceDatabase(jsonContent: string): Promise<Import
             type: inv?.meta?.type || "sales",
             date: String(inv?.meta?.date || nowIso.slice(0, 10)),
             partyName: String(inv?.meta?.partyName || "عميل غير محدد"),
+            currency: inv?.currency || inv?.meta?.currency || "SDG",
             ...inv?.meta,
           },
+          currency: inv?.currency || inv?.meta?.currency || "SDG",
           items: Array.isArray(inv?.items)
             ? inv.items.map((it: any, j: number) => ({
                 ...it,
@@ -399,8 +401,10 @@ export async function importInvoiceDatabase(jsonContent: string): Promise<Import
             serial: String(p?.meta?.serial || "001"),
             date: String(p?.meta?.date || nowIso.slice(0, 10)),
             customerName: String(p?.meta?.customerName || "عميل غير محدد"),
+            currency: p?.currency || p?.meta?.currency || "SDG",
             ...p?.meta,
           },
+          currency: p?.currency || p?.meta?.currency || "SDG",
           lines: Array.isArray(p?.lines)
             ? p.lines.map((l: any, j: number) => ({
                 ...l,
@@ -440,6 +444,7 @@ export async function importInvoiceDatabase(jsonContent: string): Promise<Import
           total: Number(inv?.total) || 0,
           paidAmount: Number(inv?.paidAmount) || 0,
           paymentStatus: inv?.paymentStatus || "paid",
+          currency: inv?.currency || "SDG",
           createdAt: inv?.createdAt || nowIso,
         });
       }

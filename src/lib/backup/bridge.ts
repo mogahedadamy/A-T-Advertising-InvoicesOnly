@@ -12,6 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import type {
   BackupFileInfo,
   BackupKind,
+  BackupManifest,
   BackupPreview,
   BackupRunResult,
   DatabaseStatus,
@@ -34,7 +35,7 @@ interface NativePluginApi {
   restoreBackup(options: { fileName: string; mode: RestoreMode }): Promise<RestoreResult>;
   discoverBackups(): Promise<{ ok: boolean; status?: NativeStatus; currentInvoiceCount?: number; pendingSchemaUpgrade?: boolean }>;
   exportArchive(options: { fileName: string }): Promise<{ ok: boolean; base64?: string; errorCode?: string; message?: string }>;
-  importArchive(options: { base64: string; fileName: string }): Promise<{ ok: boolean; fileName?: string; errorCode?: string; message?: string }>;
+  importArchive(options: { base64: string; fileName: string }): Promise<{ ok: boolean; fileName?: string; manifest?: BackupManifest; errorCode?: string; message?: string }>;
   getDbCounts(): Promise<{ ok: boolean; counts: Record<string, number>; invoiceCount: number; schemaVersion: number }>;
   saveSettings(options: Record<string, unknown>): Promise<{ ok: boolean }>;
   getEngineInfo(): Promise<{ ok: boolean; engineVersion: string; sdkInt: number; model: string; supported: boolean }>;
@@ -165,12 +166,23 @@ export const backupBridge = {
   },
 
   async createBackup(kind: BackupKind, options: { skipIfUnchanged?: boolean; encrypt?: boolean } = {}): Promise<BackupRunResult> {
-    const raw = await callNative<BackupRunResult>("createBackup", { kind, skipIfUnchanged: options.skipIfUnchanged ?? false, encrypt: options.encrypt ?? true });
+    const payload = {
+      kind,
+      skipIfUnchanged: options.skipIfUnchanged ?? false,
+      encrypt: options.encrypt ?? true,
+    };
+    const raw = await callNative<BackupRunResult>("createBackup", {
+      ...payload,
+      options: payload,
+    });
     return { ...raw, ok: Boolean(raw?.ok) };
   },
 
   async verifyBackup(fileName: string): Promise<{ ok: boolean; info: BackupFileInfo | null; errorCode?: string; message?: string }> {
-    const raw = await callNative<{ ok: boolean; info?: any; errorCode?: string; message?: string }>("verifyBackup", { fileName });
+    const raw = await callNative<{ ok: boolean; info?: any; errorCode?: string; message?: string }>("verifyBackup", {
+      fileName,
+      options: { fileName },
+    });
     return {
       ok: Boolean(raw?.ok),
       info: raw?.info ? toBackupFileInfo(raw.info) : null,
@@ -180,7 +192,19 @@ export const backupBridge = {
   },
 
   async restoreBackup(fileName: string, mode: RestoreMode): Promise<RestoreResult> {
-    const raw = await callNative<RestoreResult>("restoreBackup", { fileName, mode });
+    const cleanFileName = String(fileName || "").trim();
+    const raw = await callNative<RestoreResult>("restoreBackup", {
+      fileName: cleanFileName,
+      name: cleanFileName,
+      file: cleanFileName,
+      mode,
+      options: {
+        fileName: cleanFileName,
+        name: cleanFileName,
+        file: cleanFileName,
+        mode,
+      },
+    });
     return { ...raw, ok: Boolean(raw?.ok), mode };
   },
 
@@ -198,7 +222,7 @@ export const backupBridge = {
     return callNative("exportArchive", { fileName });
   },
 
-  async importArchive(base64: string, fileName: string): Promise<{ ok: boolean; fileName?: string; errorCode?: string; message?: string }> {
+  async importArchive(base64: string, fileName: string): Promise<{ ok: boolean; fileName?: string; manifest?: BackupManifest; errorCode?: string; message?: string }> {
     return callNative("importArchive", { base64, fileName });
   },
 
@@ -207,7 +231,10 @@ export const backupBridge = {
   },
 
   async saveSettings(settings: Record<string, unknown>): Promise<{ ok: boolean }> {
-    return callNative("saveSettings", settings);
+    return callNative("saveSettings", {
+      ...settings,
+      options: settings,
+    });
   },
 
   async getEngineInfo(): Promise<{ ok: boolean; engineVersion: string; sdkInt: number; model: string; supported: boolean }> {

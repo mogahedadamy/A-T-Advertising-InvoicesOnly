@@ -1,6 +1,5 @@
 import React, { useEffect } from "react";
 import { Lock, AlertOctagon, PhoneCall, ShieldAlert, MapPin, Building2, Calculator, Receipt } from "lucide-react";
-import { TA_LOGO_WHITE_BASE64 } from "@/assets/invoiceImagesBase64";
 import { registerBackHandler } from "@/lib/backButtonHandler";
 
 export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolean }) {
@@ -34,13 +33,13 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
       {/* ── 2. رأس الشاشة والشعار ── */}
       <div className="relative z-10 flex flex-col items-center gap-2">
         <img
-          src={TA_LOGO_WHITE_BASE64}
+          src="/ta-logo-white.png"
           alt="T.A Advertising Solution"
           className="h-16 w-auto max-w-[200px] object-contain opacity-90 drop-shadow-md"
         />
         <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/15 px-3 py-1 text-[11px] font-bold text-rose-300">
           <AlertOctagon className="h-3.5 w-3.5" />
-          <span>نسخة حاسبة وفواتير تجريبية (48 ساعة)</span>
+          <span>نسخة إدارة الفواتير والمشاريع (7 أيام)</span>
         </div>
       </div>
 
@@ -59,17 +58,17 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
           <p className="text-xs sm:text-sm text-rose-200/80 font-bold">
             {isTampered
               ? "تم إيقاف تشغيل التطبيق بسبب تراجع في ساعة النظام."
-              : "عذراً، انتهت صلاحية استخدام النسخة التجريبية (48 ساعة) من تاريخ التثبيت."}
+              : "عذراً، انتهت صلاحية استخدام النسخة التجريبية (7 أيام) من تاريخ التثبيت."}
           </p>
         </div>
 
         {/* النص التفصيلي */}
         <div className="rounded-2xl border border-border/40 bg-black/30 p-3.5 text-right text-xs leading-relaxed text-[#C2D1CE]/90 space-y-2">
           <p>
-            هذه النسخة مخصصة لتقييم <strong>حاسبة الرولات ونظام الفواتير</strong> لمدة <strong>48 ساعة</strong> فقط من لحظة التثبيت الأولى على هذا الجهاز.
+            هذه النسخة مخصصة لتقييم <strong>نظام إدارة الوكالة والفواتير</strong> لمدة <strong>7 أيام (168 ساعة)</strong> فقط من لحظة التثبيت الأولى على هذا الجهاز.
           </p>
           <p className="text-[11px] text-muted-foreground border-t border-white/10 pt-2">
-            تم قفل ميزات الحاسبة، إصدار فواتير المبيعات، الفواتير المبدئية، والأرشيف. للحصول على التفعيل الدائم والترخيص الرسمي يرجى التواصل مع الإدارة.
+            تم قفل ميزات إدارة المشاريع، إصدار فواتير المبيعات، المشتريات، والأرشيف. للحصول على التفعيل الدائم والترخيص الرسمي يرجى التواصل مع الإدارة.
           </p>
         </div>
 
@@ -81,7 +80,7 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
           </div>
 
           <p className="text-[11px] text-[#C2D1CE]/80">
-            لترخيص منظومة الحاسبة والفواتير لمؤسستكم وتفعيل النسخة الدائمة:
+            لترخيص منظومة الوكالة والفواتير لمؤسستكم وتفعيل النسخة الدائمة:
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">

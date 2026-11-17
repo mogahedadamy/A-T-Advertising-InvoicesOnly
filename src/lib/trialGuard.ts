@@ -1,8 +1,8 @@
 /**
- * trialGuard.ts — محرك حماية ومراقبة صلاحية النسخة التجريبية (48 ساعة)
+ * trialGuard.ts — محرك حماية ومراقبة صلاحية النسخة التجريبية (7 أيام)
  * 
  * الميزات:
- * 1. حساب دقيق لـ 48 ساعة من لحظة أول تشغيل
+ * 1. حساب دقيق لـ 7 أيام (168 ساعة) من لحظة أول تشغيل
  * 2. كشف محاولات تأخير ساعة الجهاز (Anti-Clock Tampering)
  * 3. حماية تامة لشاشة السبلاش من أي انهيار برمجياً
  * 4. تعطيل فوري وتام للمهلة إذا كانت ENABLE_TRIAL_LOCK = false
@@ -57,6 +57,13 @@ async function safeSetStorage(key: string, value: string): Promise<void> {
   try {
     await Preferences.set({ key, value });
   } catch {}
+
+  // إرساء متوازي في قاعدة بيانات SQLite كطبقة حماية ثالثة
+  try {
+    const { getDb } = await import("@/lib/database");
+    const db = await getDb();
+    await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, value]);
+  } catch {}
 }
 
 /**
@@ -88,6 +95,33 @@ async function initTrialStorage(): Promise<void> {
 
     const hwmStr = await safeGetStorage(STORAGE_KEYS.HIGH_WATER_MARK);
     cachedHwm = hwmStr ? parseInt(hwmStr, 10) : inst;
+
+    // توفيق أمان ثلاثي: استرجاع البيانات من SQLite إن وُجدت لمنع التحايل بمسح التخزين المؤقت
+    try {
+      const { getDb } = await import("@/lib/database");
+      const db = await getDb();
+      const res = await db.query(
+        "SELECT key, value FROM settings WHERE key IN (?, ?, ?)",
+        [STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.HIGH_WATER_MARK, STORAGE_KEYS.PERMANENTLY_LOCKED]
+      );
+      for (const row of res.values || []) {
+        if (row?.key === STORAGE_KEYS.INSTALLED_AT) {
+          const dbInst = parseInt(String(row.value), 10);
+          if (dbInst > 0 && (inst === 0 || dbInst < inst)) {
+            inst = dbInst;
+            cachedInstalledAt = inst;
+          }
+        }
+        if (row?.key === STORAGE_KEYS.HIGH_WATER_MARK) {
+          const dbHwm = parseInt(String(row.value), 10);
+          if (dbHwm > cachedHwm) cachedHwm = dbHwm;
+        }
+        if (row?.key === STORAGE_KEYS.PERMANENTLY_LOCKED && String(row.value) === "true") {
+          cachedPermanentlyLocked = true;
+        }
+      }
+    } catch {}
+
     isStorageInitialized = true;
   } catch (err) {
     cachedInstalledAt = Date.now();

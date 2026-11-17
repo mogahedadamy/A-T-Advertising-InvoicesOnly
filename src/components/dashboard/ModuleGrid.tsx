@@ -2,258 +2,164 @@ import { Link } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  Calculator,
   ClipboardList,
-  FileText,
-  FileSpreadsheet,
-  Users,
-  Printer,
-  Layers,
+  FolderKanban,
+  Receipt,
+  ReceiptText,
   Settings as SettingsIcon,
+  Truck,
+  Users,
+  Wallet,
 } from "lucide-react";
-import { playTapSound } from "@/lib/soundEffects";
 
 interface SystemModule {
-  key:         string;
-  label:       string;
+  key: string;
+  label: string;
   description: string;
-  icon:        LucideIcon;
-  status:      "active" | "new" | "soon";
-  to?:         string;
-  gradient:    string;  /* Tailwind gradient classes for icon bg */
-  iconColor:   string;  /* text color for icon */
+  icon: LucideIcon;
+  status: "active" | "new";
+  to: string;
+  gradient: string;
+  iconColor: string;
 }
 
+/**
+ * وحدات وكالة T.A Advertising Solution الإعلانية:
+ * درج أيقونات من 3 أعمدة × 3 أسطر (9 وحدات أساسية) لتجربة تنقل واضحة وسريعة.
+ */
 const MODULES: SystemModule[] = [
   {
-    key:         "calculator",
-    label:       "الحاسبة وطلب جديد",
-    description: "حساب المقاسات والرولات والأسعار",
-    icon:        Calculator,
-    status:      "active",
-    to:          "/calculator",
-    gradient:    "from-violet-600 to-purple-700",
-    iconColor:   "text-white",
+    key: "billing",
+    label: "الفواتير",
+    description: "إصدار فواتير المبيعات والمشتريات A4",
+    icon: Receipt,
+    status: "active",
+    to: "/billing",
+    gradient: "from-[#168063] to-[#22A07E]",
+    iconColor: "text-white",
   },
   {
-    key:         "proforma",
-    label:       "الفواتير المبدئية",
-    description: "فواتير وعروض أسعار قابلة للطباعة",
-    icon:        FileSpreadsheet,
-    status:      "new",
-    to:          "/proforma-invoices",
-    gradient:    "from-amber-500 to-orange-600",
-    iconColor:   "text-white",
+    key: "customers",
+    label: "العملاء",
+    description: "دليل العملاء وكشوف حساباتهم",
+    icon: Users,
+    status: "active",
+    to: "/customers",
+    gradient: "from-cyan-600 to-blue-600",
+    iconColor: "text-white",
   },
   {
-    key:         "orders",
-    label:       "أوامر الشغل",
-    description: "قائمة طلبات الوردية ومراحل التنفيذ",
-    icon:        ClipboardList,
-    status:      "soon",
-    to:          "/orders",
-    gradient:    "from-blue-500 to-sky-600",
-    iconColor:   "text-white",
+    key: "projects",
+    label: "المشاريع",
+    description: "إدارة المشاريع والفواتير والتكاليف",
+    icon: FolderKanban,
+    status: "active",
+    to: "/projects",
+    gradient: "from-emerald-600 to-teal-700",
+    iconColor: "text-white",
   },
   {
-    key:         "production",
-    label:       "الإنتاج والورشة",
-    description: "طابور ماكينات الطباعة والتشطيب",
-    icon:        Printer,
-    status:      "soon",
-    to:          "/production",
-    gradient:    "from-slate-600 to-zinc-700",
-    iconColor:   "text-white",
+    key: "suppliers",
+    label: "الموردون",
+    description: "شركاء التنفيذ والمشتريات والذمم",
+    icon: Truck,
+    status: "active",
+    to: "/suppliers",
+    gradient: "from-amber-500 to-orange-600",
+    iconColor: "text-white",
   },
   {
-    key:         "invoices",
-    label:       "إيصالات الطباعة",
-    description: "إيصالات التشغيل المعتمدة",
-    icon:        FileText,
-    status:      "active",
-    to:          "/invoices",
-    gradient:    "from-emerald-500 to-teal-600",
-    iconColor:   "text-white",
+    key: "finance",
+    label: "المالية",
+    description: "الخزينة والتحصيل والحسابات",
+    icon: Wallet,
+    status: "active",
+    to: "/finance",
+    gradient: "from-emerald-600 to-green-700",
+    iconColor: "text-white",
   },
   {
-    key:         "materials",
-    label:       "الخامات والأسعار",
-    description: "إدارة رولات الفلكس والبنر",
-    icon:        Layers,
-    status:      "soon",
-    to:          "/materials",
-    gradient:    "from-rose-500 to-pink-600",
-    iconColor:   "text-white",
+    key: "expenses",
+    label: "المصروفات",
+    description: "التكاليف المباشرة والتشغيلية",
+    icon: ReceiptText,
+    status: "active",
+    to: "/expenses",
+    gradient: "from-rose-500 to-red-600",
+    iconColor: "text-white",
   },
   {
-    key:         "customers",
-    label:       "سجل العملاء",
-    description: "بيانات العملاء وكشوف الحسابات",
-    icon:        Users,
-    status:      "soon",
-    to:          "/customers",
-    gradient:    "from-cyan-500 to-blue-600",
-    iconColor:   "text-white",
+    key: "reports",
+    label: "التقارير",
+    description: "الربحية والتدفق ومؤشرات الأداء",
+    icon: BarChart3,
+    status: "active",
+    to: "/reports",
+    gradient: "from-indigo-500 to-violet-600",
+    iconColor: "text-white",
   },
   {
-    key:         "reports",
-    label:       "التقارير المالية",
-    description: "إحصائيات المبيعات والأرباح",
-    icon:        BarChart3,
-    status:      "soon",
-    to:          "/reports",
-    gradient:    "from-indigo-500 to-violet-600",
-    iconColor:   "text-white",
+    key: "archive",
+    label: "الأرشيف",
+    description: "السجل الموحد والطباعة والتصدير",
+    icon: ClipboardList,
+    status: "active",
+    to: "/orders",
+    gradient: "from-blue-600 to-slate-700",
+    iconColor: "text-white",
   },
   {
-    key:         "settings",
-    label:       "إعدادات المطبعة",
-    description: "بيانات المطبعة والشعار والأمان",
-    icon:        SettingsIcon,
-    status:      "active",
-    to:          "/settings",
-    gradient:    "from-primary to-primary-deep",
-    iconColor:   "text-white",
+    key: "settings",
+    label: "الإعدادات",
+    description: "الأمان والبصمة والنسخ الاحتياطي",
+    icon: SettingsIcon,
+    status: "active",
+    to: "/settings",
+    gradient: "from-[#0D4A39] to-[#071914]",
+    iconColor: "text-white",
   },
 ];
 
-const STATUS_CONFIG = {
-  active: { label: "نشط",    classes: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" },
-  new:    { label: "جديد ✨", classes: "bg-amber-500/10  text-amber-600  dark:text-amber-400  border-amber-500/20"  },
-  soon:   { label: "قريباً",  classes: "bg-muted          text-muted-foreground               border-border/60"      },
-} as const;
-
-interface ModuleCardProps {
-  mod:   SystemModule;
-  delay: number;
-}
-
-function ModuleCard({ mod, delay }: ModuleCardProps) {
-  const { key, label, description, icon: Icon, to, status, gradient, iconColor } = mod;
-  const isLink = Boolean(to) && status !== "soon";
-  const { label: statusLabel, classes: statusClasses } = STATUS_CONFIG[status];
-
-  const content = (
-    <>
-      {/* Icon + status */}
-      <div className="flex items-start justify-between gap-1.5">
-        {/* Gradient icon container */}
-        <span
-          className={[
-            "grid h-10 w-10 shrink-0 place-items-center rounded-xl",
-            "bg-gradient-to-br shadow-sm",
-            "transition-transform duration-200 group-hover:scale-110 group-hover:rotate-3",
-            gradient,
-            iconColor,
-          ].join(" ")}
-        >
-          <Icon className="h-5 w-5" />
-        </span>
-
-        {/* Status badge */}
-        <span
-          className={[
-            "rounded-full border px-2 py-0.5 text-[9px] font-black leading-none mt-0.5",
-            statusClasses,
-          ].join(" ")}
-        >
-          {statusLabel}
-        </span>
-      </div>
-
-      {/* Labels */}
-      <div className="mt-3 min-w-0">
-        <p
-          className={[
-            "truncate text-xs font-black text-foreground leading-snug",
-            isLink ? "group-hover:text-primary transition-colors duration-200" : "",
-          ].join(" ")}
-        >
-          {label}
-        </p>
-        <p className="mt-0.5 line-clamp-2 text-[10.5px] text-muted-foreground leading-snug">
-          {description}
-        </p>
-      </div>
-    </>
-  );
-
-  const baseClasses = [
-    "animate-slide-up group relative flex flex-col rounded-2xl border p-3.5 text-right",
-    "transition-all duration-200",
-  ].join(" ");
-
-  if (isLink && to) {
-    return (
-      <Link
-        key={key}
-        to={to}
-        onClick={() => playTapSound()}
-        style={{ animationDelay: `${delay}ms` }}
-        className={[
-          baseClasses,
-          "border-border/60 bg-card",
-          "hover:border-primary/30 hover:bg-secondary/40",
-          "hover:shadow-card hover:-translate-y-0.5",
-          "btn-tactile interactive",
-        ].join(" ")}
-      >
-        {/* Hover border glow inset */}
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-          style={{
-            boxShadow: "inset 0 0 0 1.5px hsl(var(--primary) / 0.25)",
-          }}
-        />
-        {content}
-      </Link>
-    );
-  }
-
-  return (
-    <div
-      key={key}
-      aria-disabled="true"
-      style={{ animationDelay: `${delay}ms` }}
-      className={[
-        baseClasses,
-        "border-border/30 bg-secondary/10 opacity-55 cursor-not-allowed",
-      ].join(" ")}
-    >
-      {content}
-    </div>
-  );
-}
-
+/**
+ * درج أقسام الوكالة الإعلانية — 3 أيقونات في كل سطر (3×3) مع أيقونة كبيرة ووصف أسفلها
+ */
 export function ModuleGrid() {
   return (
-    <section
-      aria-label="وحدات نظام المطبعة"
-      className="rounded-2xl border border-border/60 bg-card p-4 shadow-card"
+    <nav
+      aria-label="أقسام الوكالة الإعلانية"
       dir="rtl"
+      className="grid grid-cols-3 gap-2.5 sm:gap-3.5"
     >
-      {/* Section header */}
-      <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-border/50">
-        <div>
-          <h2 className="text-sm font-black text-foreground md:text-[15px]">
-            وحدات نظام المطبعة
-          </h2>
-          <p className="text-[10.5px] font-medium text-muted-foreground mt-0.5">
-            الوصول المباشر لكافة أقسام النظام
-          </p>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/15 px-2.5 py-1 text-[10px] font-black text-primary">
-          {MODULES.filter((m) => m.status === "active").length} نشط
-        </span>
-      </div>
+      {MODULES.map((mod) => {
+        const Icon = mod.icon;
 
-      {/* Grid */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-3">
-        {MODULES.map((mod, i) => (
-          <ModuleCard key={mod.key} mod={mod} delay={i * 40 + 100} />
-        ))}
-      </div>
-    </section>
+        return (
+          <Link
+            key={mod.key}
+            to={mod.to}
+            className="group relative flex flex-col items-center justify-start rounded-2xl border border-border/70 bg-card/95 dark:bg-card/90 p-3 sm:p-4 text-center shadow-2xs transition-all duration-150 hover:border-primary/45 hover:bg-muted/25 hover:shadow-xs active:scale-[0.96] touch-manipulation min-h-[128px] sm:min-h-[148px]"
+          >
+            {/* الأيقونة الكبيرة بتدرج لوني مريح وحلقة نقية */}
+            <span
+              className={`grid h-13 w-13 sm:h-16 sm:w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${mod.gradient} ${mod.iconColor} shadow-sm shadow-black/10 ring-1 ring-white/20 dark:ring-white/10 transition-transform duration-200 group-hover:scale-105 group-hover:-translate-y-0.5`}
+            >
+              <Icon className="h-6 w-6 sm:h-8 sm:w-8 stroke-[2.2]" />
+            </span>
+
+            {/* اسم القسم */}
+            <span className="mt-2.5 text-xs sm:text-[13.5px] font-black text-foreground group-hover:text-primary transition-colors leading-tight">
+              {mod.label}
+            </span>
+
+            {/* الوصف الإرشادي أسفل الأيقونة */}
+            <span className="mt-1 text-[10px] sm:text-[11px] font-medium text-muted-foreground/85 leading-snug line-clamp-2 px-0.5">
+              {mod.description}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
+
+export default ModuleGrid;

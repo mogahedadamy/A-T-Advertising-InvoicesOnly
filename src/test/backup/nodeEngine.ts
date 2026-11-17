@@ -31,6 +31,18 @@ const TABLES = [
   "customers",
   "orders",
   "order_items",
+  "projects",
+  "suppliers",
+  "financial_accounts",
+  "customer_payments",
+  "customer_payment_allocations",
+  "supplier_payments",
+  "supplier_payment_allocations",
+  "expenses",
+  "expense_payments",
+  "financial_transactions",
+  "document_sequences",
+  "audit_log",
   "sequences",
   "settings",
   "db_meta",
@@ -369,16 +381,60 @@ export class NodeBackupEngine {
     try {
       // ATTACH with an alias: the schema-qualified statements below need "bk".
       live.db.prepare("ATTACH DATABASE ? AS bk").run(staging);
-      const tables = ["custom_invoices", "custom_invoice_items", "proforma_invoices", "proforma_lines", "print_invoices", "print_invoice_lines", "customers", "orders", "order_items", "sequences", "settings", "db_meta"];
+      const tables = [
+        "settings",
+        "sequences",
+        "db_meta",
+        "financial_accounts",
+        "customers",
+        "suppliers",
+        "projects",
+        "orders",
+        "order_items",
+        "custom_invoices",
+        "custom_invoice_items",
+        "proforma_invoices",
+        "proforma_lines",
+        "print_invoices",
+        "print_invoice_lines",
+        "customer_payments",
+        "customer_payment_allocations",
+        "supplier_payments",
+        "supplier_payment_allocations",
+        "expenses",
+        "expense_payments",
+        "financial_transactions",
+        "document_sequences",
+        "audit_log",
+      ];
+      const existingBk = new Set<string>(
+        (live.db.prepare("SELECT name FROM bk.sqlite_master WHERE type='table'").all() as any[]).map((r) => String(r.name))
+      );
       live.db.exec("BEGIN");
       try {
         for (const table of tables) {
+          if (!existingBk.has(table)) continue;
           if (table === "settings" || table === "sequences" || table === "db_meta") {
             live.db.exec(
               `INSERT OR IGNORE INTO main."${table}"(key, value) SELECT key, value FROM bk."${table}" WHERE key NOT IN (SELECT key FROM main."${table}")`
             );
+            if (table === "sequences") {
+              live.db.exec(
+                `UPDATE main."sequences" SET value = (SELECT b.value FROM bk."sequences" b WHERE b.key = main."sequences".key) WHERE EXISTS (SELECT 1 FROM bk."sequences" b WHERE b.key = main."sequences".key AND CAST(b.value AS INTEGER) > CAST(main."sequences".value AS INTEGER))`
+              );
+            }
           } else {
-            live.db.exec(`INSERT OR IGNORE INTO main."${table}" SELECT * FROM bk."${table}"`);
+            const liveCols = (live.db.prepare(`PRAGMA main.table_info("${table}")`).all() as any[]).map((c) => String(c.name));
+            const bkCols = new Set((live.db.prepare(`PRAGMA bk.table_info("${table}")`).all() as any[]).map((c) => String(c.name)));
+            const shared = liveCols.filter((c) => bkCols.has(c));
+            if (shared.length === 0) continue;
+            const colList = shared.map((c) => `"${c}"`).join(",");
+            live.db.exec(`INSERT OR IGNORE INTO main."${table}" (${colList}) SELECT ${colList} FROM bk."${table}"`);
+            if (table === "document_sequences") {
+              live.db.exec(
+                `UPDATE main."document_sequences" SET last_number = (SELECT b.last_number FROM bk."document_sequences" b WHERE b.scope = main."document_sequences".scope AND b.date_key = main."document_sequences".date_key) WHERE EXISTS (SELECT 1 FROM bk."document_sequences" b WHERE b.scope = main."document_sequences".scope AND b.date_key = main."document_sequences".date_key AND b.last_number > main."document_sequences".last_number)`
+              );
+            }
           }
         }
         live.db.exec("COMMIT");

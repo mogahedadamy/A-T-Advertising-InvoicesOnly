@@ -84,7 +84,9 @@ export function useCustomers() {
   return useSyncExternalStore(subscribeCustomers, getCustomersSnapshot, () => INITIAL_DEMO_CUSTOMERS);
 }
 
-export function addCustomer(data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">): CustomerRecord {
+export async function addCustomer(
+  data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">
+): Promise<CustomerRecord> {
   const customer: CustomerRecord = {
     ...data,
     id: `cust-${Date.now()}`,
@@ -92,39 +94,29 @@ export function addCustomer(data: Omit<CustomerRecord, "id" | "createdAt" | "tot
     totalSpent: 0,
     createdAt: new Date().toISOString(),
   };
+  if (Capacitor.isNativePlatform()) {
+    await repoUpsertCustomer(customer);
+  }
   customersSnapshot = [customer, ...customersSnapshot];
   notify();
-  if (Capacitor.isNativePlatform()) {
-    repoUpsertCustomer(customer).catch((err) =>
-      console.warn("[CustomersStore] SQLite add failed:", err)
-    );
-  }
   return customer;
 }
 
-export function updateCustomer(id: string, updates: Partial<CustomerRecord>) {
-  let updatedRecord: CustomerRecord | undefined;
-  customersSnapshot = customersSnapshot.map((c) => {
-    if (c.id === id) {
-      updatedRecord = { ...c, ...updates };
-      return updatedRecord;
-    }
-    return c;
-  });
-  notify();
-  if (updatedRecord && Capacitor.isNativePlatform()) {
-    repoUpsertCustomer(updatedRecord).catch((err) =>
-      console.warn("[CustomersStore] SQLite update failed:", err)
-    );
+export async function updateCustomer(id: string, updates: Partial<CustomerRecord>): Promise<void> {
+  const existing = customersSnapshot.find((c) => c.id === id);
+  if (!existing) return;
+  const updatedRecord: CustomerRecord = { ...existing, ...updates };
+  if (Capacitor.isNativePlatform()) {
+    await repoUpsertCustomer(updatedRecord);
   }
+  customersSnapshot = customersSnapshot.map((c) => (c.id === id ? updatedRecord : c));
+  notify();
 }
 
-export function deleteCustomer(id: string) {
+export async function deleteCustomer(id: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await repoDeleteCustomer(id);
+  }
   customersSnapshot = customersSnapshot.filter((c) => c.id !== id);
   notify();
-  if (Capacitor.isNativePlatform()) {
-    repoDeleteCustomer(id).catch((err) =>
-      console.warn("[CustomersStore] SQLite delete failed:", err)
-    );
-  }
 }

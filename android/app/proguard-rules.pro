@@ -1,21 +1,32 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Production ProGuard Rules — T.A Advertising Invoicing System
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 1. Capacitor Core & Plugins
+-keep public class * extends com.getcapacitor.Plugin
+-keep public class * extends com.getcapacitor.BridgeActivity
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    public *;
+}
+-keep class com.getcapacitor.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 2. WebKit JavaScript Interfaces
+-keepattributes JavascriptInterface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# 3. SQLite & SQLCipher Native Persistence
+-keep class com.getcapacitor.community.database.sqlite.** { *; }
+-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.database.** { *; }
+
+# 4. Biometric Authentication & Preferences
+-keep class com.capacitorjs.plugins.preferences.** { *; }
+-keep class com.aparajita.capacitor.biometricauth.** { *; }
+
+# 5. Native Backup Engine & WorkManager Workers
+-keep class com.futureprint.calculator.backup.** { *; }
+-keep class androidx.work.** { *; }
+
+# 6. Preserve Line Numbers & Attributes for Crash Telemetry
+-keepattributes SourceFile,LineNumberTable,*Annotation*
+-keepattributes EnclosingMethod,InnerClasses,Signature

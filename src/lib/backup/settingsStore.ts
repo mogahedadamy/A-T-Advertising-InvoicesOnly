@@ -70,8 +70,11 @@ function autoDailyTouched(patch: Partial<BackupSettings>): boolean {
   return Object.prototype.hasOwnProperty.call(patch, "autoDaily");
 }
 
-export async function loadBackupSettings(): Promise<BackupSettings> {
-  if (loaded) return snapshot;
+export async function loadBackupSettings(force = false): Promise<BackupSettings> {
+  if (loaded && !force) return snapshot;
+  if (force) {
+    loaded = false;
+  }
   loaded = true;
   if (!Capacitor.isNativePlatform()) return snapshot;
   try {
@@ -79,7 +82,25 @@ export async function loadBackupSettings(): Promise<BackupSettings> {
     const res = await db.query("SELECT value FROM settings WHERE key = ?", [SETTINGS_KEY]);
     const value = res.values?.[0]?.value;
     if (typeof value === "string" && value) {
-      snapshot = sanitize(JSON.parse(value));
+      const preservedFolderUri = snapshot.folderUri;
+      const preservedFolderLabel = snapshot.folderLabel;
+      const next = sanitize(JSON.parse(value));
+      // When reloading after restoring an older database snapshot, keep the
+      // device's active SAF folder binding if the restored DB had none.
+      if (!next.folderUri && preservedFolderUri) {
+        next.folderUri = preservedFolderUri;
+        next.folderLabel = preservedFolderLabel;
+      }
+      snapshot = next;
+      notify();
+    } else if (force) {
+      const preservedFolderUri = snapshot.folderUri;
+      const preservedFolderLabel = snapshot.folderLabel;
+      snapshot = sanitize({
+        ...DEFAULT_BACKUP_SETTINGS,
+        folderUri: preservedFolderUri,
+        folderLabel: preservedFolderLabel,
+      });
       notify();
     }
   } catch (err) {

@@ -1,28 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BillingPage } from "@/components/billing/BillingPage";
+import { HomePage } from "@/components/dashboard/HomePage";
 
 /**
- * المسار الرئيسي للتطبيق — يعرض مركز إصدار الفواتير الرسمي مباشرة
+ * الصفحة الرئيسية للتطبيق — وكالة T.A Advertising Solution
  */
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "مركز إصدار الفواتير - T.A Advertising Solution" },
+      { title: "الصفحة الرئيسية - T.A Advertising Solution" },
       {
         name: "description",
         content:
-          "النظام الشامل لإدارة وإصدار فواتير المبيعات، المشتريات، والفواتير المبدئية",
+          "نظام إدارة وتوثيق الفواتير، المشاريع، والعمليات المالية لوكالة T.A Advertising Solution",
       },
       {
         property: "og:title",
-        content: "مركز إصدار الفواتير - T.A Advertising Solution",
+        content: "الصفحة الرئيسية - T.A Advertising Solution",
       },
       {
         property: "og:description",
         content:
-          "النظام الشامل لإدارة وإصدار فواتير المبيعات، المشتريات، والفواتير المبدئية",
+          "نظام إدارة وتوثيق الفواتير، المشاريع، والعمليات المالية لوكالة T.A Advertising Solution",
       },
     ],
   }),
-  component: BillingPage,
+  component: HomePage,
 });

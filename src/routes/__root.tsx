@@ -15,6 +15,9 @@ import { RecoveryDiscoveryGate } from "@/components/settings/RecoveryDiscoveryGa
 import { useTrialExpiry } from "@/lib/trialGuard";
 import { TrialExpiredScreen } from "@/components/common/TrialExpiredScreen";
 import { CustomInvoicePrintPortal } from "@/components/billing/CustomInvoicePrintButton";
+import { AppErrorBoundary } from "@/components/common/AppErrorBoundary";
+import { AppTourAssistant } from "@/components/common/AppTourAssistant";
+import { PageShell } from "@/components/layout/PageShell";
 
 function NotFoundComponent() {
   return (
@@ -24,10 +27,10 @@ function NotFoundComponent() {
         <h2 className="mt-2 text-lg font-bold text-foreground">الصفحة غير موجودة</h2>
         <div className="mt-4">
           <Link
-            to="/calculator"
+            to="/"
             className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm"
           >
-            العودة للحاسبة
+            العودة للصفحة الرئيسية
           </Link>
         </div>
       </div>
@@ -46,23 +49,23 @@ function RootComponent() {
   const [splashFinished, setSplashFinished] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
-  // مراقبة صلاحية النسخة التجريبية (48 ساعة) دون التسبب بإعادة تصيير متكررة
+  // مراقبة صلاحية النسخة التجريبية (7 أيام / 168 ساعة) دون التسبب بإعادة تصيير متكررة
   const { isExpired, isTampered } = useTrialExpiry();
 
   useEffect(() => {
     setMounted(true);
-    const splashDone = sessionStorage.getItem("ta_splash_finished") === "true";
-    if (splashDone) {
-      setSplashFinished(true);
-    }
 
-    const isUnlocked = sessionStorage.getItem("future_calc_unlocked") === "true";
-    if (isUnlocked) {
+    // فحص فك القفل مع مهلة أمان (30 دقيقة) لحماية المستخدم من طرده المتكرر عند فتح واتساب أو تطبيقات أخرى
+    const sessionUnlocked = sessionStorage.getItem("future_calc_unlocked") === "true";
+    const lastUnlockedAt = Number(localStorage.getItem("ta_unlocked_at") || "0");
+    const isUnlockActive = Date.now() - lastUnlockedAt < 30 * 60 * 1000;
+    if (sessionUnlocked || isUnlockActive) {
       setUnlocked(true);
     }
 
     const handleLockEvent = () => {
       sessionStorage.removeItem("future_calc_unlocked");
+      localStorage.removeItem("ta_unlocked_at");
       setUnlocked(false);
     };
 
@@ -71,12 +74,12 @@ function RootComponent() {
   }, []);
 
   const handleFinishSplash = useCallback(() => {
-    sessionStorage.setItem("ta_splash_finished", "true");
     setSplashFinished(true);
   }, []);
 
   const handleUnlock = useCallback(() => {
     sessionStorage.setItem("future_calc_unlocked", "true");
+    localStorage.setItem("ta_unlocked_at", String(Date.now()));
     setUnlocked(true);
   }, []);
 
@@ -86,6 +89,7 @@ function RootComponent() {
         <Toaster />
         <Sonner />
         <CustomInvoicePrintPortal />
+        <AppTourAssistant />
         {!mounted ? (
           <div className="flex h-screen w-screen items-center justify-center bg-background text-primary">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -94,18 +98,21 @@ function RootComponent() {
           /* شاشة البداية الملكية تعمل دون انقطاع لكامل مدتها (6 ثوانٍ) لمنع أي انهيار */
           <SplashScreen duration={6000} onFinish={handleFinishSplash} />
         ) : (
-          /* اكتشاف النسخ الاحتياطية من إصدار سابق قبل قفل كلمة المرور،
-             لأن كلمة المرور نفسها قد تكون محفوظة داخل النسخة المستعادة */
-          <RecoveryDiscoveryGate>
-            {isExpired ? (
-              /* شاشة الإيقاف النهائي بمجرد انقضاء الـ 48 ساعة */
-              <TrialExpiredScreen isTampered={isTampered} />
-            ) : !unlocked ? (
-              <PasswordLock onUnlock={handleUnlock} />
-            ) : (
-              <Outlet />
-            )}
-          </RecoveryDiscoveryGate>
+          /* لا شاشة بيضاء أبداً: أي خطأ في الواجهة يعرض شرحاً وأزرار استرجاع */
+          <AppErrorBoundary>
+            <RecoveryDiscoveryGate>
+              {isExpired ? (
+                /* شاشة الإيقاف النهائي بمجرد انقضاء الـ 7 أيام */
+                <TrialExpiredScreen isTampered={isTampered} />
+              ) : !unlocked ? (
+                <PasswordLock onUnlock={handleUnlock} />
+              ) : (
+                <PageShell>
+                  <Outlet />
+                </PageShell>
+              )}
+            </RecoveryDiscoveryGate>
+          </AppErrorBoundary>
         )}
       </TooltipProvider>
     </QueryClientProvider>

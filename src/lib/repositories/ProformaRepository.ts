@@ -24,14 +24,17 @@ function rowToProforma(row: any, lines: any[]): ProformaInvoice {
       validityDays: row.validity_days || 7,
       accountName: row.account_name || undefined,
       language: (row.language as "ar" | "en" | "auto") || undefined,
+      currency: (row.currency as any) || "SDG",
     },
     lines: lines.map(rowToLine),
     status: row.status || "draft",
     convertedOrderId: row.converted_order_id || undefined,
+    projectId: row.project_id || undefined,
     totalArea: row.total_area || 0,
     totalQty: row.total_qty || 0,
     totalAmount: row.total_amount || 0,
     totalInWords: row.total_in_words || "",
+    currency: (row.currency as any) || "SDG",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -55,15 +58,27 @@ export async function getAllProformaInvoices(): Promise<ProformaInvoice[]> {
   const db = await getDb();
   const res = await db.query("SELECT * FROM proforma_invoices ORDER BY date DESC, created_at DESC");
   const rows = res.values || [];
-  const proformas: ProformaInvoice[] = [];
-  for (const row of rows) {
-    const linesRes = await db.query(
-      "SELECT * FROM proforma_lines WHERE proforma_id = ? ORDER BY sort_order ASC",
-      [row.id]
-    );
-    proformas.push(rowToProforma(row, linesRes.values || []));
+  if (rows.length === 0) return [];
+
+  // Batch-fetch all lines in a single query instead of N+1 round trips
+  const linesRes = await db.query(
+    `SELECT l.* FROM proforma_lines l
+       JOIN proforma_invoices p ON p.id = l.proforma_id
+      ORDER BY l.proforma_id, l.sort_order ASC`
+  );
+
+  const linesByProforma = new Map<string, any[]>();
+  for (const line of linesRes.values || []) {
+    const pId = String(line.proforma_id);
+    let list = linesByProforma.get(pId);
+    if (!list) {
+      list = [];
+      linesByProforma.set(pId, list);
+    }
+    list.push(line);
   }
-  return proformas;
+
+  return rows.map((row) => rowToProforma(row, linesByProforma.get(String(row.id)) || []));
 }
 
 export async function getProformaById(id: string): Promise<ProformaInvoice | undefined> {
@@ -85,9 +100,10 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
     {
       statement: `INSERT INTO proforma_invoices
         (id, serial, date, customer_name, customer_en_name, attn, phone, branch,
-         notes, validity_days, account_name, language, status, converted_order_id,
-         total_area, total_qty, total_amount, total_in_words, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         notes, validity_days, account_name, language, currency, status, converted_order_id,
+         total_area, total_qty, total_amount, total_in_words, created_at, updated_at,
+         project_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          serial             = excluded.serial,
          date               = excluded.date,
@@ -100,12 +116,14 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
          validity_days      = excluded.validity_days,
          account_name       = excluded.account_name,
          language           = excluded.language,
+         currency           = excluded.currency,
          status             = excluded.status,
          converted_order_id = excluded.converted_order_id,
          total_area         = excluded.total_area,
          total_qty          = excluded.total_qty,
          total_amount       = excluded.total_amount,
          total_in_words     = excluded.total_in_words,
+         project_id         = excluded.project_id,
          updated_at         = excluded.updated_at`,
       values: [
         proforma.id,
@@ -120,6 +138,7 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
         proforma.meta.validityDays ?? 7,
         proforma.meta.accountName ?? null,
         proforma.meta.language ?? "ar",
+        proforma.currency || proforma.meta.currency || "SDG",
         proforma.status || "draft",
         proforma.convertedOrderId ?? null,
         proforma.totalArea,
@@ -128,6 +147,7 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
         proforma.totalInWords ?? "",
         proforma.createdAt || now,
         now,
+        proforma.projectId ?? null,
       ],
     },
     {

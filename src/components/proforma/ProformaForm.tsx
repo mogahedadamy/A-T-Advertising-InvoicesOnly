@@ -6,6 +6,8 @@ import type { ProformaMeta, ProformaLine } from "@/lib/proforma/types";
 import { ProformaLineEditor } from "./ProformaLineEditor";
 import { calculateProformaTotals } from "@/lib/proforma/store";
 import { formatNumber } from "@/lib/printCalculator";
+import { CurrencySelector } from "@/components/currency/CurrencySelector";
+import type { AppCurrency } from "@/lib/currency/types";
 
 interface Props {
   meta: ProformaMeta;
@@ -19,7 +21,7 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
   // إذا كان كلا الاسمين غير مدخل بعد، تفتح البطاقة تلقائياً؛ وإلا يمكن طيها لتوفير المساحة
   const [isCustomerOpen, setIsCustomerOpen] = useState(!meta.customerName?.trim() && !meta.customerEnName?.trim());
 
-  const updateField = (key: keyof ProformaMeta, value: string) => {
+  const updateField = <K extends keyof ProformaMeta>(key: K, value: ProformaMeta[K]) => {
     onMetaChange({ ...meta, [key]: value });
   };
 
@@ -146,6 +148,17 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
 
             <div>
               <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                عملة الفاتورة
+              </label>
+              <CurrencySelector
+                value={meta.currency || "SDG"}
+                onChange={(c) => updateField("currency", c)}
+                locale={meta.language === "en" ? "en" : "ar"}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
                 رقم الهاتف / واتساب
               </label>
               <div className="relative">
@@ -209,7 +222,7 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
 
       {/* 2. منطقة البنود القابلة للتمرير الوحيدة والسلسة بدون شريط تمرير داخلي مكرر */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-2">
-        <ProformaLineEditor lines={lines} onChange={onLinesChange} />
+        <ProformaLineEditor lines={lines} onChange={onLinesChange} currency={meta.currency || "SDG"} />
       </div>
 
       {/* 3. بطاقة الإجماليات الثابتة في الأسفل (دائماً ظاهرة أمام المستخدم بدون أي تمرير) */}
@@ -226,7 +239,9 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
             <span className="font-mono text-base font-black text-primary">
               {formatNumber(totals.totalAmount)}
             </span>
-            <span className="text-[10px] font-bold text-muted-foreground">ج.س</span>
+            <span className="text-[10px] font-black font-mono text-foreground uppercase">
+              {meta.currency || "SDG"}
+            </span>
           </div>
         </div>
 

@@ -28,9 +28,9 @@ export const InvoicesStatsHeader: React.FC<InvoicesStatsHeaderProps> = ({ stats 
       </div>
 
       <div className="rounded-xl border border-border bg-card p-2.5 shadow-2xs">
-        <span className="text-[10px] font-bold text-muted-foreground">إيصالات الحاسبة</span>
+        <span className="text-[10px] font-bold text-muted-foreground">إجمالي السجلات</span>
         <p className="font-mono text-sm font-black text-foreground mt-0.5">
-          {stats.calcCount} <span className="text-[10px] font-normal">إيصال</span>
+          {stats.totalCount} <span className="text-[10px] font-normal">فاتورة</span>
         </p>
       </div>
     </div>

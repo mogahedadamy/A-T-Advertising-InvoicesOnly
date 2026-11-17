@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { ProformaInvoice, ProformaLine, ProformaMeta } from "./types";
-import { tafqeetSDG } from "./tafqeet";
+import { getInvoiceAmountInWords } from "@/lib/currency/amountToWords";
+import { AppCurrency, sanitizeCurrency } from "@/lib/currency/types";
 import { saveInvoice } from "@/lib/invoicesStore";
 import { addOrder } from "@/lib/ordersStore";
 import { Capacitor } from "@capacitor/core";
@@ -13,7 +14,11 @@ import {
 
 const STORAGE_KEY = "future_proforma_invoices_v2";
 
-export function calculateProformaTotals(lines: ProformaLine[]) {
+export function calculateProformaTotals(
+  lines: ProformaLine[],
+  currency: AppCurrency = "SDG",
+  isRtl = true
+) {
   const safeLines = Array.isArray(lines) ? lines : [];
   const totalArea = Number(
     safeLines
@@ -29,7 +34,7 @@ export function calculateProformaTotals(lines: ProformaLine[]) {
   );
   const totalQty = safeLines.reduce((sum, l) => sum + (Number(l?.qty) || 0), 0);
   const totalAmount = safeLines.reduce((sum, l) => sum + (Number(l?.total) || 0), 0);
-  const totalInWords = tafqeetSDG(totalAmount);
+  const totalInWords = getInvoiceAmountInWords(totalAmount, currency, isRtl);
 
   return { totalArea, totalQty, totalAmount, totalInWords };
 }
@@ -37,6 +42,7 @@ export function calculateProformaTotals(lines: ProformaLine[]) {
 const INITIAL_DEMO_PROFORMAS: ProformaInvoice[] = [];
 
 function sanitizeProforma(raw: any): ProformaInvoice {
+  const currency: AppCurrency = sanitizeCurrency(raw?.currency || raw?.meta?.currency, "SDG");
   const lines: ProformaLine[] = Array.isArray(raw?.lines)
     ? raw.lines.map((l: any) => ({
         id: String(l?.id || `pline-${Math.random()}`),
@@ -52,7 +58,7 @@ function sanitizeProforma(raw: any): ProformaInvoice {
       }))
     : [];
 
-  const totals = calculateProformaTotals(lines);
+  const totals = calculateProformaTotals(lines, currency);
 
   return {
     id: String(raw?.id || `proforma-${raw?.meta?.serial || Date.now()}`),
@@ -65,10 +71,15 @@ function sanitizeProforma(raw: any): ProformaInvoice {
       branch: String(raw?.meta?.branch || "امدرمان"),
       notes: raw?.meta?.notes ? String(raw.meta.notes) : undefined,
       validityDays: Number(raw?.meta?.validityDays) || 7,
+      accountName: raw?.meta?.accountName ? String(raw.meta.accountName) : undefined,
+      language: raw?.meta?.language || "ar",
+      currency,
     },
     lines,
     ...totals,
+    currency,
     status: raw?.status || "draft",
+    projectId: raw?.projectId ? String(raw.projectId) : undefined,
     createdAt: raw?.createdAt || new Date().toISOString(),
     updatedAt: raw?.updatedAt || new Date().toISOString(),
   };
@@ -80,7 +91,7 @@ function loadFromStorage(): ProformaInvoice[] {
   const seen = new Set<string>();
   const deduped: ProformaInvoice[] = [];
   for (const p of safe) {
-    const key = p.meta.serial || p.id;
+    const key = p.id;
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(p);
@@ -123,12 +134,16 @@ export function getProformaById(id: string): ProformaInvoice | undefined {
   return snapshot.find((p) => p.id === id);
 }
 
-export function saveProformaInvoice(
+const inFlightProformaSaves = new Map<string, Promise<ProformaInvoice>>();
+
+async function executeSaveProformaInvoice(
   meta: ProformaMeta,
   lines: ProformaLine[],
-  existingId?: string
-): ProformaInvoice {
-  const totals = calculateProformaTotals(lines);
+  existingId?: string,
+  projectId?: string | null
+): Promise<ProformaInvoice> {
+  const currency = meta.currency || "SDG";
+  const totals = calculateProformaTotals(lines, currency, (meta.language || "ar") !== "en");
   const now = new Date().toISOString();
 
   // 1. البحث عن فاتورة سابقة بنفس الـ ID أو بنفس الرقم التسلسلي لمنع التكرار نهائياً
@@ -143,17 +158,22 @@ export function saveProformaInvoice(
       meta,
       lines,
       ...totals,
+      currency,
+      projectId: projectId === undefined ? matched.projectId : projectId ?? undefined,
       updatedAt: now,
     };
+    if (Capacitor.isNativePlatform()) {
+      await repoUpsertProforma(updated);
+    }
+    const finalIdx = snapshot.findIndex((p) => p.id === updated.id);
     const newList = [...snapshot];
-    newList[idx] = updated;
+    if (finalIdx !== -1) {
+      newList[finalIdx] = updated;
+    } else {
+      newList[idx] = updated;
+    }
     snapshot = newList;
     notify();
-    if (Capacitor.isNativePlatform()) {
-      repoUpsertProforma(updated).catch((err) =>
-        console.warn("[ProformaStore] SQLite save failed:", err)
-      );
-    }
     return updated;
   }
 
@@ -163,35 +183,59 @@ export function saveProformaInvoice(
     meta,
     lines,
     ...totals,
+    currency,
     status: "draft",
+    projectId: projectId ?? undefined,
     createdAt: now,
     updatedAt: now,
   };
 
-  snapshot = [record, ...snapshot];
-  notify();
   if (Capacitor.isNativePlatform()) {
-    repoUpsertProforma(record).catch((err) =>
-      console.warn("[ProformaStore] SQLite save failed:", err)
-    );
+    await repoUpsertProforma(record);
   }
+  const finalIdx = snapshot.findIndex((p) => p.id === record.id);
+  if (finalIdx !== -1) {
+    const newList = [...snapshot];
+    newList[finalIdx] = record;
+    snapshot = newList;
+  } else {
+    snapshot = [record, ...snapshot];
+  }
+  notify();
   return record;
 }
 
-export function deleteProformaInvoice(id: string) {
+export function saveProformaInvoice(
+  meta: ProformaMeta,
+  lines: ProformaLine[],
+  existingId?: string,
+  projectId?: string | null
+): Promise<ProformaInvoice> {
+  const lockKey = existingId || `serial:${meta.serial}`;
+  const previous = inFlightProformaSaves.get(lockKey);
+  const run = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(() =>
+    executeSaveProformaInvoice(meta, lines, existingId, projectId)
+  );
+  inFlightProformaSaves.set(lockKey, run);
+  return run.finally(() => {
+    if (inFlightProformaSaves.get(lockKey) === run) {
+      inFlightProformaSaves.delete(lockKey);
+    }
+  });
+}
+
+export async function deleteProformaInvoice(id: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await repoDeleteProforma(id);
+  }
   snapshot = snapshot.filter((p) => p.id !== id);
   notify();
-  if (Capacitor.isNativePlatform()) {
-    repoDeleteProforma(id).catch((err) =>
-      console.warn("[ProformaStore] SQLite delete failed:", err)
-    );
-  }
 }
 
 /**
  * تحويل فاتورة مبدئية إلى فاتورة تشغيل وطباعة فعلية في خط الإنتاج
  */
-export function convertProformaToOperatingInvoice(proformaId: string) {
+export async function convertProformaToOperatingInvoice(proformaId: string) {
   const proforma = getProformaById(proformaId);
   if (!proforma) return null;
 
@@ -205,6 +249,7 @@ export function convertProformaToOperatingInvoice(proformaId: string) {
       clientTypes: ["takeaway"],
       shipTo: "",
       branch: proforma.meta.branch || "امدرمان",
+      currency: proforma.currency || proforma.meta.currency || "SDG",
     },
     lines: proforma.lines.map((l) => ({
       description: l.description,
@@ -226,7 +271,9 @@ export function convertProformaToOperatingInvoice(proformaId: string) {
     status: "ready_to_print",
     priority: "normal",
     branch: proforma.meta.branch || "امدرمان",
-    paidAmount: proforma.totalAmount,
+    // تحويل عرض السعر إلى أمر شغل لا يعني استلام المال (PRD §12.1):
+    // تُسجَّل الفاتورة غير مدفوعة ويُحتسب المحصّل من الدفعات الفعلية.
+    paidAmount: 0,
     totalArea: proforma.totalArea,
     totalCost: proforma.totalAmount,
     invoiceSerial: proforma.meta.serial,
@@ -247,6 +294,9 @@ export function convertProformaToOperatingInvoice(proformaId: string) {
   // 3. تحديث حالة الفاتورة المبدئية إلى محولة (converted)
   const idx = snapshot.findIndex((p) => p.id === proformaId);
   if (idx !== -1) {
+    if (Capacitor.isNativePlatform()) {
+      await repoUpdateProformaStatus(proformaId, "converted", orderRecord.id);
+    }
     snapshot[idx] = {
       ...snapshot[idx],
       status: "converted",
@@ -255,11 +305,6 @@ export function convertProformaToOperatingInvoice(proformaId: string) {
     };
     snapshot = [...snapshot];
     notify();
-    if (Capacitor.isNativePlatform()) {
-      repoUpdateProformaStatus(proformaId, "converted", orderRecord.id).catch((err) =>
-        console.warn("[ProformaStore] SQLite status update failed:", err)
-      );
-    }
   }
 
   return { invRecord, orderRecord };

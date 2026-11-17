@@ -8,6 +8,7 @@ import {
   BiometricAuth,
   BiometryType,
 } from "@aparajita/capacitor-biometric-auth";
+import { getStoredSync, removeStoredItem, setStoredItem } from "./sqliteStorage";
 
 const STORAGE_KEY = "future_calc_biometric_cred";
 const NATIVE_FLAG = "future_calc_biometric_native_enabled";
@@ -95,7 +96,7 @@ export const getStoredCredential = (): StoredCredential | null => {
 
 export const isBiometricEnabled = (): boolean => {
   if (isNativeApp()) {
-    return localStorage.getItem(NATIVE_FLAG) === "1";
+    return getStoredSync(NATIVE_FLAG, "") === "1" || localStorage.getItem(NATIVE_FLAG) === "1";
   }
   return !!getStoredCredential();
 };
@@ -103,6 +104,7 @@ export const isBiometricEnabled = (): boolean => {
 export const disableBiometric = (): void => {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(NATIVE_FLAG);
+  removeStoredItem(NATIVE_FLAG).catch(() => {});
 };
 
 // تسجيل البصمة (بعد التحقق بكلمة المرور)
@@ -122,6 +124,7 @@ export const registerBiometric = async (): Promise<boolean> => {
         androidConfirmationRequired: false,
       });
       localStorage.setItem(NATIVE_FLAG, "1");
+      await setStoredItem(NATIVE_FLAG, "1");
       return true;
     } catch (err) {
       console.warn("native biometric register failed", err);
@@ -173,7 +176,7 @@ export const registerBiometric = async (): Promise<boolean> => {
 export const verifyBiometric = async (): Promise<boolean> => {
   // --- Native ---
   if (isNativeApp()) {
-    if (localStorage.getItem(NATIVE_FLAG) !== "1") return false;
+    if (!isBiometricEnabled()) return false;
     try {
       await BiometricAuth.authenticate({
         reason: "افتح التطبيق باستخدام البصمة",

@@ -24,6 +24,7 @@ function rowToInvoiceRecord(row: any, lines: any[]): InvoiceRecord {
     total: row.total || 0,
     paidAmount: row.paid_amount || 0,
     paymentStatus: row.payment_status || "paid",
+    currency: (row.currency as any) || "SDG",
     createdAt: row.created_at,
   };
 }
@@ -44,15 +45,27 @@ export async function getAllPrintInvoices(): Promise<InvoiceRecord[]> {
   const db = await getDb();
   const res = await db.query("SELECT * FROM print_invoices ORDER BY date DESC, created_at DESC");
   const rows = res.values || [];
-  const invoices: InvoiceRecord[] = [];
-  for (const row of rows) {
-    const linesRes = await db.query(
-      "SELECT * FROM print_invoice_lines WHERE invoice_id = ? ORDER BY sort_order ASC",
-      [row.id]
-    );
-    invoices.push(rowToInvoiceRecord(row, linesRes.values || []));
+  if (rows.length === 0) return [];
+
+  // Batch-fetch all lines in a single query instead of N+1 round trips across the Capacitor bridge
+  const linesRes = await db.query(
+    `SELECT l.* FROM print_invoice_lines l
+       JOIN print_invoices p ON p.id = l.invoice_id
+      ORDER BY l.invoice_id, l.sort_order ASC`
+  );
+
+  const linesByInvoice = new Map<string, any[]>();
+  for (const line of linesRes.values || []) {
+    const invId = String(line.invoice_id);
+    let list = linesByInvoice.get(invId);
+    if (!list) {
+      list = [];
+      linesByInvoice.set(invId, list);
+    }
+    list.push(line);
   }
-  return invoices;
+
+  return rows.map((row) => rowToInvoiceRecord(row, linesByInvoice.get(String(row.id)) || []));
 }
 
 export async function upsertPrintInvoice(invoice: InvoiceRecord): Promise<void> {
@@ -61,8 +74,8 @@ export async function upsertPrintInvoice(invoice: InvoiceRecord): Promise<void> 
     {
       statement: `INSERT INTO print_invoices
         (id, serial, date, customer_name, phone, branch, ship_to,
-         client_types, total, paid_amount, payment_status, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+         client_types, total, paid_amount, payment_status, currency, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          serial         = excluded.serial,
          date           = excluded.date,
@@ -73,7 +86,8 @@ export async function upsertPrintInvoice(invoice: InvoiceRecord): Promise<void> 
          client_types   = excluded.client_types,
          total          = excluded.total,
          paid_amount    = excluded.paid_amount,
-         payment_status = excluded.payment_status`,
+         payment_status = excluded.payment_status,
+         currency       = excluded.currency`,
       values: [
         invoice.id,
         invoice.serial,
@@ -86,6 +100,7 @@ export async function upsertPrintInvoice(invoice: InvoiceRecord): Promise<void> 
         invoice.total,
         invoice.paidAmount,
         invoice.paymentStatus,
+        invoice.currency || "SDG",
         invoice.createdAt,
       ],
     },

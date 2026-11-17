@@ -467,6 +467,20 @@ export async function runMigration(): Promise<MigrationReport> {
       [SETTINGS_KEYS.MIGRATION_DONE, "true"]
     );
 
+    // ── 9. Assign official references to the imported invoices ────────────
+    // Legacy rows are inserted without a reference; the numbering system owns
+    // that value (PRD §5.3.1/§5.3.2), so we run the same backfill used by the
+    // v2 migration instead of inventing a number here.
+    try {
+      const { backfillReferencesOnly } = await import("./migrations");
+      const backfill = await backfillReferencesOnly(db);
+      if (backfill.assigned > 0) {
+        console.info("[DB Migration] References assigned:", backfill.assigned);
+      }
+    } catch (err) {
+      report.errors.push(`Reference backfill: ${err}`);
+    }
+
     report.success = true;
 
     console.info(

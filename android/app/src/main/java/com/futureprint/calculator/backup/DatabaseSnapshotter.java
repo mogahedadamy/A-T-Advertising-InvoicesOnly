@@ -45,6 +45,20 @@ final class DatabaseSnapshotter {
         "customers",
         "orders",
         "order_items",
+        // v2 business model (PRD §14) — keep in sync with BACKUP_TABLES in
+        // src/lib/backup/types.ts so a backup always covers every entity.
+        "projects",
+        "suppliers",
+        "financial_accounts",
+        "customer_payments",
+        "customer_payment_allocations",
+        "supplier_payments",
+        "supplier_payment_allocations",
+        "expenses",
+        "expense_payments",
+        "financial_transactions",
+        "document_sequences",
+        "audit_log",
         "sequences",
         "settings",
         "db_meta",
@@ -200,16 +214,21 @@ final class DatabaseSnapshotter {
     /**
      * Moves committed -wal content into the main database file so any reader
      * (including a plain file copy) sees the complete database.
-     * Non-fatal: a busy checkpoint still leaves VACUUM INTO reading through the
-     * WAL on our read-write connection.
+     * Retries across modes whenever SQLite reports `busy != 0` instead of
+     * returning on the first attempt.
      */
     private void checkpointWal(SQLiteDatabase db) {
-        for (String mode : new String[] { "FULL", "RESTART", "PASSIVE" }) {
+        for (String mode : new String[] { "TRUNCATE", "FULL", "RESTART", "PASSIVE" }) {
             try (Cursor c = db.rawQuery("PRAGMA wal_checkpoint(" + mode + ")", null)) {
-                // PRAGMA returns a row (busy, log, checkpointed); reading it keeps
-                // this compatible with every Android SQLite implementation.
-                if (c != null) c.moveToFirst();
-                return;
+                if (c != null && c.moveToFirst()) {
+                    int busy = c.getColumnCount() > 0 ? c.getInt(0) : 0;
+                    if (busy == 0) {
+                        return;
+                    }
+                    Log.w(TAG, "wal_checkpoint(" + mode + ") reported busy=" + busy);
+                } else {
+                    return;
+                }
             } catch (Exception e) {
                 Log.w(TAG, "wal_checkpoint(" + mode + ") failed: " + e.getMessage());
             }

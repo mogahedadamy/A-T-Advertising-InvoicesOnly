@@ -17,9 +17,32 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { getDb } from "@/lib/database";
 import { backupBridge, isBackupEngineAvailable } from "./bridge";
 import { getBackupSettingsSnapshot, loadBackupSettings, recordBackupRun } from "./settingsStore";
 import type { BackupKind, BackupRunResult } from "./types";
+
+/**
+ * Flush committed SQLCipher WAL frames into the main .db file before the native
+ * Android SQLite snapshotter reads it, avoiding cross-driver WAL visibility gaps.
+ * Uses PASSIVE mode for transaction-triggered runs to prevent locking the database,
+ * and TRUNCATE mode only for manual explicit user backups.
+ */
+export async function flushWalBeforeBackup(mode: "passive" | "truncate" = "passive"): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  const pragma = mode === "truncate" ? "PRAGMA wal_checkpoint(TRUNCATE);" : "PRAGMA wal_checkpoint(PASSIVE);";
+  try {
+    const db = await getDb();
+    await db.query(pragma);
+  } catch {
+    try {
+      const db = await getDb();
+      await db.query("PRAGMA wal_checkpoint(PASSIVE);");
+    } catch {
+      // non-fatal: snapshotter still reads WAL when possible
+    }
+  }
+}
 
 let running = false;
 let queued = false;
@@ -98,8 +121,9 @@ async function runQueue(kind: BackupKind, reason: string): Promise<void> {
 
   running = true;
   try {
-    // Give the repository's async SQLite write a moment to land.
+    // Give the repository's async SQLite write a moment to land, then flush WAL passively without locking readers.
     await new Promise((r) => setTimeout(r, 250));
+    await flushWalBeforeBackup("passive");
     const settingsNow = getBackupSettingsSnapshot();
     const result = await backupBridge.createBackup(kind, {
       skipIfUnchanged: true,
@@ -141,6 +165,7 @@ export async function createManualBackup(): Promise<BackupRunResult> {
   }
   running = true;
   try {
+    await flushWalBeforeBackup("truncate");
     await loadBackupSettings();
     const settings = getBackupSettingsSnapshot();
     const result = await backupBridge.createBackup("manual", { skipIfUnchanged: false, encrypt: settings.encryptionEnabled });

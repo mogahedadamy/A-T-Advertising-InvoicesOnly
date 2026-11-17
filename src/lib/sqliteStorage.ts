@@ -17,11 +17,16 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
 import { getDb } from "./database";
 import { notifyDataChanged } from "./backup/notify";
 
+const PROFILE_FAILSAFE_KEYS = new Set(["future_print_user_name", "future_print_onboarded"]);
+
 // In-memory cache for synchronous reads (useSyncExternalStore requirement)
 const memoryCache = new Map<string, string>();
+// Structured object cache to eliminate redundant JSON.stringify / JSON.parse cycles
+const parsedCache = new Map<string, any>();
 let _ready = false;
 const _readyListeners: (() => void)[] = [];
 
@@ -29,9 +34,28 @@ export function isStorageReady(): boolean {
   return _ready;
 }
 
+/** Clear all cached rows in memory so restored/reloaded snapshots start cleanly. */
+export function clearSQLiteMemoryCache(): void {
+  memoryCache.clear();
+  parsedCache.clear();
+  _ready = false;
+}
+
+/** Remove device profile failsafes before a full-replace restore so old Preferences never shadow the restored snapshot. */
+export async function clearProfileFailsafePreferences(): Promise<void> {
+  for (const key of PROFILE_FAILSAFE_KEYS) {
+    memoryCache.delete(key);
+    parsedCache.delete(key);
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.remove({ key }).catch(() => {});
+    }
+  }
+}
+
 /** Update in-memory cache immediately with raw string (and localStorage on web) */
 export function setMemoryCacheString(key: string, value: string): void {
   memoryCache.set(key, value);
+  parsedCache.delete(key);
   if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
     try {
       localStorage.setItem(key, value);
@@ -41,7 +65,12 @@ export function setMemoryCacheString(key: string, value: string): void {
 
 /** Update in-memory cache immediately (and localStorage on web) without touching SQLite settings table */
 export function setMemoryCacheJson<T>(key: string, data: T): void {
-  setMemoryCacheString(key, JSON.stringify(data));
+  parsedCache.set(key, data);
+  if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch {}
+  }
 }
 
 /** Called by initSQLiteStorage() when DB is open and data is loaded */
@@ -60,8 +89,8 @@ function markReady() {
  */
 export function getStoredSync(key: string, defaultValue: string = ""): string {
   if (memoryCache.has(key)) return memoryCache.get(key)!;
-  // Browser fallback
-  if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
+  // Browser or Native localStorage fast cache
+  if (typeof window !== "undefined") {
     try {
       const val = localStorage.getItem(key);
       if (val !== null) {
@@ -73,13 +102,20 @@ export function getStoredSync(key: string, defaultValue: string = ""): string {
   return defaultValue;
 }
 
-/** Safe JSON parse wrapper for synchronous reads */
+/** Safe JSON parse wrapper with structured cache lookup for synchronous reads */
 export function getStoredJsonSync<T>(key: string, fallback: T): T {
+  if (parsedCache.has(key)) {
+    return parsedCache.get(key) as T;
+  }
   const raw = getStoredSync(key, "");
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw);
-    return parsed !== null && parsed !== undefined ? (parsed as T) : fallback;
+    if (parsed !== null && parsed !== undefined) {
+      parsedCache.set(key, parsed);
+      return parsed as T;
+    }
+    return fallback;
   } catch {
     return fallback;
   }
@@ -94,14 +130,25 @@ export function getStoredJsonSync<T>(key: string, fallback: T): T {
  * to `settings` was silently losing the invoice/proforma counters.
  */
 export async function setStoredItem(key: string, value: string): Promise<void> {
+  const previousValue = memoryCache.get(key);
   memoryCache.set(key, value);
+  parsedCache.delete(key);
 
   if (!Capacitor.isNativePlatform()) {
     // Browser fallback
     try {
       localStorage.setItem(key, value);
-    } catch {}
+    } catch (err) {
+      if (previousValue !== undefined) memoryCache.set(key, previousValue);
+      else memoryCache.delete(key);
+      console.error(`[SQLiteStorage] Failed to write localStorage for key ${key}:`, err);
+      throw err;
+    }
     return;
+  }
+
+  if (PROFILE_FAILSAFE_KEYS.has(key)) {
+    Preferences.set({ key, value }).catch(() => {});
   }
 
   try {
@@ -112,8 +159,14 @@ export async function setStoredItem(key: string, value: string): Promise<void> {
     await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, value]);
     notifyDataChanged();
   } catch (err) {
-    // On DB error, don't throw — data is safe in memory cache for session
-    console.warn(`[SQLiteStorage] setStoredItem failed for key ${key}:`, err);
+    // Roll back in-memory cache to maintain durability & consistency
+    if (previousValue !== undefined) {
+      memoryCache.set(key, previousValue);
+    } else {
+      memoryCache.delete(key);
+    }
+    console.error(`[SQLiteStorage] CRITICAL: setStoredItem failed for key ${key} — memory rolled back:`, err);
+    throw err;
   }
 }
 
@@ -130,6 +183,7 @@ export async function setStoredJson<T>(key: string, data: T): Promise<void> {
 /** Remove a key from cache and DB */
 export async function removeStoredItem(key: string): Promise<void> {
   memoryCache.delete(key);
+  parsedCache.delete(key);
 
   if (!Capacitor.isNativePlatform()) {
     try {
@@ -192,6 +246,7 @@ async function preloadEntityCaches(): Promise<void> {
       { getAllOrders },
       { getAllPrintInvoices },
       { getAllProformaInvoices },
+      { getAllProjects },
       { getSequence },
     ] = await Promise.all([
       import("./repositories/CustomInvoiceRepository"),
@@ -199,23 +254,26 @@ async function preloadEntityCaches(): Promise<void> {
       import("./repositories/OrderRepository"),
       import("./repositories/PrintInvoiceRepository"),
       import("./repositories/ProformaRepository"),
+      import("./repositories/ProjectRepository"),
       import("./repositories/SettingsRepository"),
     ]);
 
-    const [customInvoices, customers, orders, printInvoices, proformaInvoices] =
+    const [customInvoices, customers, orders, printInvoices, proformaInvoices, projects] =
       await Promise.all([
         getAllCustomInvoices().catch(() => []),
         getAllCustomers().catch(() => []),
         getAllOrders().catch(() => []),
         getAllPrintInvoices().catch(() => []),
         getAllProformaInvoices().catch(() => []),
+        getAllProjects().catch(() => []),
       ]);
 
-    memoryCache.set("future_custom_invoices_v2", JSON.stringify(customInvoices));
-    memoryCache.set("future_print_customers_v2", JSON.stringify(customers));
-    memoryCache.set("future_print_orders_v2", JSON.stringify(orders));
-    memoryCache.set("future_print_invoices_v2", JSON.stringify(printInvoices));
-    memoryCache.set("future_proforma_invoices_v2", JSON.stringify(proformaInvoices));
+    parsedCache.set("future_custom_invoices_v2", customInvoices);
+    parsedCache.set("future_print_customers_v2", customers);
+    parsedCache.set("future_print_orders_v2", orders);
+    parsedCache.set("future_print_invoices_v2", printInvoices);
+    parsedCache.set("future_proforma_invoices_v2", proformaInvoices);
+    parsedCache.set("future_print_projects_v1", projects);
 
     // Load sequences, falling back to the settings mirror written by older builds
     const db = await getDb();
@@ -257,8 +315,32 @@ async function preloadEntityCaches(): Promise<void> {
         memoryCache.set(String(row.key), String(row.value));
       }
     }
+
+    // Keep onboarding/profile Preferences aligned with SQLite settings, and only
+    // backfill from Preferences if SQLite has no value yet.
+    for (const key of PROFILE_FAILSAFE_KEYS) {
+      const fromDb = memoryCache.get(key);
+      if (fromDb) {
+        Preferences.set({ key, value: fromDb }).catch(() => {});
+      } else {
+        try {
+          const pref = await Preferences.get({ key });
+          if (pref.value) {
+            memoryCache.set(key, pref.value);
+            await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, pref.value]).catch(() => {});
+          }
+        } catch {}
+      }
+    }
   } catch (err) {
     console.warn("[SQLiteStorage] Preload error:", err);
+    // Keep onboarding state alive even if SQLite failed to preload
+    for (const key of PROFILE_FAILSAFE_KEYS) {
+      try {
+        const pref = await Preferences.get({ key });
+        if (pref.value) memoryCache.set(key, pref.value);
+      } catch {}
+    }
   }
 }
 
@@ -299,7 +381,8 @@ export async function initSQLiteStorage(): Promise<void> {
 export async function refreshCache(cacheKey: string, fetchFn: () => Promise<any[]>): Promise<void> {
   try {
     const data = await fetchFn();
-    memoryCache.set(cacheKey, JSON.stringify(data));
+    parsedCache.set(cacheKey, data);
+    memoryCache.delete(cacheKey);
   } catch (err) {
     console.warn(`[SQLiteStorage] refreshCache failed for ${cacheKey}:`, err);
   }

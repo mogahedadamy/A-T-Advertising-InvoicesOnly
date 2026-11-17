@@ -47,15 +47,39 @@ async function _initialize(): Promise<SQLiteDBConnection> {
 
     await db.open();
 
-    // Enable WAL mode for crash safety (must run outside transaction on SQLite)
-    await db.execute("PRAGMA journal_mode=WAL;", false);
-    // Enforce foreign key constraints
-    await db.execute("PRAGMA foreign_keys=ON;", false);
-    // Improve write performance
-    await db.execute("PRAGMA synchronous=NORMAL;", false);
+    // PRAGMAs that return result rows (notably journal_mode=WAL) MUST run via
+    // db.query() on Android SQLCipher; db.execute() maps to execSQL(), which
+    // throws "Queries can be performed using SQLiteDatabase.query or rawQuery methods only".
+    for (const pragma of [
+      "PRAGMA journal_mode=WAL;",
+      "PRAGMA foreign_keys=ON;",
+      "PRAGMA synchronous=NORMAL;",
+    ]) {
+      try {
+        await db.query(pragma);
+      } catch (pragmaErr) {
+        console.warn(`[DB] ${pragma} warning:`, pragmaErr);
+      }
+    }
 
     // Create schema if not exists (idempotent)
     await _ensureSchema(db);
+
+    // Apply versioned migrations (v2 business model + document references).
+    // Runs before any UI or store reads data, and never throws for a recoverable
+    // problem: a failed step keeps the recorded version so the next launch retries.
+    try {
+      const { runPendingMigrations } = await import("./migrations");
+      const outcome = await runPendingMigrations(db);
+      if (outcome.applied.length > 0) {
+        console.info("[DB] Migrations applied:", outcome.applied.join(" | "));
+      }
+      if (outcome.warnings.length > 0) {
+        console.warn("[DB] Migration warnings:", outcome.warnings);
+      }
+    } catch (err) {
+      console.error("[DB] Migration runner failed:", err);
+    }
 
     console.info("[DB] SQLite database initialized:", DB_NAME, "v" + DB_VERSION);
     return db;
@@ -87,12 +111,19 @@ async function _ensureSchema(db: SQLiteDBConnection): Promise<void> {
  * Close the connection (call on app termination if needed).
  */
 export async function closeDb(): Promise<void> {
-  if (_db) {
+  if (_initPromise) {
     try {
-      await sqlite.closeConnection(DB_NAME, false);
+      await _initPromise;
     } catch {}
-    _db = null;
-    _initPromise = null;
   }
+  _db = null;
+  _initPromise = null;
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const isConn = (await sqlite.isConnection(DB_NAME, false)).result;
+    if (isConn) {
+      await sqlite.closeConnection(DB_NAME, false);
+    }
+  } catch {}
 }
 

@@ -134,13 +134,17 @@ async function freshWorkspace(options: { wal?: boolean; key?: Uint8Array } = {})
   const fixture = FixtureDatabase.open({ dir: dbDir, wal: options.wal ?? false });
   fixture.applySchema(CREATE_SCHEMA_V1);
   fixture.db.exec("PRAGMA user_version = 1;");
+  // Run the real versioned migration so the fixture matches a device that has
+  // already been upgraded (v2 tables + invoice reference column).
+  const { runPendingMigrations } = await import("@/lib/database/migrations");
+  await runPendingMigrations(fixture, { nowIso: new Date().toISOString() });
   state.db = fixture;
   state.dir = root;
   state.dirDb = dbDir;
   const engine = new NodeBackupEngine({
     folderDir,
     dbDir,
-    currentSchema: 1,
+    currentSchema: 3,
     key: options.key,
     retention: { daily: 7, weekly: 4, monthly: 12, keepMinimum: 2 },
   });
@@ -192,7 +196,9 @@ describe("Scenario: creating invoices, backing up and restoring them", () => {
     const { saveCustomInvoice, getCustomInvoicesSnapshot } = await import("@/lib/billing/store");
     const { commitSerial } = await import("@/lib/invoice/serial");
 
-    saveCustomInvoice({
+    // The store persists before publishing to the in-memory snapshot, so the
+    // save is awaited here (it is async since the numbering integration).
+    await saveCustomInvoice({
       id: "inv-1",
       meta: {
         serial: "0001",
@@ -248,7 +254,7 @@ describe("Scenario: creating invoices, backing up and restoring them", () => {
     state.dirDb = reinstallDir;
     expect(countInvoices()).toBe(0);
 
-    const engineAfterReinstall = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: reinstallDir, currentSchema: 1 });
+    const engineAfterReinstall = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: reinstallDir, currentSchema: 3 });
     (state as any).engine = engineAfterReinstall;
 
     // 6. Discovery finds the backup.
@@ -364,7 +370,7 @@ describe("Scenario: insufficient storage", () => {
     const starved = new NodeBackupEngine({
       folderDir: ws.folderDir,
       dbDir: ws.dbDir,
-      currentSchema: 1,
+      currentSchema: 3,
       freeBytes: 1024, // 1 KiB free
     });
     const result = await starved.create({ kind: "daily" });
@@ -418,10 +424,17 @@ describe("Scenario: database migration", () => {
     const ws = await freshWorkspace();
     writeInvoice(ws.fixture, "0001", "عميل", 1000, [{ description: "قديم", dimensions: "1×1", qty: 1, total: 1000 }]);
     // Pretend this snapshot came from schema v1 while the app now runs v2.
-    const original = await ws.engine.create({ kind: "manual" });
+    const legacyEngine = new NodeBackupEngine({
+      folderDir: ws.folderDir,
+      dbDir: ws.dbDir,
+      currentSchema: 3,
+      overrideSchemaVersion: 1,
+    });
+    const original = await legacyEngine.create({ kind: "manual" });
     expect(original.ok).toBe(true);
+    expect(original.manifest?.databaseSchemaVersion).toBe(1);
 
-    const upgradedApp = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: ws.dbDir, currentSchema: 2 });
+    const upgradedApp = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: ws.dbDir, currentSchema: 3 });
     const listUnderV2 = await upgradedApp.list();
     expect(listUnderV2[0].status).toBe("verified");
     expect(listUnderV2[0].manifest?.databaseSchemaVersion).toBe(1);
@@ -432,9 +445,9 @@ describe("Scenario: database migration", () => {
     const restored = await upgradedApp.restore(listUnderV2[0].fileName, "replace");
     expect(restored.ok).toBe(true);
     state.db = FixtureDatabase.open({ dir: ws.dbDir });
-    state.db.db.exec("PRAGMA user_version = 2;");
+    state.db.db.exec("PRAGMA user_version = 3;");
     const db = state.db as FixtureDatabase;
-    expect((db.db.prepare("PRAGMA user_version").get() as any).user_version).toBe(2);
+    expect((db.db.prepare("PRAGMA user_version").get() as any).user_version).toBe(3);
     expect(upgradedApp.readInvoice("0001")?.party).toBe("عميل");
 
     // A backup produced by a FUTURE release must not be silently downgraded.
@@ -489,7 +502,7 @@ describe("Scenario: portable / encrypted backups", () => {
     const other = FixtureDatabase.open({ dir: otherDir });
     other.applySchema(CREATE_SCHEMA_V1);
     other.close();
-    const onNewDevice = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: otherDir, currentSchema: 1, key });
+    const onNewDevice = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: otherDir, currentSchema: 3, key });
     expect((await onNewDevice.list())[0].status).toBe("verified");
     const restored = await onNewDevice.restore(created.fileName!, "replace");
     expect(restored.ok).toBe(true);
@@ -500,7 +513,7 @@ describe("Scenario: portable / encrypted backups", () => {
     const noKeyDb = FixtureDatabase.open({ dir: noKeyDir });
     noKeyDb.applySchema(CREATE_SCHEMA_V1);
     noKeyDb.close();
-    const withoutKey = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: noKeyDir, currentSchema: 1 });
+    const withoutKey = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: noKeyDir, currentSchema: 3 });
     const blocked = await withoutKey.list();
     expect(blocked[0].status).toBe("encrypted");
     const refused = await withoutKey.restore(created.fileName!, "replace");
@@ -588,6 +601,100 @@ describe("Restore modes", () => {
     const reread = FixtureDatabase.open({ dir: ws.dbDir });
     expect(reread.db.prepare("SELECT COUNT(*) AS c FROM custom_invoice_items WHERE invoice_id='custom-inv-0002'").get()).toEqual({ c: 1 });
     reread.close();
+  });
+
+  it("merge restores all v2/v3 tables (projects, suppliers, expenses, expense_payments, finance) and preserves higher document_sequences", async () => {
+    const ws = await freshWorkspace();
+    const now = "2026-11-12T06:00:00.000Z";
+    ws.fixture.db
+      .prepare("INSERT OR REPLACE INTO financial_accounts (id, name, kind, opening_balance, is_active, created_at) VALUES (?,?,?,?,?,?)")
+      .run("acc-cash", "الخزينة الرئيسية", "cash", 50000, 1, now);
+    ws.fixture.db.prepare("INSERT INTO customers (id, name, created_at) VALUES (?,?,?)").run("cust-1", "عميل مشاريع", now);
+    ws.fixture.db.prepare("INSERT INTO suppliers (id, name, phone, created_at) VALUES (?,?,?,?)").run("sup-1", "مورد طباعة", "0912", now);
+    ws.fixture.db
+      .prepare("INSERT INTO projects (id, reference, customer_id, title, execution_status, financial_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run("proj-1", "PRJ-20261112-001", "cust-1", "حملة إعلانية كبرى", "in_progress", "not_invoiced", now, now);
+    ws.fixture.db
+      .prepare("INSERT INTO expenses (id, kind, project_id, supplier_id, category, amount, expense_date, created_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run("exp-1", "direct", "proj-1", "sup-1", "أجور تركيب", 15000, "2026-11-12", now);
+    ws.fixture.db
+      .prepare("INSERT INTO expense_payments (id, reference, expense_id, amount, paid_at, method, account_id, created_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run("epay-1", "EXPPAY-20261112-001", "exp-1", 10000, "2026-11-12", "cash", "acc-cash", now);
+    ws.fixture.db
+      .prepare("INSERT INTO financial_transactions (id, kind, amount, occurred_at, account_id, source_type, source_id, project_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run("ft-1", "expense_payment", 10000, "2026-11-12", "acc-cash", "expense", "exp-1", "proj-1", now);
+    ws.fixture.db
+      .prepare("INSERT OR REPLACE INTO document_sequences (scope, date_key, last_number, updated_at) VALUES (?,?,?,?)")
+      .run("sales", "20261112", 14, now);
+    writeInvoice(ws.fixture, "0001", "عميل مشاريع", 120000, [{ description: "بند مشروع", dimensions: "4×2", qty: 1, total: 120000 }]);
+
+    const backup = await ws.engine.create({ kind: "manual" });
+    expect(backup.ok).toBe(true);
+    expect(backup.manifest?.counts?.projects).toBe(1);
+    expect(backup.manifest?.counts?.suppliers).toBe(1);
+    expect(backup.manifest?.counts?.expenses).toBe(1);
+    expect(backup.manifest?.counts?.expense_payments).toBe(1);
+    expect(backup.manifest?.counts?.financial_transactions).toBe(1);
+    expect(backup.manifest?.counts?.document_sequences).toBe(1);
+
+    // Clear v2/v3 tables on the live device and simulate a lower sequence counter.
+    ws.fixture.db.exec(`
+      DELETE FROM financial_transactions;
+      DELETE FROM expense_payments;
+      DELETE FROM expenses;
+      DELETE FROM projects;
+      DELETE FROM suppliers;
+      DELETE FROM financial_accounts;
+      UPDATE document_sequences SET last_number = 2 WHERE scope = 'sales' AND date_key = '20261112';
+    `);
+
+    releaseHandles();
+    const merged = await ws.engine.restore(backup.fileName!, "merge");
+    expect(merged.ok).toBe(true);
+
+    const check = FixtureDatabase.open({ dir: ws.dbDir });
+    try {
+      expect(check.count("projects")).toBe(1);
+      expect(check.count("suppliers")).toBe(1);
+      expect(check.count("financial_accounts")).toBeGreaterThanOrEqual(1);
+      expect(check.count("expenses")).toBe(1);
+      expect(check.count("expense_payments")).toBe(1);
+      expect(check.count("financial_transactions")).toBe(1);
+      const seq = check.db
+        .prepare("SELECT last_number FROM document_sequences WHERE scope = 'sales' AND date_key = '20261112'")
+        .get() as any;
+      expect(seq?.last_number).toBe(14);
+    } finally {
+      check.close();
+    }
+  });
+
+  it("restoreBackup clears stale in-memory sqliteStorage cache and reloads restored settings", async () => {
+    const ws = await freshWorkspace();
+    ws.fixture.db.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)").run("future_print_user_name", "اسم النسخة القديمة");
+    ws.fixture.db.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)").run("future_print_onboarded", "true");
+    writeInvoice(ws.fixture, "0001", "عميل النسخة", 500, [{ description: "صنف", dimensions: "1×1", qty: 1, total: 500 }]);
+
+    const backup = await ws.engine.create({ kind: "manual" });
+    expect(backup.ok).toBe(true);
+
+    // Seed stale memoryCache with newer session state (including a key absent from backup).
+    const { setMemoryCacheString, getStoredSync } = await import("@/lib/sqliteStorage");
+    setMemoryCacheString("future_print_user_name", "اسم مؤقت بعد النسخة");
+    setMemoryCacheString("ephemeral_post_backup_key", "should-vanish");
+    expect(getStoredSync("future_print_user_name")).toBe("اسم مؤقت بعد النسخة");
+
+    const { restoreBackup } = await import("@/lib/backup/restoreService");
+    releaseHandles();
+    const restored = await restoreBackup(backup.fileName!, "replace");
+    expect(restored.ok).toBe(true);
+    // Point state.db to reopened DB before calling reload checks cleanly:
+    state.db = FixtureDatabase.open({ dir: ws.dbDir });
+    const { reloadAllStoresFromDatabase } = await import("@/lib/backup/restoreService");
+    await reloadAllStoresFromDatabase();
+
+    expect(getStoredSync("future_print_user_name")).toBe("اسم النسخة القديمة");
+    expect(getStoredSync("ephemeral_post_backup_key")).toBe("");
   });
 });
 

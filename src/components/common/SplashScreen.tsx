@@ -1,21 +1,20 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { TA_LOGO_WHITE_BASE64 } from "@/assets/invoiceImagesBase64";
 import { ShieldCheck } from "lucide-react";
 
 interface SplashScreenProps {
   onFinish: () => void;
-  /** Duration in ms before transition starts (default: 6000ms between 5s and 7s) */
+  /** Duration in ms before transition starts (default: 4500ms) */
   duration?: number;
 }
 
 /**
  * شاشة البداية المتحركة الفاخرة (Modern Animated Brand Splash)
  * تجسد الهوية البصرية لـ T.A Advertising Solution
- * مهيأة بمدة 6 ثوانٍ كافية للقراءة والاستيعاب مع إمكانية التخطي بالنقر
+ * مهيأة بمدة متوازنة مع تسريع عتادي نقي وخفة تامة على المعالج مع إمكانية التخطي بالنقر
  */
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onFinish,
-  duration = 6000,
+  duration = 5500,
 }) => {
   const [progress, setProgress] = useState(0);
   const [isFadingOut, setIsFadingOut] = useState(false);
@@ -37,31 +36,27 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
   useEffect(() => {
     // 1. تسلسل ظهور المراحل الحركية
-    const tShine = setTimeout(() => setPhase("shine"), 600);
-    const tReady = setTimeout(() => setPhase("ready"), 1800);
+    const tShine = setTimeout(() => setPhase("shine"), 400);
+    const tReady = setTimeout(() => setPhase("ready"), 1200);
 
-    // 2. محاكاة حركة شريط التحميل بسلاسة فائقة خلال المدة المحددة (6 ثوانٍ)
+    // 2. تحديث تقدم التحميل بنعومة كل 100ms لتوفير موارد المعالج والبطارية
     const startTime = performance.now();
-    let animId: number;
+    const animDuration = Math.max(1000, duration - 400);
 
-    const updateProgress = (now: number) => {
-      const elapsed = now - startTime;
-      const pct = Math.min(100, Math.round((elapsed / (duration - 500)) * 100));
+    const intervalId = setInterval(() => {
+      const elapsed = performance.now() - startTime;
+      const pct = Math.min(100, Math.round((elapsed / animDuration) * 100));
       setProgress(pct);
 
-      if (elapsed < duration - 500) {
-        animId = requestAnimationFrame(updateProgress);
-      } else {
-        setProgress(100);
+      if (pct >= 100) {
+        clearInterval(intervalId);
       }
-    };
+    }, 100);
 
-    animId = requestAnimationFrame(updateProgress);
-
-    // 3. بدء تلاشي الشاشة بنعومة قبل النهاية بـ 400ms
+    // 3. بدء تلاشي الشاشة بنعومة قبل النهاية بـ 350ms
     const tFade = setTimeout(() => {
       setIsFadingOut(true);
-    }, duration - 400);
+    }, duration - 350);
 
     // 4. إنهاء الشاشة وتسليم الواجهة بأمان لمرة واحدة فقط
     const tEnd = setTimeout(() => {
@@ -73,7 +68,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       clearTimeout(tReady);
       clearTimeout(tFade);
       clearTimeout(tEnd);
-      cancelAnimationFrame(animId);
+      clearInterval(intervalId);
     };
   }, [duration, safeFinish]);
 
@@ -94,8 +89,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           : "opacity-100 scale-100"
       }`}
       style={{
-        paddingTop: "max(2rem, env(safe-area-inset-top, 0px))",
-        paddingBottom: "max(2rem, env(safe-area-inset-bottom, 0px))",
+        paddingTop: "max(2.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 0px))",
         paddingLeft: "max(1.5rem, env(safe-area-inset-left, 0px))",
         paddingRight: "max(1.5rem, env(safe-area-inset-right, 0px))",
       }}
@@ -111,7 +106,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       <div className="relative z-10 flex items-center gap-1.5 rounded-full border border-[#0D4A39]/60 bg-[#0C251E]/70 px-4 py-1.5 backdrop-blur-md transition-all duration-700">
         <ShieldCheck className="h-4 w-4 text-[#C5A059]" />
         <span className="text-[11px] font-semibold tracking-wider text-[#C2D1CE]">
-          منظومة A-T-Advertising • الحاسبة والفواتير (تجريبية 48 ساعة)
+          T.A Advertising Solutions • المنظومة الإدارية والمالية الشاملة
         </span>
       </div>
 
@@ -127,9 +122,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         >
           <div className="relative px-4 py-2">
             <img
-              src={TA_LOGO_WHITE_BASE64}
+              src="/ta-logo-white.png"
               alt="T.A Advertising Solution"
-              className="h-28 sm:h-36 w-auto max-w-[280px] sm:max-w-[340px] object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)]"
+              className="h-36 sm:h-44 w-auto max-w-[320px] sm:max-w-[400px] object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)]"
             />
           </div>
         </div>
@@ -142,10 +137,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
               : "opacity-100 translate-y-0"
           }`}
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#0D4A39] bg-[#0C251E]/80 px-4 py-1.5 shadow-md backdrop-blur">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#0D4A39] bg-[#0C251E]/90 px-4 py-1.5 shadow-md backdrop-blur">
             <span className="h-2 w-2 rounded-full bg-[#168063]" />
-            <span className="text-xs font-bold text-white tracking-wide">
-              حلول إعلانية وطباعية متكاملة
+            <span className="text-xs font-black text-white tracking-wider">
+              Advertising Solutions • حلول إعلانية متكاملة
             </span>
           </div>
           <span className="text-[11px] font-medium text-[#C2D1CE]/70 tracking-widest">

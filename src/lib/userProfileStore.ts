@@ -34,19 +34,42 @@ export function getStoredUserName(): string {
 
 /** التحقق هل اكتملت التهيئة الأولى */
 export function isUserOnboarded(): boolean {
+  if (typeof window !== "undefined") {
+    try {
+      const lsFlag = localStorage.getItem(STORAGE_KEY_ONBOARDED);
+      if (lsFlag === "true") return true;
+      const lsName = localStorage.getItem(STORAGE_KEY_NAME);
+      if (lsName && lsName.trim().length > 0) return true;
+    } catch {}
+  }
   const flag = getStoredSync(STORAGE_KEY_ONBOARDED, "");
   if (flag === "true") return true;
   // إذا كان هناك اسم مخزن مسبقاً فهو مهيأ
   return Boolean(getStoredUserName());
 }
 
-/** حفظ بيانات المستخدم */
+/** حفظ بيانات المستخدم بشكل فوري غير معطل */
 export async function saveUserProfile(name: string): Promise<void> {
   const cleanName = (name || "").trim();
-  await setStoredItem(STORAGE_KEY_NAME, cleanName);
-  await setStoredItem(STORAGE_KEY_ONBOARDED, "true");
+
+  // تحديث فوري محلياً وفي المتصفح لإطلاق الأحداث دون أي تأخير
   if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(STORAGE_KEY_NAME, cleanName);
+      localStorage.setItem(STORAGE_KEY_ONBOARDED, "true");
+    } catch {}
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { name: cleanName } }));
+    window.dispatchEvent(new Event("storage"));
+  }
+
+  // الحفظ الفعلي في SQLite وتفضيلات أندرويد الأصلية
+  try {
+    await Promise.all([
+      setStoredItem(STORAGE_KEY_NAME, cleanName),
+      setStoredItem(STORAGE_KEY_ONBOARDED, "true"),
+    ]);
+  } catch (err) {
+    console.warn("[UserProfile] SQLite persistence warning:", err);
   }
 }
 
@@ -75,7 +98,10 @@ export function useUserProfile() {
   }, []);
 
   const saveName = useCallback(async (name: string) => {
-    await saveUserProfile(name);
+    const clean = (name || "").trim();
+    setUserName(clean);
+    setIsOnboarded(true);
+    await saveUserProfile(clean);
   }, []);
 
   const initials = getAvatarInitials(userName);

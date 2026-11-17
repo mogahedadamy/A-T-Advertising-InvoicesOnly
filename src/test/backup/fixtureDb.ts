@@ -157,13 +157,20 @@ export class FixtureDatabase {
     }
   }
 
-  run(statement: string, values: unknown[] = []): { changes: { changes: number; lastId: number } } {
+  run(statement: string, values: unknown[] = [], transaction = true): { changes: { changes: number; lastId: number } } {
+    if (transaction && this.transactionDepth > 0) {
+      throw new Error("Already in transaction");
+    }
     const { stmt, params } = this.prepareStatement(statement, values);
     const result = (stmt.run as (...p: any[]) => { changes: number | bigint; lastInsertRowid: number | bigint })(...params);
     return { changes: { changes: Number(result.changes), lastId: Number(result.lastInsertRowid) } };
   }
 
   execute(statements: string, _transaction = false): { changes: { changes: number; lastId: number } } {
+    // Mirror Android SQLCipher execSQL() rejecting PRAGMAs that return rows.
+    if (/^\s*pragma\s+(journal_mode\s*=|wal_checkpoint|quick_check|integrity_check|table_info|foreign_key_check|optimize)/i.test(statements)) {
+      throw new Error("Execute: unknown error (code 0): Queries can be performed using SQLiteDatabase.query or rawQuery methods only");
+    }
     this.db.exec(statements);
     return { changes: { changes: 0, lastId: 0 } };
   }

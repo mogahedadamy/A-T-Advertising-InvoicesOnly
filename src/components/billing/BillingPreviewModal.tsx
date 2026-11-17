@@ -10,7 +10,7 @@ import { Edit3 } from "lucide-react";
 import type { CustomInvoice } from "@/lib/billing/types";
 import { INVOICE_TYPE_LABELS } from "@/lib/billing/types";
 import { StandardInvoiceViewer } from "./StandardInvoiceViewer";
-import { CustomInvoicePrintButton } from "./CustomInvoicePrintButton";
+import { CustomInvoicePrintButton, CustomInvoiceWhatsAppButton } from "./CustomInvoicePrintButton";
 
 interface Props {
   invoice: CustomInvoice | null;
@@ -33,10 +33,14 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
         <DialogHeader className="p-2.5 sm:p-4 pr-3 pl-12 sm:pr-6 sm:pl-16 shrink-0 border-b border-border/50 flex flex-row items-center justify-between text-right bg-card z-10 gap-2">
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-xs sm:text-base font-black text-foreground truncate">
-              معاينة {title} #{invoice.meta.serial}
+              معاينة {title} {invoice.reference || (invoice.meta.serial ? `#${invoice.meta.serial}` : "")}
             </DialogTitle>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">
-              {invoice.meta.partyName || invoice.meta.partyEnName || "عميل"}
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
+              <span>{invoice.meta.partyName || invoice.meta.partyEnName || "عميل"}</span>
+              <span>•</span>
+              <span className="font-mono font-bold text-primary">
+                {invoice.currency || invoice.meta.currency || "SDG"}
+              </span>
             </p>
           </div>
 
@@ -56,6 +60,10 @@ export function BillingPreviewModal({ invoice, open, onOpenChange, onEdit }: Pro
                 <span className="hidden sm:inline">تعديل</span>
               </Button>
             )}
+            <CustomInvoiceWhatsAppButton
+              invoice={invoice}
+              size="sm"
+            />
             <CustomInvoicePrintButton
               invoice={invoice}
               size="sm"

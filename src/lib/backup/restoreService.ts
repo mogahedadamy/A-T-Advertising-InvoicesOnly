@@ -17,6 +17,7 @@ import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 import { closeDb, getDb } from "@/lib/database";
 import { DB_VERSION } from "@/lib/database/schema";
+import { flushWalBeforeBackup } from "./autoBackup";
 import { backupBridge, isBackupEngineAvailable } from "./bridge";
 import { getBackupSettingsSnapshot, loadBackupSettings, saveBackupSettings } from "./settingsStore";
 import { normalizeLegacyBackup, detectLegacyBackup } from "./legacyImport";
@@ -38,6 +39,7 @@ export async function runPreUpdateBackupIfNeeded(allowed = true): Promise<boolea
     // Record the attempt first: a failing backup must not retry on every launch,
     // it surfaces through the dashboard warning instead.
     await saveBackupSettings({ lastPreUpdateVersion: versionKey });
+    await flushWalBeforeBackup();
     const result = await backupBridge.createBackup("pre-update", {
       skipIfUnchanged: true,
       encrypt: settings.encryptionEnabled,
@@ -64,15 +66,20 @@ export async function runPreUpdateBackupIfNeeded(allowed = true): Promise<boolea
 export async function reloadAllStoresFromDatabase(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    const { initSQLiteStorage } = await import("@/lib/sqliteStorage");
+    const { clearSQLiteMemoryCache, initSQLiteStorage } = await import("@/lib/sqliteStorage");
+    clearSQLiteMemoryCache();
     await closeDb();
     await getDb();
-    // initSQLiteStorage re-runs the localStorage → SQLite migration only when its
-    // marker is absent, which is exactly what a restored older snapshot needs.
+    // initSQLiteStorage re-runs any pending schema/localStorage migration if
+    // its marker is absent in a restored older snapshot, then preloads caches.
     await initSQLiteStorage();
-    // Signal every store hook (useSyncExternalStore) to re-read the cache.
+    await loadBackupSettings(true);
+    // Signal every store hook, project view, finance ledger and profile header to refresh.
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("native-storage-ready"));
+      window.dispatchEvent(new Event("project-relations-changed"));
+      window.dispatchEvent(new Event("finance-changed"));
+      window.dispatchEvent(new Event("future-user-profile-updated"));
     }
   } catch (err) {
     console.error("[Backup] reload after restore failed:", err);
@@ -81,21 +88,20 @@ export async function reloadAllStoresFromDatabase(): Promise<void> {
 }
 
 /**
- * Runs a restore and, on success, refreshes the UI.
+ * Runs a restore and, on success, clears stale caches and refreshes the UI.
  * A failed restore leaves the current database untouched (native guarantee).
  */
 export async function restoreBackup(fileName: string, mode: RestoreMode): Promise<RestoreResult> {
   if (!isBackupEngineAvailable()) {
     return { ok: false, mode, counts: {}, errorCode: "UNSUPPORTED", message: "الاستعادة متاحة داخل تطبيق أندرويد فقط." };
   }
+  // Release any open JS connection cleanly before the native engine swaps/attaches the file.
+  await closeDb();
   const result = await backupBridge.restoreBackup(fileName, mode);
   if (result.ok) {
-    // Reopen the (possibly older-schema) restored database and migrate it.
-    await closeDb();
-    try {
-      await getDb();
-    } catch (err) {
-      console.error("[Backup] reopening restored database failed:", err);
+    if (mode === "replace") {
+      const { clearProfileFailsafePreferences } = await import("@/lib/sqliteStorage");
+      await clearProfileFailsafePreferences();
     }
     await reloadAllStoresFromDatabase();
   }
@@ -117,7 +123,7 @@ export async function getCurrentSchemaVersion(): Promise<number> {
  * Imports a legacy JSON export in ONE transaction.
  * Any error rolls the whole import back, so a half-imported file is impossible.
  */
-export async function importLegacyJson(text: string): Promise<{ ok: boolean; message: string; added: number }> {
+export async function importLegacyJson(text: string): Promise<{ ok: boolean; message: string; added: number; counts?: Record<string, number> }> {
   let doc: unknown;
   try {
     doc = JSON.parse(text);
@@ -162,14 +168,17 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
       await db.run(
         `INSERT OR IGNORE INTO custom_invoices
           (id, serial, type, date, party_name, party_en_name, attn, phone, salutation,
-           closing_note, account_number, account_name, signatory_title, notes, language,
-           total_amount, total_in_words, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           closing_note, account_number, account_name, signatory_title, notes, language, currency,
+           total_amount, total_in_words, reference, project_id, customer_id, supplier_id, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           inv.id, inv.serial, inv.type, inv.date, inv.partyName, inv.partyEnName, inv.attn, inv.phone,
           inv.salutation, inv.closingNote, inv.accountNumber, inv.accountName, inv.signatoryTitle,
-          inv.notes, inv.language, inv.totalAmount, inv.totalInWords, inv.createdAt, inv.updatedAt,
-        ]
+          inv.notes, inv.language, inv.currency || "SDG", inv.totalAmount, inv.totalInWords,
+          inv.reference ?? null, inv.projectId ?? null, inv.customerId ?? null, inv.supplierId ?? null,
+          inv.createdAt, inv.updatedAt,
+        ],
+        false
       );
       added += await changes(db);
     }
@@ -183,21 +192,23 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
           String(it?.id || `imp-${row.invoiceId}-${row.sortOrder}`), row.invoiceId, String(it?.description || ""),
           it?.material ?? null, it?.dimensions ?? null, Number(it?.qty) || 1,
           it?.unitPrice != null ? Number(it.unitPrice) : null, Number(it?.total) || 0, row.sortOrder,
-        ]
+        ],
+        false
       );
     }
     for (const p of normalized.proformaInvoices) {
       await db.run(
         `INSERT OR IGNORE INTO proforma_invoices
           (id, serial, date, customer_name, customer_en_name, attn, phone, branch, notes,
-           validity_days, account_name, language, status, converted_order_id, total_area,
-           total_qty, total_amount, total_in_words, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           validity_days, account_name, language, currency, status, converted_order_id, total_area,
+           total_qty, total_amount, total_in_words, project_id, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           p.id, p.serial, p.date, p.customerName, p.customerEnName, p.attn, p.phone, p.branch, p.notes,
-          p.validityDays, p.accountName, p.language, p.status, p.convertedOrderId, p.totalArea,
-          p.totalQty, p.totalAmount, p.totalInWords, p.createdAt, p.updatedAt,
-        ]
+          p.validityDays, p.accountName, p.language, p.currency || "SDG", p.status, p.convertedOrderId, p.totalArea,
+          p.totalQty, p.totalAmount, p.totalInWords, p.projectId ?? null, p.createdAt, p.updatedAt,
+        ],
+        false
       );
       added += await changes(db);
     }
@@ -212,19 +223,21 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
           String(l?.id || `imp-pl-${row.proformaId}-${row.sortOrder}`), row.proformaId, String(l?.description || ""),
           l?.material ?? null, Number(l?.width) || 0, Number(l?.height) || 0, Number(l?.qty) || 1,
           l?.rollUsed ?? null, Number(l?.area) || 0, Number(l?.unitPrice) || 0, Number(l?.total) || 0, row.sortOrder,
-        ]
+        ],
+        false
       );
     }
     for (const inv of normalized.printInvoices) {
       await db.run(
         `INSERT OR IGNORE INTO print_invoices
           (id, serial, date, customer_name, phone, branch, ship_to, client_types, total,
-           paid_amount, payment_status, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+           paid_amount, payment_status, currency, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           inv.id, inv.serial, inv.date, inv.customerName, inv.phone, inv.branch, inv.shipTo,
-          inv.clientTypes, inv.total, inv.paidAmount, inv.paymentStatus, inv.createdAt,
-        ]
+          inv.clientTypes, inv.total, inv.paidAmount, inv.paymentStatus, inv.currency || "SDG", inv.createdAt,
+        ],
+        false
       );
       added += await changes(db);
     }
@@ -238,7 +251,8 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
           `pil-${row.invoiceId}-${row.sortOrder}`, row.invoiceId, String(l?.description || ""),
           String(l?.material || ""), Number(l?.width) || 0, Number(l?.height) || 0, Number(l?.qty) || 1,
           Number(l?.unitPrice) || 0, Number(l?.total) || 0, row.sortOrder,
-        ]
+        ],
+        false
       );
     }
     for (const c of normalized.customers) {
@@ -246,7 +260,8 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
         `INSERT OR IGNORE INTO customers
           (id, name, phone, type, address, notes, total_orders, total_spent, balance, created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        [c.id, c.name, c.phone, c.type, c.address, c.notes, c.totalOrders, c.totalSpent, c.balance, c.createdAt]
+        [c.id, c.name, c.phone, c.type, c.address, c.notes, c.totalOrders, c.totalSpent, c.balance, c.createdAt],
+        false
       );
       added += await changes(db);
     }
@@ -259,7 +274,8 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
         [
           o.id, o.orderNumber, o.customerName, o.customerPhone, o.clientType, o.status, o.priority,
           o.createdAt, o.deliveryDate, o.totalArea, o.totalCost, o.paidAmount, o.branch, o.notes, o.invoiceSerial,
-        ]
+        ],
+        false
       );
       added += await changes(db);
     }
@@ -274,13 +290,15 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
           String(it?.id || `imp-oi-${row.orderId}-${row.sortOrder}`), row.orderId, String(it?.description || ""),
           it?.material ?? null, Number(it?.width) || 0, Number(it?.height) || 0, Number(it?.qty) || 1,
           it?.rollUsed ?? null, Number(it?.area) || 0, Number(it?.unitPrice) || 0, Number(it?.total) || 0, row.sortOrder,
-        ]
+        ],
+        false
       );
     }
     for (const seq of normalized.sequences) {
       await db.run(
         "INSERT INTO sequences(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value = CASE WHEN CAST(excluded.value AS INTEGER) > CAST(value AS INTEGER) THEN excluded.value ELSE value END",
-        [seq.key, seq.value]
+        [seq.key, seq.value],
+        false
       );
     }
     await db.commitTransaction();
@@ -295,9 +313,21 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
   }
 
   await reloadAllStoresFromDatabase();
+
+  // Imported invoices arrive without an official reference; the numbering system
+  // assigns them deterministically so a restored invoice can be searched by
+  // reference like any other (PRD §5.3.2, §17).
+  try {
+    const { backfillReferencesOnly } = await import("@/lib/database/migrations");
+    await backfillReferencesOnly(db);
+  } catch (err) {
+    console.warn("[Backup] reference backfill after legacy import failed:", err);
+  }
+
   return {
     ok: true,
     added,
+    counts: normalized.counts,
     message:
       "تمت استعادة الملف القديم: أضيفت " +
       normalized.counts.custom_invoices +

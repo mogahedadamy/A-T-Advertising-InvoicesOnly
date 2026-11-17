@@ -42,4 +42,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets the scheduled backup alarm surface failures as a notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Queries for WhatsApp and PDF Sharing Intent Resolution on Android 11+ -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/pdf" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/pdf" />
+        </intent>
+    </queries>
 </manifest>

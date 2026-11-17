@@ -81,7 +81,7 @@ export function UnderDevelopmentView({
           {/* العنوان الفرعي مع اسم الصفحة */}
           <p className="mx-auto max-w-2xl text-sm md:text-base font-medium text-muted-foreground leading-relaxed mb-6">
             {description ||
-              `نعمل حالياً على تطوير وتجهيز صفحة "${pageTitle}" بأحدث التقنيات وأفضل تجربة استخدام لتناسب متطلبات العمل اليومية في المطبعة.`}
+              `نعمل حالياً على تطوير وتجهيز صفحة "${pageTitle}" بأحدث التقنيات وأفضل تجربة استخدام لتناسب متطلبات العمل اليومية في الوكالة.`}
           </p>
 
           {/* شارة إشعار بأن الوظائف الخلفية تعمل ولم تتأثر */}
@@ -139,11 +139,11 @@ export function UnderDevelopmentView({
             </Link>
 
             <Link
-              to="/calculator"
+              to="/billing"
               className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-xs md:text-sm font-black text-foreground shadow-xs transition hover:bg-muted active:scale-95"
             >
-              <Calculator className="h-4 w-4 text-primary" />
-              فتح حاسبة المقاسات
+              <LayoutDashboard className="h-4 w-4 text-primary" />
+              فتح قسم الفواتير
             </Link>
 
             {children && (

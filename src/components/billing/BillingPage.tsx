@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { BillingCards } from "./BillingCards";
 import { BillingArchiveTable } from "./BillingArchiveTable";
+import { ReceiptDialog } from "@/components/finance/ReceiptDialog";
 import { CustomInvoiceDialog } from "./CustomInvoiceDialog";
 import { CustomInvoicePrintPortal } from "./CustomInvoicePrintButton";
 import { useCustomInvoices } from "@/lib/billing/store";
@@ -20,6 +21,7 @@ export function BillingPage() {
 
   // نوافذ إنشاء وتعديل الفواتير المخصصة (مبيعات / مشتريات)
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
   const [dialogType, setDialogType] = useState<CustomInvoiceType>("sales");
   const [editingCustomInvoice, setEditingCustomInvoice] = useState<CustomInvoice | null>(null);
 
@@ -46,28 +48,28 @@ export function BillingPage() {
       >
         <div className="mx-auto max-w-7xl space-y-3 sm:space-y-4 w-full max-w-full">
           {/* شريط رأس قسم الفواتير التنفيذي المدمج (بدون مساحات مهدورة) */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-border/70 shadow-2xs border-r-4 border-r-primary">
+          <div className="flex items-center justify-between gap-3 bg-card/90 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-border/70 shadow-2xs border-r-4 border-r-primary">
             <div>
               <div className="flex items-center gap-2">
                 <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
                   <Receipt className="h-4 w-4" />
                 </span>
-                <h1 className="text-base sm:text-lg font-black text-foreground tracking-tight">
+                <h1 className="text-sm sm:text-base md:text-lg font-black text-foreground tracking-tight">
                   مركز الفواتير والمطالبات المالية
                 </h1>
-                <span className="text-[11px] font-mono font-black text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 tabular-nums shrink-0">
+                <span className="text-[10.5px] sm:text-[11px] font-mono font-black text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 tabular-nums shrink-0">
                   {stats.totalCount} فاتورة
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium mt-1">
-                إصدار وإدارة فواتير المبيعات، المشتريات، والعروض المبدئية مباشرة بنموذج A4 الرسمي المعتمد
+              <p className="text-[10.5px] sm:text-xs text-muted-foreground font-medium mt-1 leading-snug">
+                إصدار وتوثيق عروض الأسعار وفواتير المبيعات والمشتريات A4 المعتمدة
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden md:flex items-center gap-2 shrink-0">
               <Button
                 onClick={() => handleOpenCreate("sales")}
-                className="h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.98] transition-all w-full sm:w-auto justify-center"
+                className="h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.98] transition-all cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 <span>إصدار فاتورة بيع جديدة</span>
@@ -90,10 +92,18 @@ export function BillingPage() {
               onPreviewCustom={(inv) => setPreviewCustomInvoice(inv)}
               onEditProforma={(proforma) => setEditingProformaInvoice(proforma)}
               onPreviewProforma={(proforma) => setPreviewProformaInvoice(proforma)}
+              onRecordPayment={(invoiceId) => setReceiptInvoiceId(invoiceId)}
               onPreviewCalc={(calc) => setPreviewCalcInvoice(calc)}
               onCreateNew={handleOpenCreate}
             />
           </div>
+
+          {/* تسجيل دفعة مباشرة من سياق الفاتورة (PRD §7.3) */}
+          <ReceiptDialog
+            open={Boolean(receiptInvoiceId)}
+            onOpenChange={(open) => !open && setReceiptInvoiceId(null)}
+            initialInvoiceId={receiptInvoiceId}
+          />
 
           {/* نافذة إنشاء وتعديل الفاتورة المخصصة (مبيعات ومشتريات) */}
           <CustomInvoiceDialog

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { backupBridge, isBackupEngineAvailable } from "./bridge";
 import { loadBackupSettings, getBackupSettingsSnapshot, saveBackupSettings, subscribeBackupSettings } from "./settingsStore";
-import { assessProtection, decideDiscovery, countInvoices, newestVerified } from "./validation";
+import { assessProtection, decideDiscovery, countInvoices, newestVerified, newestWithData } from "./validation";
 import type { DiscoveryDecision, ProtectionAssessment } from "./validation";
 import type {
   BackupFileInfo,
@@ -239,4 +239,4 @@ export async function buildBackupPreview(info: BackupFileInfo): Promise<BackupPr
   };
 }
 
-export { countInvoices, newestVerified };
+export { countInvoices, newestVerified, newestWithData };

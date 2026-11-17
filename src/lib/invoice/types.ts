@@ -26,11 +26,13 @@ export interface InvoiceMeta {
   clientTypes: ClientType[];
   shipTo: string;
   branch: string;
+  currency?: "SDG" | "USD" | "SAR" | "EGP";
 }
 
 export interface Invoice {
   meta: InvoiceMeta;
   lines: InvoiceLine[];
+  currency?: "SDG" | "USD" | "SAR" | "EGP";
 }
 
 export const invoiceTotal = (lines: InvoiceLine[]) =>

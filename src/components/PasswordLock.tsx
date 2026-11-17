@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Lock, Moon, Sun, Fingerprint, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
-import { TA_LOGO_GREEN_BASE64, TA_LOGO_WHITE_BASE64 } from "@/assets/invoiceImagesBase64";
 import {
   isBiometricEnabled,
   isPlatformAuthenticatorAvailable,
@@ -194,7 +193,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
               <div className="relative mb-3 flex items-center justify-center">
                 <div className="rounded-2xl bg-white p-2 shadow-sm border border-border/60">
                   <img
-                    src={theme === "dark" ? TA_LOGO_WHITE_BASE64 : TA_LOGO_GREEN_BASE64}
+                    src={theme === "dark" ? "/ta-logo-white.png" : "/ta-logo.png"}
                     alt="T.A Advertising Solution"
                     className="h-16 w-auto object-contain"
                   />

@@ -155,6 +155,31 @@ export function newestVerified(backups: BackupFileInfo[]): BackupFileInfo | null
   return best;
 }
 
+/**
+ * Newest verified backup that actually contains data (invoices or records),
+ * falling back to the newest verified backup if none have data.
+ * This prevents picking an empty pre-update safety backup over real historical backups.
+ */
+export function newestWithData(backups: BackupFileInfo[]): BackupFileInfo | null {
+  const verified = backups.filter((b) => b.status === "verified" && b.manifest);
+  if (verified.length === 0) return null;
+
+  const withData = verified.filter((b) => {
+    const invCount = b.manifest!.invoiceCount ?? countInvoices(b.manifest!.counts);
+    const totalCount = b.manifest!.counts?.total ?? 0;
+    return invCount > 0 || totalCount > 0;
+  });
+
+  const pool = withData.length > 0 ? withData : verified;
+  let best: BackupFileInfo | null = null;
+  for (const b of pool) {
+    if (!best || Date.parse(b.manifest!.createdAt) > Date.parse(best.manifest!.createdAt)) {
+      best = b;
+    }
+  }
+  return best;
+}
+
 export function countInvoices(counts: Record<string, number> | undefined): number {
   if (!counts) return 0;
   return (counts.custom_invoices ?? 0) + (counts.proforma_invoices ?? 0) + (counts.print_invoices ?? 0);
@@ -290,7 +315,7 @@ export function decideDiscovery(ctx: DiscoveryContext, nowMs: number): Discovery
   if (ctx.backups.length === 0) {
     return { newest: null, shouldPrompt: false, reason: "no-backups", corruptCount };
   }
-  const newest = newestVerified(ctx.backups);
+  const newest = newestWithData(ctx.backups);
   if (!newest) {
     return { newest: null, shouldPrompt: false, reason: "no-backups", corruptCount };
   }

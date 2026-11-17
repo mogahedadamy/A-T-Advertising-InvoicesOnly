@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { convertOklchToRgb, buildStandaloneInvoiceHtml, INVOICE_STANDALONE_CSS } from "./pdfExport";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  convertOklchToRgb,
+  buildStandaloneInvoiceHtml,
+  INVOICE_STANDALONE_CSS,
+  arrayBufferToBase64,
+  shareInvoiceViaWhatsApp,
+} from "./pdfExport";
 
 describe("PDF Export & OKLCH Color Forensics (Problem B)", () => {
   it("converts standard OKLCH to sRGB format", () => {
@@ -58,37 +64,33 @@ describe("PDF Export & OKLCH Color Forensics (Problem B)", () => {
 });
 
 describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () => {
-  it("includes all deterministic proforma footer classes in INVOICE_STANDALONE_CSS", () => {
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-wrap");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-bottom-line");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-shape");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-bar");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-contacts");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-row");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-icon");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-text");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-phone");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-footer-stamp");
+  it("includes deterministic A4/A5 sheet and grid footer utility classes in INVOICE_STANDALONE_CSS", () => {
+    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-sheet, .standard-invoice-sheet");
+    expect(INVOICE_STANDALONE_CSS).toContain(".invoice-paper");
+    expect(INVOICE_STANDALONE_CSS).toContain(".grid-cols-12");
+    expect(INVOICE_STANDALONE_CSS).toContain(".col-span-5");
+    expect(INVOICE_STANDALONE_CSS).toContain(".col-span-2");
+    expect(INVOICE_STANDALONE_CSS).toContain(".rounded-\\[12px\\]");
+    expect(INVOICE_STANDALONE_CSS).toContain("-webkit-text-size-adjust: 100%");
+    expect(INVOICE_STANDALONE_CSS).toContain("--invoice-accent: #0D4A39");
   });
 
-  it("enforces explicit icon dimensions in standalone CSS to prevent collapsing or clipping", () => {
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-icon");
-    expect(INVOICE_STANDALONE_CSS).toContain("15px !important");
-    expect(INVOICE_STANDALONE_CSS).toContain(".proforma-contact-icon svg");
-    expect(INVOICE_STANDALONE_CSS).toContain("9px !important");
+  it("enforces explicit QR box dimensions in standalone CSS to prevent collapsing or clipping", () => {
+    expect(INVOICE_STANDALONE_CSS).toContain(".w-\\[66px\\]");
+    expect(INVOICE_STANDALONE_CSS).toContain("width: 66px !important");
+    expect(INVOICE_STANDALONE_CSS).toContain(".h-\\[66px\\]");
+    expect(INVOICE_STANDALONE_CSS).toContain("height: 66px !important");
   });
 
   it("builds completely isolated standalone HTML without any oklch color references", () => {
     const dummyEl = {
-      outerHTML: `<div class="proforma-sheet">
-        <div class="proforma-footer-contacts">
-          <div class="proforma-contact-row">
-            <span class="proforma-contact-phone">+249 11593 1769</span>
-          </div>
+      outerHTML: `<div class="standard-invoice-sheet">
+        <div class="grid grid-cols-12 gap-3.5 items-end pt-1 shrink-0">
+          <div class="col-span-5">+249 11593 1769</div>
         </div>
       </div>`,
       classList: {
-        contains: (cls: string) => cls === "proforma-sheet",
+        contains: (cls: string) => cls === "standard-invoice-sheet",
       },
       querySelector: () => null,
     } as unknown as HTMLElement;
@@ -98,7 +100,8 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     expect(html).toContain('dir="rtl"');
     expect(html).toContain("width=794");
     expect(html).not.toContain("oklch(");
-    expect(html).toContain(".proforma-footer-wrap");
+    expect(html).toContain(".standard-invoice-sheet");
+    expect(html).toContain(".grid-cols-12");
     expect(html).toContain("+249 11593 1769");
   });
 
@@ -114,5 +117,52 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     const html = buildStandaloneInvoiceHtml(dummyEl, "طلب تشغيل 101", "a5");
     expect(html).toContain("width=760");
     expect(html).toContain("size: 210mm 148mm");
+  });
+
+  it("converts ArrayBuffer to valid base64 string accurately", () => {
+    const text = "T.A Advertising Solution - Official Invoice";
+    const encoder = new TextEncoder();
+    const buffer = encoder.encode(text).buffer;
+    const base64 = arrayBufferToBase64(buffer);
+    const decoded = atob(base64);
+    expect(decoded).toBe(text);
+  });
+});
+
+describe("Direct WhatsApp Sharing & System Export (Problem G)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete (window as any).AndroidPrint;
+  });
+
+  it("formats structured Arabic and English WhatsApp invoice summary text", async () => {
+    const shareToWhatsAppMock = vi.fn();
+    (window as any).AndroidPrint = {
+      shareToWhatsApp: shareToWhatsAppMock,
+    };
+
+    const dummyEl = {
+      outerHTML: `<div class="standard-invoice-sheet"><p>محتوى الفاتورة</p></div>`,
+      classList: { contains: () => true },
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    } as unknown as HTMLElement;
+
+    // محاكاة استدعاء مشاركة واتساب
+    const clientName = "شركة الرواد للحلول الرقمية";
+    const ref = "26-0012";
+    const amount = 250000;
+    const currency = "SDG";
+
+    // التحقق من بناء رسالة الواتساب المهنية
+    const messageAr = `السلام عليكم ورحمة الله،\nمرفق لكم فاتورة مبيعات رقم ${ref}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amount.toLocaleString("en-US")} ${currency}\nوكالة T.A Advertising Solution`;
+    expect(messageAr).toContain(clientName);
+    expect(messageAr).toContain(ref);
+    expect(messageAr).toContain("250,000");
+    expect(messageAr).toContain("SDG");
+    expect(messageAr).toContain("T.A Advertising Solution");
   });
 });

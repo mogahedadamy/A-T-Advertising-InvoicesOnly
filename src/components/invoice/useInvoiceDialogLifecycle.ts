@@ -40,6 +40,7 @@ export function useInvoiceDialogLifecycle({
     clientTypes: [],
     shipTo: "",
     branch: "امدرمان",
+    currency: "SDG",
   });
 
   // ربط زر الرجوع الهاردوير لهواتف أندرويد (Hardware Back Button Handling)
@@ -68,6 +69,7 @@ export function useInvoiceDialogLifecycle({
           clientTypes: [],
           shipTo: "",
           branch: "امدرمان",
+          currency: "SDG",
         });
         setSaved(false);
         setTab("edit");
