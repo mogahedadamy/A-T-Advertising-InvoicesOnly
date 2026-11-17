@@ -583,25 +583,58 @@ export function triggerPrintWithElement(
   }
 
   const androidPrint = (window as any).AndroidPrint;
-  if (androidPrint && typeof androidPrint.printHtml === "function") {
-    try {
-      const html = buildStandaloneInvoiceHtml(element, documentTitle, actualPageSize);
-      androidPrint.printHtml(html, documentTitle, actualPageSize.toUpperCase());
-      setTimeout(cleanup, 1200);
-      return;
-    } catch (e) {
-      console.warn("AndroidPrint.printHtml error:", e);
-    }
-  }
+  if (androidPrint && typeof androidPrint.printPdfThenShare === "function") {
+    void (async () => {
+      const toastId = toast.loading("جاري تجهيز الفاتورة للطباعة...");
+      try {
+        const generated = await generateInvoicePdf(element, {
+          filename: documentTitle,
+          format: actualPageSize,
+          orientation: actualPageSize === "a5" ? "landscape" : "portrait",
+        });
+        if (!generated) throw new Error("تعذر إنشاء ملف الطباعة");
 
-  if (androidPrint && typeof androidPrint.print === "function") {
-    try {
-      androidPrint.print(documentTitle);
-      setTimeout(cleanup, 1200);
-      return;
-    } catch (e) {
-      console.warn("AndroidPrint.print error:", e);
-    }
+        const requestId = `invoice-print-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const completed = await new Promise<boolean>((resolve) => {
+          const previousHandler = (window as any).__invoicePrintShareResult;
+          const timeout = window.setTimeout(() => {
+            (window as any).__invoicePrintShareResult = previousHandler;
+            resolve(false);
+          }, 10 * 60 * 1000);
+          (window as any).__invoicePrintShareResult = (id: string, success: boolean, message: string) => {
+            if (id !== requestId) {
+              if (typeof previousHandler === "function") previousHandler(id, success, message);
+              return;
+            }
+            window.clearTimeout(timeout);
+            (window as any).__invoicePrintShareResult = previousHandler;
+            if (success) toast.success("اكتملت الطباعة", { id: toastId });
+            else toast.error(message || "لم تكتمل الطباعة", { id: toastId });
+            resolve(Boolean(success));
+          };
+          try {
+            // Empty messageText means print-only; native code will not open sharing.
+            androidPrint.printPdfThenShare(
+              generated.base64,
+              generated.filename,
+              "",
+              requestId,
+              actualPageSize.toUpperCase()
+            );
+          } catch (error) {
+            window.clearTimeout(timeout);
+            (window as any).__invoicePrintShareResult = previousHandler;
+            resolve(false);
+          }
+        });
+        if (!completed) toast.error("تعذر إكمال الطباعة");
+      } catch (error: any) {
+        toast.error(`تعذر تجهيز الطباعة: ${error?.message || "خطأ غير متوقع"}`, { id: toastId });
+      } finally {
+        cleanup();
+      }
+    })();
+    return;
   }
 
   try {
