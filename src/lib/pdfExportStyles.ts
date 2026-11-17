@@ -5,14 +5,12 @@
  * - تغطي كافة فئات Tailwind والأبعاد لمستندات A4 و A5 بدقة مطلقة
  */
 export const INVOICE_STANDALONE_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
-
 :root {
   --invoice-paper: #ffffff;
   --invoice-ink: #000000;
   --invoice-accent: #0D4A39;
   --invoice-border: #1e293b;
-  --font-arabic: 'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-arabic: 'Tajawal', 'Cairo', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
 }
 
 *, *::before, *::after {
@@ -33,13 +31,16 @@ html, body {
   print-color-adjust: exact !important;
   -webkit-text-size-adjust: 100% !important;
   text-size-adjust: 100% !important;
-  line-height: 1.25 !important;
+  line-height: 1.4 !important;
 }
 
 [dir="rtl"], .printing-rtl {
   direction: rtl !important;
   text-align: right !important;
-  font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Arabic', 'Droid Arabic Kufi', sans-serif !important;
+  font-family: 'Tajawal', 'Cairo', 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif !important;
+  font-kerning: normal !important;
+  font-synthesis: none !important;
+  font-variant-ligatures: normal !important;
 }
 
 /* قاعدة الحماية القصوى للنصوص العربية: منع تقطيع وتداخل الأحرف والخطوط الضاربة */
@@ -49,8 +50,19 @@ html, body {
 .printing-rtl *:not([dir="ltr"]) {
   letter-spacing: normal !important;
   word-spacing: normal !important;
-  font-feature-settings: "liga" 1, "calt" 1 !important;
-  text-rendering: geometricPrecision !important;
+  font-feature-settings: normal !important;
+  font-kerning: normal !important;
+  font-synthesis: none !important;
+  font-variant-ligatures: normal !important;
+  text-rendering: auto !important;
+}
+
+[dir="rtl"] :is(p, span, strong, b, em, label, small, td, th, li),
+.printing-rtl :is(p, span, strong, b, em, label, small, td, th, li) {
+  line-height: 1.35 !important;
+  font-synthesis: none !important;
+  font-kerning: normal !important;
+  text-rendering: auto !important;
 }
 
 [dir="ltr"], .printing-ltr {
