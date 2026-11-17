@@ -63,7 +63,7 @@ export function buildStandaloneInvoiceHtml(
   <title>${title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800;900&display=block" rel="stylesheet">
   <style>
     ${INVOICE_STANDALONE_CSS}
 
@@ -93,6 +93,91 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, Math.min(i + 8192, bytes.byteLength))));
   }
   return window.btoa(binary);
+}
+
+const ARABIC_FONT_SAMPLE = "فاتورة مبيعات شركة التقانة عناية السيد مدير المبيعات ١٢٣٤٥";
+
+/**
+ * Wait for the standalone Google Fonts stylesheet and explicitly load every
+ * Arabic weight used by invoice components. FontFaceSet.ready alone is not
+ * enough: it can resolve after a failed font request and silently leave a
+ * fallback font active.
+ */
+async function waitForInvoiceFonts(doc: Document): Promise<void> {
+  const fontLink = doc.querySelector<HTMLLinkElement>('link[href*="fonts.googleapis.com/css2"]');
+  if (!fontLink) throw new Error("رابط خطوط الفاتورة غير موجود");
+
+  if (!fontLink.sheet) {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => reject(new Error("انتهت مهلة تحميل خطوط الفاتورة العربية")),
+        12000
+      );
+      fontLink.addEventListener("load", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      fontLink.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("تعذر تحميل ملف الخطوط العربية"));
+      }, { once: true });
+    });
+  }
+
+  if (!doc.fonts) throw new Error("المتصفح لا يدعم التحقق من تحميل الخطوط");
+
+  const weights = [400, 500, 600, 700, 800, 900];
+  const loadedFaces = await Promise.all(
+    weights.map((weight) => doc.fonts.load(`${weight} 16px "Tajawal"`, ARABIC_FONT_SAMPLE))
+  );
+  await doc.fonts.ready;
+
+  const allWeightsLoaded = loadedFaces.every(
+    (faces) => faces.length > 0 && faces.every((face) => face.status === "loaded")
+  );
+  if (!allWeightsLoaded || !doc.fonts.check('400 16px "Tajawal"', ARABIC_FONT_SAMPLE)) {
+    throw new Error("لم تكتمل إتاحة أوزان خط Tajawal؛ أُوقف التصدير لمنع تشوه العربية");
+  }
+}
+
+/**
+ * Correct overly tight line boxes only on elements that contain Arabic text.
+ * This prevents diacritics and tall Arabic glyphs from being clipped without
+ * changing the geometry of unrelated layout containers.
+ */
+function stabilizeArabicTextMetrics(doc: Document): void {
+  const arabicPattern = /[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]/;
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (node.nodeValue && arabicPattern.test(node.nodeValue)) textNodes.push(node);
+  }
+
+  for (const node of textNodes) {
+    const element = node.parentElement;
+    if (!element) continue;
+    const computed = doc.defaultView?.getComputedStyle(element);
+    if (!computed) continue;
+
+    const fontSize = Number.parseFloat(computed.fontSize);
+    if (Number.isFinite(fontSize) && fontSize > 0) {
+      const lineHeight = computed.lineHeight === "normal"
+        ? Number.NaN
+        : Number.parseFloat(computed.lineHeight);
+      const minimumLineHeight = fontSize * 1.35;
+      if (!Number.isFinite(lineHeight) || lineHeight < minimumLineHeight) {
+        element.style.setProperty("line-height", `${minimumLineHeight.toFixed(2)}px`, "important");
+      }
+    }
+
+    element.style.setProperty("font-kerning", "normal");
+    element.style.setProperty("font-synthesis", "none");
+    element.style.setProperty("font-variant-ligatures", "normal");
+    element.style.setProperty("letter-spacing", "normal", "important");
+    element.style.setProperty("word-spacing", "normal", "important");
+    element.style.setProperty("text-rendering", "auto");
+  }
 }
 
 /**
