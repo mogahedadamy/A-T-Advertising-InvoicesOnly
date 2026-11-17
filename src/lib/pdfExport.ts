@@ -264,10 +264,8 @@ export async function generateInvoicePdf(
       // ضمان استقرار التمرير داخل الإطار
       iframe.contentWindow?.scrollTo(0, 0);
 
-      // انتظار تحميل الخطوط والصور
-      if (iframeDoc.fonts) {
-        try { await iframeDoc.fonts.ready; } catch {}
-      }
+      // Arabic font loading is mandatory: never export with fallback metrics.
+      await waitForInvoiceFonts(iframeDoc);
 
       const imgs = Array.from(iframeDoc.querySelectorAll<HTMLImageElement>("img"));
       await Promise.all(
@@ -277,8 +275,13 @@ export async function generateInvoicePdf(
         })
       );
 
-      // مهلة كافية لإنهاء التصيير الحقيقي في المتصفح
-      await new Promise((r) => setTimeout(r, 160));
+      // Stabilize only Arabic text line boxes after the real font faces and images load.
+      stabilizeArabicTextMetrics(iframeDoc);
+
+      // Let two layout frames settle after font metric normalization.
+      await new Promise<void>((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(() => resolve())
+      ));
 
       const sheetEl = iframeDoc.querySelector<HTMLElement>(
         ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .invoice-standalone-root"
