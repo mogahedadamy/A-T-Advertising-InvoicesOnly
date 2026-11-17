@@ -73,7 +73,7 @@ export function ProformaPrintButton({
 
     const formattedSerial = formatDisplayReference(undefined, serial);
     document.body.classList.add("printing-proforma");
-    triggerPrintWithElement(el, `فاتورة-مبدئية-TA-${formattedSerial}`, "a4", () => {
+    await triggerPrintWithElement(el, `فاتورة-مبدئية-TA-${formattedSerial}`, "a4", () => {
       document.body.classList.remove("printing-proforma");
       const dynamicStyle = document.getElementById("proforma-dynamic-a4-page");
       if (dynamicStyle) dynamicStyle.remove();
