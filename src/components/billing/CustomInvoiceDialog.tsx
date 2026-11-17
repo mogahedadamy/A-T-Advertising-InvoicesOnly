@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { Edit3, Printer, FileDown, Eye, Share2 } from "lucide-react";
+import { Edit3, Printer, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type {
   CustomInvoice,
@@ -133,7 +133,7 @@ export function CustomInvoiceDialog({
             />
           </TabsContent>
 
-          {/* تبويب 2: معاينة الفاتورة الرسمية A4 قبل الطباعة أو الحفظ */}
+          {/* تبويب 2: معاينة الفاتورة الرسمية A4 قبل الطباعة أو المشاركة */}
           <TabsContent
             value="preview"
             className="flex-1 overflow-hidden p-2 sm:p-4 bg-muted/30 m-0 min-h-0 flex flex-col space-y-2"
@@ -178,17 +178,7 @@ export function CustomInvoiceDialog({
                   <span>طباعة المستند</span>
                 </Button>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={form.handleSaveAndExportPdf}
-                  disabled={form.isProcessing}
-                  className="h-8 px-3 rounded-lg text-xs font-black gap-1.5 cursor-pointer"
-                >
-                  <FileDown className="h-3.5 w-3.5 text-primary" />
-                  <span>حفظ PDF</span>
-                </Button>
+
               </div>
             </div>
 
@@ -205,7 +195,6 @@ export function CustomInvoiceDialog({
           isProcessing={form.isProcessing}
           onSave={form.handleSave}
           onSaveAndPrint={form.handleSaveAndPrint}
-          onSaveAndExportPdf={form.handleSaveAndExportPdf}
           onSaveAndShareWhatsApp={form.handleSaveAndShareWhatsApp}
           onConvertToSales={form.type === "proforma" ? () => void form.handleConvertToSales() : undefined}
           onClose={() => onOpenChange(false)}
