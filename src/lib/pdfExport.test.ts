@@ -73,6 +73,10 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     expect(INVOICE_STANDALONE_CSS).toContain(".rounded-\\[12px\\]");
     expect(INVOICE_STANDALONE_CSS).toContain("-webkit-text-size-adjust: 100%");
     expect(INVOICE_STANDALONE_CSS).toContain("--invoice-accent: #0D4A39");
+    expect(INVOICE_STANDALONE_CSS).toContain("'Tajawal', 'Cairo'");
+    expect(INVOICE_STANDALONE_CSS).toContain("font-synthesis: none");
+    expect(INVOICE_STANDALONE_CSS).toContain("text-rendering: auto");
+    expect(INVOICE_STANDALONE_CSS).not.toContain("text-rendering: geometricPrecision");
   });
 
   it("enforces explicit QR box dimensions in standalone CSS to prevent collapsing or clipping", () => {
@@ -103,6 +107,8 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     expect(html).toContain(".standard-invoice-sheet");
     expect(html).toContain(".grid-cols-12");
     expect(html).toContain("+249 11593 1769");
+    expect(html).toContain("Tajawal:wght@400;500;600;700;800;900");
+    expect(html).toContain("display=block");
   });
 
   it("sets A5 landscape viewport correctly for A5 work orders", () => {
