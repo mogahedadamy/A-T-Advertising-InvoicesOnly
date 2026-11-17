@@ -43,7 +43,7 @@ export function InvoicePrintButton({
   const handlePrint = async () => {
     const el = await preparePrintElement();
     document.body.classList.add("printing-a5-invoice");
-    triggerPrintWithElement(el, `فاتورة-TA-${serial}`, "a5", () => {
+    await triggerPrintWithElement(el, `فاتورة-TA-${serial}`, "a5", () => {
       document.body.classList.remove("printing-a5-invoice");
     });
   };
