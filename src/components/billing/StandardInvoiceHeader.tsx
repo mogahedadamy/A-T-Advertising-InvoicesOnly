@@ -104,14 +104,14 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
       <div className="my-1.5 flex gap-3 text-[12px] shrink-0">
         {/* صندوق بيانات العميل / الجهة والشخص المسؤول (Attn) */}
         <div
-          className="rounded-[10px] bg-white px-3.5 py-1 flex flex-col justify-center flex-1 overflow-hidden"
+          className="rounded-[10px] bg-white p-2.5 px-4 flex flex-col justify-center flex-1"
           style={{
             border: "1px solid #1e293b",
             height: "68px",
           }}
         >
           {/* سطر اسم الشركة أو المؤسسة أو المورد */}
-          <div className="flex items-center text-[12px] mb-1 h-[24px]">
+          <div className="flex items-baseline text-[12px] leading-tight mb-2">
             <span
               className="font-bold text-black shrink-0 select-none whitespace-nowrap"
               style={{ minWidth: isRtl ? "78px" : "60px", width: isRtl ? "78px" : "60px" }}
@@ -121,10 +121,9 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
                 : (meta.type === "purchase" ? "Supplier :" : "Client :")}
             </span>
             <div
-              className={`flex-1 border-b border-black font-black text-[14px] text-black px-1 truncate h-[22px] flex items-center ${
+              className={`flex-1 border-b border-black pb-0.5 font-bold text-[13.5px] text-black px-1 truncate ${
                 isRtl ? "text-right" : "text-left"
               }`}
-              style={{ lineHeight: "1.2" }}
               dir={isRtl ? "rtl" : "ltr"}
             >
               {clientName}
@@ -132,7 +131,7 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
           </div>
 
           {/* سطر الشخص المعني المسؤول (Attn) */}
-          <div className="flex items-center text-[12px] h-[24px]">
+          <div className="flex items-baseline text-[12px] leading-tight">
             <span
               className="font-bold text-black shrink-0 select-none whitespace-nowrap"
               style={{ minWidth: isRtl ? "78px" : "60px", width: isRtl ? "78px" : "60px" }}
@@ -140,10 +139,9 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
               {isRtl ? "عناية السيد :" : "Attn.:"}
             </span>
             <div
-              className={`flex-1 border-b border-black font-semibold text-[12px] text-black px-1 truncate h-[22px] flex items-center ${
+              className={`flex-1 border-b border-black pb-0.5 font-semibold text-[12.5px] text-black px-1 truncate ${
                 isRtl ? "text-right" : "text-left"
               }`}
-              style={{ lineHeight: "1.2" }}
               dir={isRtl ? "rtl" : "ltr"}
             >
               {attnPerson}
@@ -153,7 +151,7 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
 
         {/* صندوق التاريخ والرقم المرجعي المعياري (YY-NNNN) */}
         <div
-          className="rounded-[10px] bg-white px-3 py-1 flex flex-col justify-center shrink-0 overflow-hidden"
+          className="rounded-[10px] bg-white p-2.5 px-3 flex flex-col justify-center shrink-0"
           style={{
             border: "1px solid #1e293b",
             height: "68px",
@@ -161,33 +159,27 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
           }}
         >
           {/* سطر التاريخ */}
-          <div className="flex items-center text-[12px] mb-1 h-[24px]">
+          <div className="flex items-baseline text-[12px] leading-tight mb-2">
             <span
               className="font-bold text-black shrink-0 select-none whitespace-nowrap"
               style={{ minWidth: isRtl ? "52px" : "42px", width: isRtl ? "52px" : "42px" }}
             >
               {isRtl ? "التاريخ :" : "Date:"}
             </span>
-            <div
-              className="flex-1 border-b border-black font-mono font-bold text-[11.5px] text-center text-black whitespace-nowrap tracking-tight h-[22px] flex items-center justify-center overflow-hidden"
-              style={{ lineHeight: "1.2" }}
-            >
+            <div className="flex-1 border-b border-black pb-0.5 font-mono font-bold text-[11.5px] text-center text-black whitespace-nowrap tracking-tight truncate">
               {formattedDate}
             </div>
           </div>
 
           {/* سطر الرقم المرجعي المعياري YY-NNNN */}
-          <div className="flex items-center text-[12px] h-[24px]">
+          <div className="flex items-baseline text-[12px] leading-tight">
             <span
               className="font-bold text-black shrink-0 select-none whitespace-nowrap"
               style={{ minWidth: isRtl ? "52px" : "42px", width: isRtl ? "52px" : "42px" }}
             >
               {isRtl ? "الرقم :" : "Ref.:"}
             </span>
-            <div
-              className="flex-1 border-b border-black font-mono font-bold text-[12px] text-center text-black whitespace-nowrap tracking-wider h-[22px] flex items-center justify-center overflow-hidden"
-              style={{ lineHeight: "1.2" }}
-            >
+            <div className="flex-1 border-b border-black pb-0.5 font-mono font-bold text-[12px] text-center text-black whitespace-nowrap tracking-wider truncate">
               {formatDisplayReference(reference, meta.serial, meta.date)}
             </div>
           </div>
