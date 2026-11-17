@@ -1,7 +1,7 @@
 import React from "react";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Save, FileDown, ArrowLeftRight, Share2 } from "lucide-react";
+import { Printer, Save, ArrowLeftRight, Share2 } from "lucide-react";
 import type { CustomInvoiceType } from "@/lib/billing/types";
 
 interface Props {
@@ -43,17 +43,7 @@ export function CustomInvoiceDialogFooter({
           </Button>
         )}
 
-        {/* زر حفظ وتصدير PDF الأصلي في الجهاز */}
-        <Button
-          type="button"
-          onClick={onSaveAndExportPdf}
-          disabled={isProcessing}
-          className="h-9 px-3.5 sm:px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 cursor-pointer active:scale-95 transition-transform"
-          title="حفظ الفاتورة بالسجل وتصدير ملف PDF أصلي في جهازك"
-        >
-          <FileDown className="h-4 w-4" />
-          <span>{isProcessing ? "جاري التجهيز..." : "حفظ PDF أصلي"}</span>
-        </Button>
+
 
         {/* زر الحفظ والطباعة المباشرة */}
         <Button
