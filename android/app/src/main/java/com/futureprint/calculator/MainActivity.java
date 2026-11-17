@@ -11,6 +11,12 @@ import android.os.Environment;
 import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
+import android.print.PrintDocumentInfo;
+import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.ParcelFileDescriptor;
+import android.print.PageRange;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
@@ -258,6 +264,109 @@ public class MainActivity extends BridgeActivity {
                             Toast.makeText(MainActivity.this, "خطأ في حفظ الملف: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
+                }
+
+                /**
+                 * Prints the exact PDF bytes that will subsequently be shared.
+                 * Sharing is only started after Android reports the print job COMPLETED.
+                 */
+                @JavascriptInterface
+                public void printPdfThenShare(String base64Data, String filename, String messageText, String requestId, String pageSize) {
+                    runOnUiThread(() -> {
+                        try {
+                            if (base64Data == null || base64Data.trim().isEmpty()) {
+                                notifyPrintShareResult(requestId, false, "ملف الفاتورة غير صالح");
+                                return;
+                            }
+                            byte[] pdfBytes = Base64.decode(base64Data, Base64.DEFAULT);
+                            String jobName = (filename == null || filename.trim().isEmpty()) ? "فاتورة-TA" : filename;
+                            PrintManager manager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                            if (manager == null) {
+                                notifyPrintShareResult(requestId, false, "خدمة الطباعة غير متاحة");
+                                return;
+                            }
+
+                            final boolean a5 = "A5".equalsIgnoreCase(pageSize);
+                            PrintDocumentAdapter adapter = new PrintDocumentAdapter() {
+                                @Override
+                                public void onLayout(PrintAttributes oldAttributes, PrintAttributes newAttributes,
+                                        CancellationSignal cancellationSignal, LayoutResultCallback callback, Bundle extras) {
+                                    if (cancellationSignal.isCanceled()) {
+                                        callback.onLayoutCancelled();
+                                        return;
+                                    }
+                                    PrintDocumentInfo info = new PrintDocumentInfo.Builder(jobName + ".pdf")
+                                        .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                                        .setPageCount(PrintDocumentInfo.PAGE_COUNT_UNKNOWN)
+                                        .build();
+                                    callback.onLayoutFinished(info, true);
+                                }
+
+                                @Override
+                                public void onWrite(PageRange[] pages, ParcelFileDescriptor destination,
+                                        CancellationSignal cancellationSignal, WriteResultCallback callback) {
+                                    try (FileOutputStream output = new FileOutputStream(destination.getFileDescriptor())) {
+                                        if (cancellationSignal.isCanceled()) {
+                                            callback.onWriteCancelled();
+                                            return;
+                                        }
+                                        output.write(pdfBytes);
+                                        output.flush();
+                                        callback.onWriteFinished(new PageRange[] { PageRange.ALL_PAGES });
+                                    } catch (Exception error) {
+                                        callback.onWriteFailed(error.getMessage());
+                                    } finally {
+                                        try { destination.close(); } catch (Exception ignored) {}
+                                    }
+                                }
+                            };
+
+                            PrintAttributes.Builder attrs = new PrintAttributes.Builder()
+                                .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                                .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                                .setMediaSize(a5 ? PrintAttributes.MediaSize.ISO_A5.asLandscape() : PrintAttributes.MediaSize.ISO_A4);
+                            android.print.PrintJob job = manager.print(jobName, adapter, attrs.build());
+                            Handler handler = new Handler(Looper.getMainLooper());
+                            final long startedAt = System.currentTimeMillis();
+                            Runnable[] monitor = new Runnable[1];
+                            monitor[0] = () -> {
+                                try {
+                                    int state = job.getInfo().getState();
+                                    if (state == android.print.PrintJobInfo.STATE_COMPLETED) {
+                                        sharePdfInternal(base64Data, jobName, messageText, true);
+                                        notifyPrintShareResult(requestId, true, "اكتملت الطباعة وبدأت المشاركة");
+                                    } else if (state == android.print.PrintJobInfo.STATE_FAILED ||
+                                               state == android.print.PrintJobInfo.STATE_CANCELED) {
+                                        notifyPrintShareResult(requestId, false, "لم تكتمل الطباعة؛ أُلغيت المشاركة");
+                                    } else if (System.currentTimeMillis() - startedAt > 600000) {
+                                        notifyPrintShareResult(requestId, false, "انتهت مهلة انتظار اكتمال الطباعة");
+                                    } else {
+                                        handler.postDelayed(monitor[0], 500);
+                                    }
+                                } catch (Exception error) {
+                                    notifyPrintShareResult(requestId, false, "تعذر متابعة حالة الطباعة");
+                                }
+                            };
+                            handler.postDelayed(monitor[0], 500);
+                        } catch (Exception error) {
+                            error.printStackTrace();
+                            notifyPrintShareResult(requestId, false, "تعذر بدء الطباعة: " + error.getMessage());
+                        }
+                    });
+                }
+
+                private void notifyPrintShareResult(String requestId, boolean success, String message) {
+                    try {
+                        String safeId = requestId == null ? "" : requestId.replaceAll("[^a-zA-Z0-9_-]", "");
+                        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("'", "\\'");
+                        WebView bridgeWebView = getBridge() != null ? getBridge().getWebView() : null;
+                        if (bridgeWebView != null) {
+                            bridgeWebView.evaluateJavascript(
+                                "window.__invoicePrintShareResult && window.__invoicePrintShareResult('" + safeId + "'," + success + ",'" + safeMessage + "')",
+                                null
+                            );
+                        }
+                    } catch (Exception ignored) {}
                 }
 
                 @JavascriptInterface
