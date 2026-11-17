@@ -333,8 +333,12 @@ public class MainActivity extends BridgeActivity {
                                 try {
                                     int state = job.getInfo().getState();
                                     if (state == android.print.PrintJobInfo.STATE_COMPLETED) {
-                                        sharePdfInternal(base64Data, jobName, messageText, true);
-                                        notifyPrintShareResult(requestId, true, "اكتملت الطباعة وبدأت المشاركة");
+                                        if (messageText != null && !messageText.trim().isEmpty()) {
+                                            sharePdfInternal(base64Data, jobName, messageText, true);
+                                            notifyPrintShareResult(requestId, true, "اكتملت الطباعة وبدأت المشاركة");
+                                        } else {
+                                            notifyPrintShareResult(requestId, true, "اكتملت الطباعة");
+                                        }
                                     } else if (state == android.print.PrintJobInfo.STATE_FAILED ||
                                                state == android.print.PrintJobInfo.STATE_CANCELED) {
                                         notifyPrintShareResult(requestId, false, "لم تكتمل الطباعة؛ أُلغيت المشاركة");
