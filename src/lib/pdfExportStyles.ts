@@ -36,6 +36,13 @@ export const INVOICE_STANDALONE_CSS = `
 }
 @font-face {
   font-family: 'Tajawal';
+  src: url('/fonts/Tajawal-Medium.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Tajawal';
   src: url('/fonts/Tajawal-Bold.ttf') format('truetype');
   font-style: normal;
   font-weight: 700;
