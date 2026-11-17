@@ -13,6 +13,7 @@ import {
   Receipt,
   ArrowLeftRight,
   Share2,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { CustomInvoice, CustomInvoiceType } from "@/lib/billing/types";
@@ -59,6 +60,7 @@ export function BillingArchiveTable({
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const handleConvertProformaToSales = async (rec: UnifiedInvoiceRecord) => {
     if (convertingId) return;
@@ -313,15 +315,28 @@ export function BillingArchiveTable({
                           <Printer className="h-4 w-4" />
                         </button>
 
-                        {/* زر مشاركة واتساب مباشرة */}
+                        {/* زر مشاركة واتساب مباشرة مع مؤشر تحميل تفاعلي */}
                         {isCustom && (
                           <button
                             type="button"
-                            onClick={() => shareCustomInvoiceViaWhatsApp(rec.raw)}
+                            disabled={sharingId === rec.id}
+                            onClick={async () => {
+                              if (sharingId) return;
+                              setSharingId(rec.id);
+                              try {
+                                await shareCustomInvoiceViaWhatsApp(rec.raw);
+                              } finally {
+                                setSharingId(null);
+                              }
+                            }}
                             title="مشاركة الفاتورة عبر واتساب"
-                            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-[#25D366] hover:bg-[#25D366]/10 transition-colors active:scale-90"
+                            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-[#25D366] hover:bg-[#25D366]/10 transition-colors active:scale-90 disabled:opacity-60"
                           >
-                            <Share2 className="h-4 w-4" />
+                            {sharingId === rec.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-[#25D366]" />
+                            ) : (
+                              <Share2 className="h-4 w-4" />
+                            )}
                           </button>
                         )}
 

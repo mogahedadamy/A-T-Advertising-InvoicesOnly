@@ -1,7 +1,7 @@
 import React from "react";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Save, ArrowLeftRight, Share2 } from "lucide-react";
+import { Printer, Save, ArrowLeftRight, Share2, Loader2 } from "lucide-react";
 import type { CustomInvoiceType } from "@/lib/billing/types";
 
 interface Props {
@@ -26,18 +26,26 @@ export function CustomInvoiceDialogFooter({
   return (
     <DialogFooter className="px-3 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5 sm:py-3 border-t border-border/60 flex flex-row items-center justify-between shrink-0 bg-card">
       <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-        {/* زر مشاركة وحفظ عبر واتساب مباشرة */}
+        {/* زر مشاركة وحفظ عبر واتساب مباشرة مع مؤشر تحميل وتغذية بصرية */}
         {onSaveAndShareWhatsApp && (
           <Button
             type="button"
             onClick={onSaveAndShareWhatsApp}
             disabled={isProcessing}
-            className="h-9 px-3 sm:px-3.5 rounded-xl font-black text-xs gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xs shadow-[#25D366]/30 cursor-pointer active:scale-95 transition-transform"
+            className="h-9 px-3 sm:px-3.5 rounded-xl font-black text-xs gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xs shadow-[#25D366]/30 cursor-pointer active:scale-95 transition-transform disabled:opacity-75"
             title="حفظ الفاتورة في النظام تلقائياً ومشاركتها مباشرة عبر واتساب"
           >
-            <Share2 className="h-4 w-4" />
-            <span className="hidden sm:inline">مشاركة واتساب</span>
-            <span className="sm:hidden">واتساب</span>
+            {isProcessing ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <Share2 className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">
+              {isProcessing ? "جاري المشاركة..." : "مشاركة واتساب"}
+            </span>
+            <span className="sm:hidden">
+              {isProcessing ? "..." : "واتساب"}
+            </span>
           </Button>
         )}
 

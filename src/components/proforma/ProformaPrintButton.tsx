@@ -120,8 +120,8 @@ export function ProformaPrintButton({
         ) : (
           <Share2 className="h-4 w-4" />
         )}
-        <span className="hidden sm:inline">مشاركة واتساب</span>
-        <span className="sm:hidden">واتساب</span>
+        <span className="hidden sm:inline">{isSharing ? "جاري المشاركة..." : "مشاركة واتساب"}</span>
+        <span className="sm:hidden">{isSharing ? "..." : "واتساب"}</span>
       </Button>
 
       <Button

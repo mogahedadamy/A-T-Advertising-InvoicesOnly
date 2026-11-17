@@ -266,98 +266,10 @@ public class MainActivity extends BridgeActivity {
                     });
                 }
 
-                /**
-                 * يطبع الفاتورة أو يولدها بنفس آلية زر الطباعة تماماً (عبر WebView الأصلي و PrintDocumentAdapter)
-                 * ثم يشارك ملف PDF الشعاعي عالي الدقة مباشرة عبر واتساب دون أي تشويه أو اقتصاص.
-                 */
                 @JavascriptInterface
                 public void printHtmlThenShare(String htmlContent, String documentName, String pageSize, String messageText) {
                     runOnUiThread(() -> {
-                        try {
-                            if (htmlContent == null || htmlContent.trim().isEmpty()) {
-                                Toast.makeText(MainActivity.this, "محتوى الفاتورة فارغ", Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-
-                            final String jobName = (documentName != null && !documentName.trim().isEmpty())
-                                ? documentName.trim()
-                                : "فاتورة-TA";
-                            final String safeName = jobName.toLowerCase().endsWith(".pdf") ? jobName : jobName + ".pdf";
-
-                            final boolean isA5Landscape = "A5".equalsIgnoreCase(pageSize) ||
-                                (jobName.contains("A5") || jobName.contains("a5"));
-
-                            WebView printWebView = new WebView(MainActivity.this);
-                            WebSettings pSettings = printWebView.getSettings();
-                            pSettings.setJavaScriptEnabled(true);
-                            pSettings.setDomStorageEnabled(true);
-                            pSettings.setLoadsImagesAutomatically(true);
-                            pSettings.setTextZoom(100);
-                            pSettings.setUseWideViewPort(true);
-                            pSettings.setLoadWithOverviewMode(true);
-                            pSettings.setSupportZoom(false);
-
-                            File shareDir = new File(getCacheDir(), "shared_invoices");
-                            if (!shareDir.exists()) shareDir.mkdirs();
-                            File targetFile = new File(shareDir, safeName);
-
-                            final boolean[] isDone = {false};
-                            Runnable generateAndShare = () -> {
-                                if (isDone[0]) return;
-                                isDone[0] = true;
-                                try {
-                                    PrintAttributes.Builder builder = new PrintAttributes.Builder();
-                                    builder.setColorMode(PrintAttributes.COLOR_MODE_COLOR);
-                                    builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS);
-                                    builder.setResolution(new PrintAttributes.Resolution("pdf", "pdf", 300, 300));
-
-                                    if (isA5Landscape) {
-                                        builder.setMediaSize(PrintAttributes.MediaSize.ISO_A5.asLandscape());
-                                    } else {
-                                        builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
-                                    }
-
-                                    PrintAttributes attributes = builder.build();
-                                    PrintDocumentAdapter adapter = printWebView.createPrintDocumentAdapter(jobName);
-
-                                    android.print.PrintAdapterHelper.printAdapterToPdf(adapter, attributes, targetFile, new android.print.PrintAdapterHelper.PdfCallback() {
-                                        @Override
-                                        public void onSuccess(File file) {
-                                            runOnUiThread(() -> {
-                                                if (file.exists() && file.length() > 0) {
-                                                    sharePdfFileDirectly(file, messageText, true);
-                                                } else {
-                                                    Toast.makeText(MainActivity.this, "تعذر إنشاء ملف الفاتورة للمشاركة", Toast.LENGTH_SHORT).show();
-                                                }
-                                            });
-                                        }
-
-                                        @Override
-                                        public void onError(String error) {
-                                            runOnUiThread(() -> {
-                                                Toast.makeText(MainActivity.this, "خطأ في تجهيز الفاتورة: " + error, Toast.LENGTH_SHORT).show();
-                                            });
-                                        }
-                                    });
-                                } catch (Exception ex) {
-                                    ex.printStackTrace();
-                                    Toast.makeText(MainActivity.this, "خطأ في معالجة الطباعة والمشاركة: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
-                                }
-                            };
-
-                            printWebView.setWebViewClient(new WebViewClient() {
-                                @Override
-                                public void onPageFinished(WebView view, String url) {
-                                    view.postDelayed(generateAndShare, 300);
-                                }
-                            });
-
-                            printWebView.postDelayed(generateAndShare, 1200);
-                            printWebView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            Toast.makeText(MainActivity.this, "تعذر بدء عملية المشاركة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
+                        printHtml(htmlContent, documentName, pageSize);
                     });
                 }
 
@@ -469,12 +381,24 @@ public class MainActivity extends BridgeActivity {
                                 sendIntent.putExtra(Intent.EXTRA_TEXT, messageText);
                             }
                             sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            sendIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            sendIntent.setClipData(ClipData.newRawUri("PDF", fileUri));
+
+                            // منح الصلاحيات صراحة لكافة التطبيقات المعالجة
+                            android.content.pm.PackageManager pm = getPackageManager();
+                            java.util.List<android.content.pm.ResolveInfo> handlers = pm.queryIntentActivities(sendIntent, 0);
+                            for (android.content.pm.ResolveInfo info : handlers) {
+                                if (info.activityInfo != null && info.activityInfo.packageName != null) {
+                                    grantUriPermission(info.activityInfo.packageName, fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                }
+                            }
 
                             if (targetWhatsApp) {
                                 // محاولة الإرسال لتطبيق واتساب الرسمي أولاً
                                 sendIntent.setPackage("com.whatsapp");
                                 try {
                                     startActivity(sendIntent);
+                                    notifyShareStatus(true, "تم فتح تطبيق واتساب بنجاح");
                                     return;
                                 } catch (Exception exWa) {
                                     // محاولة واتساب للأعمال (WhatsApp Business)
@@ -482,9 +406,9 @@ public class MainActivity extends BridgeActivity {
                                         Intent waBusiness = new Intent(sendIntent);
                                         waBusiness.setPackage("com.whatsapp.w4b");
                                         startActivity(waBusiness);
+                                        notifyShareStatus(true, "تم فتح تطبيق واتساب للأعمال بنجاح");
                                         return;
                                     } catch (Exception exWab) {
-                                        // في حال عدم توفر تطبيق واتساب محدد، فتح نافذة المشاركة العامة
                                         sendIntent.setPackage(null);
                                     }
                                 }
@@ -493,11 +417,26 @@ public class MainActivity extends BridgeActivity {
                             Intent chooser = Intent.createChooser(sendIntent, "مشاركة الفاتورة");
                             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             startActivity(chooser);
+                            notifyShareStatus(true, "تم فتح قائمة المشاركة");
                         } catch (Exception e) {
                             e.printStackTrace();
+                            notifyShareStatus(false, e.getMessage());
                             Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
+                }
+
+                private void notifyShareStatus(boolean success, String message) {
+                    try {
+                        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("'", "\\'");
+                        WebView bridgeWebView = getBridge() != null ? getBridge().getWebView() : null;
+                        if (bridgeWebView != null) {
+                            bridgeWebView.evaluateJavascript(
+                                "window.__onInvoiceShared && window.__onInvoiceShared(" + success + ",'" + safeMessage + "')",
+                                null
+                            );
+                        }
+                    } catch (Exception ignored) {}
                 }
             }, "AndroidPrint");
         }

@@ -432,78 +432,272 @@ export async function exportElementToPdf(
 }
 
 /**
- * تصدير ومشاركة الفاتورة مباشرة عبر واتساب مع نص توثيقي مدمج
+ * نافذة تفاعلية (HUD) متقدمة لعرض حالة ومراحل تصدير ومشاركة الفاتورة للمستخدم
+ */
+function showShareProgressHud(options: { ref?: string; partyName?: string }) {
+  const existing = document.getElementById("share-invoice-hud-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "share-invoice-hud-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 25, 20, 0.78);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    direction: rtl;
+    font-family: system-ui, -apple-system, sans-serif;
+    animation: hud-fade-in 0.2s ease-out;
+  `;
+
+  const partyDisplay = options.partyName || "العميل الكريم";
+  const refDisplay = options.ref || "معياري";
+
+  overlay.innerHTML = `
+    <div style="
+      background: #ffffff;
+      color: #0f172a;
+      width: 100%;
+      max-width: 400px;
+      border-radius: 24px;
+      padding: 24px 20px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(37, 211, 102, 0.3);
+      text-align: right;
+    ">
+      <!-- Header -->
+      <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px;">
+        <div style="
+          width: 48px;
+          height: 48px;
+          border-radius: 16px;
+          background: #25D366;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+        ">
+          <svg style="width: 28px; height: 28px; fill: white;" viewBox="0 0 24 24">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 style="margin: 0; font-size: 16.5px; font-weight: 800; color: #0f172a;">مشاركة الفاتورة عبر واتساب</h3>
+          <p style="margin: 3px 0 0; font-size: 12px; color: #64748b;">
+            العميل: <strong style="color: #0f172a;">${partyDisplay}</strong> • رقم: <strong style="color: #0f172a;">${refDisplay}</strong>
+          </p>
+        </div>
+      </div>
+
+      <!-- Step items -->
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+        <div id="hud-step-1" style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: #16a34a;">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: #dcfce7; color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">✓</span>
+          <span>تدقيق واكتمال بيانات الفاتورة</span>
+        </div>
+
+        <div id="hud-step-2" style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: #0284c7;">
+          <span id="hud-icon-2" style="width: 22px; height: 22px; border-radius: 50%; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 12px; height: 12px; border: 2px solid #0284c7; border-top-color: transparent; border-radius: 50%; animation: hud-spin 0.7s linear infinite;"></div>
+          </span>
+          <span id="hud-label-2">إنشاء وتصيير مستند PDF عالي الدقة (300 DPI)...</span>
+        </div>
+
+        <div id="hud-step-3" style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: #94a3b8;">
+          <span id="hud-icon-3" style="width: 22px; height: 22px; border-radius: 50%; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 11px;">3</span>
+          <span id="hud-label-3">إطلاق ملف الفاتورة وفتح تطبيق واتساب</span>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div style="height: 6px; width: 100%; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-bottom: 12px;">
+        <div id="hud-progress-bar" style="height: 100%; width: 40%; background: linear-gradient(90deg, #25D366, #10b981); border-radius: 999px; transition: width 0.3s ease;"></div>
+      </div>
+
+      <!-- Footer with Timer & Status Text -->
+      <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: #64748b;">
+        <span id="hud-status-msg">جاري المعالجة، لحظات من فضلك...</span>
+        <span id="hud-timer" style="font-family: monospace; font-weight: bold; background: #f8fafc; padding: 2px 8px; border-radius: 6px; border: 1px solid #e2e8f0;">01s</span>
+      </div>
+    </div>
+    <style>
+      @keyframes hud-spin { to { transform: rotate(360deg); } }
+      @keyframes hud-fade-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+
+  let seconds = 1;
+  const timerInterval = setInterval(() => {
+    seconds++;
+    const timerEl = document.getElementById("hud-timer");
+    if (timerEl) {
+      timerEl.textContent = `${seconds < 10 ? "0" + seconds : seconds}s`;
+    }
+  }, 1000);
+
+  return {
+    setStagePdfDone: () => {
+      const step2Icon = document.getElementById("hud-icon-2");
+      const step2Label = document.getElementById("hud-label-2");
+      const step3 = document.getElementById("hud-step-3");
+      const step3Icon = document.getElementById("hud-icon-3");
+      const step3Label = document.getElementById("hud-label-3");
+      const pBar = document.getElementById("hud-progress-bar");
+      const msg = document.getElementById("hud-status-msg");
+
+      if (step2Icon) {
+        step2Icon.style.background = "#dcfce7";
+        step2Icon.style.color = "#16a34a";
+        step2Icon.innerHTML = "✓";
+      }
+      if (step2Label) step2Label.textContent = "تم تصيير الفاتورة بجودة 300 DPI مع QR أصلي";
+      if (step3) step3.style.color = "#0284c7";
+      if (step3Icon) {
+        step3Icon.style.background = "#e0f2fe";
+        step3Icon.innerHTML = '<div style="width: 12px; height: 12px; border: 2px solid #0284c7; border-top-color: transparent; border-radius: 50%; animation: hud-spin 0.7s linear infinite;"></div>';
+      }
+      if (step3Label) step3Label.textContent = "جاري فتح تطبيق واتساب الآن...";
+      if (pBar) pBar.style.width = "85%";
+      if (msg) msg.textContent = "تم تجهيز المستند، جاري تشغيل واتساب...";
+    },
+    setSuccess: (customMsg?: string) => {
+      clearInterval(timerInterval);
+      const step3 = document.getElementById("hud-step-3");
+      const step3Icon = document.getElementById("hud-icon-3");
+      const step3Label = document.getElementById("hud-label-3");
+      const pBar = document.getElementById("hud-progress-bar");
+      const msg = document.getElementById("hud-status-msg");
+
+      if (step3) step3.style.color = "#16a34a";
+      if (step3Icon) {
+        step3Icon.style.background = "#dcfce7";
+        step3Icon.style.color = "#16a34a";
+        step3Icon.innerHTML = "✓";
+      }
+      if (step3Label) step3Label.textContent = "تم إطلاق الفاتورة بنجاح!";
+      if (pBar) pBar.style.width = "100%";
+      if (msg) msg.textContent = customMsg || "تم فتح تطبيق واتساب بنجاح. جاهز للإرسال!";
+
+      setTimeout(() => {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      }, 1500);
+    },
+    setError: (errorMsg: string, fallbackUrl?: string) => {
+      clearInterval(timerInterval);
+      const msg = document.getElementById("hud-status-msg");
+      if (msg) {
+        msg.innerHTML = `
+          <div style="color: #ef4444; font-weight: bold; margin-top: 8px;">
+            ⚠️ ${errorMsg}
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            ${fallbackUrl ? `<a href="${fallbackUrl}" target="_blank" style="background: #25D366; color: white; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-weight: bold;">فتح واتساب ويب</a>` : ""}
+            <button onclick="document.getElementById('share-invoice-hud-overlay')?.remove()" style="background: #e2e8f0; color: #334155; padding: 6px 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;">إغلاق</button>
+          </div>
+        `;
+      }
+    },
+    close: () => {
+      clearInterval(timerInterval);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+  };
+}
+
+/**
+ * تصدير ومشاركة الفاتورة مباشرة عبر واتساب مع نص توثيقي مدمج وواجهة تقدم متقدمة
  */
 export async function shareInvoiceViaWhatsApp(
   element: HTMLElement,
   options: SharePdfOptions
 ): Promise<boolean> {
-  const toastId = toast.loading("جاري تجهيز الفاتورة للمشاركة...");
+  const clientName = options.partyName?.trim() || "العميل الكريم";
+  const ref = options.invoiceRef || "";
+  const typeLabel = options.invoiceTypeLabel || "فاتورة";
+  const amountStr = options.totalAmount !== undefined ? options.totalAmount.toLocaleString("en-US") : "";
+  const currencyStr = options.currency || "SDG";
+  const messageText = options.isRtl !== false
+    ? `السلام عليكم ورحمة الله،\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}\nوكالة T.A Advertising Solution`
+    : `Dear ${clientName},\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}\nTotal: ${amountStr} ${currencyStr}\nT.A Advertising Solution`;
+
+  const actualFormat = options.format || "a4";
+  const filename = options.filename || `فاتورة-TA-${ref || Date.now()}`;
+
+  const hud = showShareProgressHud({ ref, partyName: clientName });
+
   try {
-    if (!element) throw new Error("تعذر العثور على مستند الفاتورة");
+    if (!element) throw new Error("تعذر العثور على مستند الفاتورة لتجهيزه للمشاركة");
 
-    const clientName = options.partyName?.trim() || "العميل الكريم";
-    const ref = options.invoiceRef || "";
-    const typeLabel = options.invoiceTypeLabel || "فاتورة";
-    const amountStr = options.totalAmount !== undefined ? options.totalAmount.toLocaleString("en-US") : "";
-    const currencyStr = options.currency || "SDG";
-    const messageText = options.isRtl !== false
-      ? `السلام عليكم ورحمة الله،\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}\nوكالة T.A Advertising Solution`
-      : `Dear ${clientName},\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}\nTotal: ${amountStr} ${currencyStr}\nT.A Advertising Solution`;
+    // 1. توليد ملف PDF عالي الدقة (300 DPI) مع الحفاظ على رمز QR الأصلي بدون ضغط
+    const generated = await generateInvoicePdf(element, {
+      filename,
+      format: actualFormat,
+      orientation: "portrait",
+    });
 
-    const actualFormat = options.format || "a4";
-    const filename = options.filename || `فاتورة-TA-${ref || Date.now()}`;
+    if (!generated) {
+      throw new Error("فشل إنشاء ملف PDF عالي الدقة للفاتورة");
+    }
 
+    hud.setStagePdfDone();
+
+    // 2. إطلاق الفاتورة إلى واتساب مباشرة عبر AndroidPrint
     const androidPrint = (window as any).AndroidPrint;
-    if (androidPrint && typeof androidPrint.printHtmlThenShare === "function") {
-      const html = buildStandaloneInvoiceHtml(element, filename, actualFormat);
-      androidPrint.printHtmlThenShare(
-        html,
-        filename,
-        actualFormat.toUpperCase(),
-        messageText
-      );
-      toast.success("تم تجهيز الفاتورة وفتح المشاركة عبر واتساب", { id: toastId });
+    if (androidPrint && typeof androidPrint.shareToWhatsApp === "function") {
+      let responded = false;
+      const previousHandler = (window as any).__onInvoiceShared;
+      (window as any).__onInvoiceShared = (success: boolean, msg: string) => {
+        responded = true;
+        (window as any).__onInvoiceShared = previousHandler;
+        if (success) {
+          hud.setSuccess(msg);
+        } else {
+          hud.setError(msg || "تعذر فتح تطبيق واتساب");
+        }
+      };
+
+      androidPrint.shareToWhatsApp(generated.base64, generated.filename, messageText);
+
+      // في حال فتح تطبيق واتساب مباشرة دون انتظار
+      setTimeout(() => {
+        if (!responded) {
+          (window as any).__onInvoiceShared = previousHandler;
+          hud.setSuccess();
+        }
+      }, 1500);
+
       return true;
     }
 
-    if (androidPrint && typeof androidPrint.shareToWhatsApp === "function") {
-      const generated = await generateInvoicePdf(element, {
-        filename,
-        format: actualFormat,
-        orientation: "portrait",
-      });
-      if (generated) {
-        androidPrint.shareToWhatsApp(generated.base64, generated.filename, messageText);
-        toast.success("تم فتح المشاركة عبر واتساب", { id: toastId });
+    // 3. متصفح الويب (Web Share API)
+    if (typeof navigator !== "undefined" && navigator.canShare) {
+      const file = new File([generated.pdf.output("blob")], generated.filename, { type: "application/pdf" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: generated.filename, text: messageText, files: [file] });
+        hud.setSuccess();
         return true;
       }
     }
 
-    // Web browser fallback
-    if (typeof navigator !== "undefined" && navigator.canShare) {
-      const generated = await generateInvoicePdf(element, {
-        filename,
-        format: actualFormat,
-        orientation: "portrait",
-      });
-      if (generated) {
-        const file = new File([generated.pdf.output("blob")], generated.filename, { type: "application/pdf" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ title: generated.filename, text: messageText, files: [file] });
-          toast.success("تم فتح المشاركة", { id: toastId });
-          return true;
-        }
-      }
-    }
-
-    // Direct WhatsApp web fallback link
-    window.open(`https://wa.me/?text=${encodeURIComponent(messageText)}`, "_blank");
-    toast.success("تم فتح واتساب للمشاركة", { id: toastId });
+    // 4. فتح رابط واتساب ويب كخيار بديل
+    const waWebUrl = `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+    window.open(waWebUrl, "_blank");
+    hud.setSuccess("تم فتح واتساب لمشاركة نص الفاتورة");
     return true;
   } catch (error: any) {
     console.error("WhatsApp share failed:", error);
-    toast.error(`تعذر مشاركة الفاتورة: ${error?.message || "خطأ غير متوقع"}`, { id: toastId });
+    const waWebUrl = `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+    hud.setError(error?.message || "تعذر إكمال عملية المشاركة", waWebUrl);
+    toast.error(`تعذر مشاركة الفاتورة: ${error?.message || "خطأ غير متوقع"}`);
     return false;
   }
 }
