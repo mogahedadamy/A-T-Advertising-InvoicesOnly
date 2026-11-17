@@ -220,32 +220,6 @@ export function CustomInvoicePrintButton({
     <div className="flex items-center gap-1.5">
       <Button
         type="button"
-        variant="outline"
-        size={size}
-        onClick={handleExport}
-        disabled={isExporting || isPrinting}
-        className="font-bold border-primary/40 text-primary hover:bg-primary/10 gap-1 sm:gap-1.5 h-8 px-2 sm:px-3 text-xs rounded-xl cursor-pointer"
-        title="تصدير وحفظ ملف PDF أصلي في جهازك"
-      >
-        {isExporting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-        ) : (
-          <FileDown className="h-3.5 w-3.5" />
-        )}
-        <span>
-          {isExporting ? (
-            "جاري الحفظ..."
-          ) : (
-            <>
-              <span className="sm:hidden">حفظ PDF</span>
-              <span className="hidden sm:inline">حفظ PDF أصلي</span>
-            </>
-          )}
-        </span>
-      </Button>
-
-      <Button
-        type="button"
         size={size}
         onClick={handlePrint}
         disabled={isExporting || isPrinting}
