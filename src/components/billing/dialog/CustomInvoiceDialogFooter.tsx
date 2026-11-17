@@ -20,7 +20,6 @@ export function CustomInvoiceDialogFooter({
   isProcessing,
   onSave,
   onSaveAndPrint,
-  onSaveAndExportPdf,
   onSaveAndShareWhatsApp,
   onConvertToSales,
   onClose,
