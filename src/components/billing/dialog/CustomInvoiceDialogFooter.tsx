@@ -9,7 +9,6 @@ interface Props {
   isProcessing: boolean;
   onSave: () => void;
   onSaveAndPrint: () => void;
-  onSaveAndExportPdf: () => void;
   onSaveAndShareWhatsApp?: () => void;
   onConvertToSales?: () => void;
   onClose: () => void;
