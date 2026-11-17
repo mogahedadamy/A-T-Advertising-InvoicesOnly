@@ -438,17 +438,14 @@ export async function shareInvoiceViaWhatsApp(
   element: HTMLElement,
   options: SharePdfOptions
 ): Promise<boolean> {
-  const toastId = toast.loading("جاري تجهيز الفاتورة ومشاركتها عبر واتساب...");
+  const toastId = toast.loading("جاري تجهيز الفاتورة للطباعة أولاً...");
   try {
     const generated = await generateInvoicePdf(element, {
       filename: options.filename,
       format: options.format || "a4",
       orientation: "portrait",
     });
-
-    if (!generated) {
-      throw new Error("فشل توليد ملف PDF للمشاركة");
-    }
+    if (!generated) throw new Error("فشل تجهيز ملف الفاتورة");
 
     const { pdf, base64, filename } = generated;
     const clientName = options.partyName?.trim() || "العميل الكريم";
@@ -456,39 +453,91 @@ export async function shareInvoiceViaWhatsApp(
     const typeLabel = options.invoiceTypeLabel || "فاتورة";
     const amountStr = options.totalAmount !== undefined ? options.totalAmount.toLocaleString("en-US") : "";
     const currencyStr = options.currency || "SDG";
-
     const messageText = options.isRtl !== false
-      ? `السلام عليكم ورحمة الله،\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}\nوكالة T.A Advertising Solution`
-      : `Dear ${clientName},\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}\nTotal: ${amountStr} ${currencyStr}\nT.A Advertising Solution`;
+      ? `السلام عليكم ورحمة الله،\\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\\nالعميل: ${clientName}\\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}\\nوكالة T.A Advertising Solution`
+      : `Dear ${clientName},\\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}\\nTotal: ${amountStr} ${currencyStr}\\nT.A Advertising Solution`;
 
     const androidPrint = (window as any).AndroidPrint;
-    if (androidPrint && typeof androidPrint.shareToWhatsApp === "function") {
-      androidPrint.shareToWhatsApp(base64, filename, messageText);
-      toast.success("تم فتح واتساب وجاهزية إرسال الفاتورة", { id: toastId });
-      return true;
+    if (androidPrint && typeof androidPrint.printPdfThenShare === "function") {
+      const requestId = `invoice-print-share-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const completed = await new Promise<boolean>((resolve) => {
+        const previousHandler = (window as any).__invoicePrintShareResult;
+        const timeout = window.setTimeout(() => {
+          (window as any).__invoicePrintShareResult = previousHandler;
+          resolve(false);
+        }, 10 * 60 * 1000);
+
+        (window as any).__invoicePrintShareResult = (id: string, success: boolean, message: string) => {
+          if (id !== requestId) {
+            if (typeof previousHandler === "function") previousHandler(id, success, message);
+            return;
+          }
+          window.clearTimeout(timeout);
+          (window as any).__invoicePrintShareResult = previousHandler;
+          if (success) {
+            toast.success("اكتملت الطباعة، وتم فتح مشاركة الفاتورة", { id: toastId });
+          } else {
+            toast.error(message || "لم تكتمل الطباعة؛ لم تتم مشاركة الفاتورة", { id: toastId });
+          }
+          resolve(Boolean(success));
+        };
+
+        try {
+          androidPrint.printPdfThenShare(
+            base64,
+            filename,
+            messageText,
+            requestId,
+            (options.format || "a4").toUpperCase()
+          );
+        } catch (error) {
+          window.clearTimeout(timeout);
+          (window as any).__invoicePrintShareResult = previousHandler;
+          console.error("Native print/share bridge failed:", error);
+          resolve(false);
+        }
+      });
+      return completed;
     }
+
+    // Browser fallback: the print dialog must close before the share sheet opens.
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("afterprint", finish);
+        resolve();
+      };
+      window.addEventListener("afterprint", finish, { once: true });
+      window.setTimeout(finish, 1500);
+      pdf.autoPrint();
+      const blobUrl = URL.createObjectURL(pdf.output("blob"));
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+      frame.src = blobUrl;
+      frame.onload = () => {
+        try { frame.contentWindow?.focus(); frame.contentWindow?.print(); } catch { finish(); }
+      };
+      document.body.appendChild(frame);
+      window.setTimeout(() => {
+        frame.remove();
+        URL.revokeObjectURL(blobUrl);
+      }, 60000);
+    });
 
     if (typeof navigator !== "undefined" && navigator.canShare) {
-      try {
-        const pdfBlob = pdf.output("blob");
-        const file = new File([pdfBlob], filename, { type: "application/pdf" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ title: filename, text: messageText, files: [file] });
-          toast.success("تمت مشاركة الفاتورة بنجاح", { id: toastId });
-          return true;
-        }
-      } catch (shareErr) {
-        console.warn("Web Share API files sharing rejected or canceled:", shareErr);
+      const file = new File([pdf.output("blob")], filename, { type: "application/pdf" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: filename, text: messageText, files: [file] });
+        toast.success("تمت الطباعة وفتح المشاركة", { id: toastId });
+        return true;
       }
     }
-
-    pdf.save(filename);
-    window.open(`https://wa.me/?text=${encodeURIComponent(messageText)}`, "_blank");
-    toast.success("تم حفظ الفاتورة وفتح واتساب", { id: toastId });
-    return true;
+    throw new Error("الطباعة تمت، لكن مشاركة ملفات PDF غير مدعومة في هذا المتصفح");
   } catch (error: any) {
-    console.error("WhatsApp share failed:", error);
-    toast.error(`تعذر مشاركة الفاتورة: ${error?.message || "خطأ غير متوقع"}`, { id: toastId });
+    console.error("Print-first WhatsApp share failed:", error);
+    toast.error(`لم تكتمل عملية الطباعة والمشاركة: ${error?.message || "خطأ غير متوقع"}`, { id: toastId });
     return false;
   }
 }
@@ -496,12 +545,12 @@ export async function shareInvoiceViaWhatsApp(
 /**
  * معالج أمر الطباعة الذكي: يرسل HTML المخصص لأندرويد مع تحديد مقاس الورق بدقة
  */
-export function triggerPrintWithElement(
+export async function triggerPrintWithElement(
   element: HTMLElement | null,
   documentTitle: string,
   pageSize: "a4" | "a5" | (() => void) = "a4",
   onDone?: () => void
-) {
+): Promise<void> {
   let actualPageSize: "a4" | "a5" = "a4";
   let actualOnDone: (() => void) | undefined = onDone;
 
@@ -534,25 +583,56 @@ export function triggerPrintWithElement(
   }
 
   const androidPrint = (window as any).AndroidPrint;
-  if (androidPrint && typeof androidPrint.printHtml === "function") {
+  if (androidPrint && typeof androidPrint.printPdfThenShare === "function") {
+    const toastId = toast.loading("جاري تجهيز الفاتورة للطباعة...");
     try {
-      const html = buildStandaloneInvoiceHtml(element, documentTitle, actualPageSize);
-      androidPrint.printHtml(html, documentTitle, actualPageSize.toUpperCase());
-      setTimeout(cleanup, 1200);
-      return;
-    } catch (e) {
-      console.warn("AndroidPrint.printHtml error:", e);
-    }
-  }
+      const generated = await generateInvoicePdf(element, {
+        filename: documentTitle,
+        format: actualPageSize,
+        orientation: actualPageSize === "a5" ? "landscape" : "portrait",
+      });
+      if (!generated) throw new Error("تعذر إنشاء ملف الطباعة");
 
-  if (androidPrint && typeof androidPrint.print === "function") {
-    try {
-      androidPrint.print(documentTitle);
-      setTimeout(cleanup, 1200);
-      return;
-    } catch (e) {
-      console.warn("AndroidPrint.print error:", e);
+      const requestId = `invoice-print-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const completed = await new Promise<boolean>((resolve) => {
+        const previousHandler = (window as any).__invoicePrintShareResult;
+        const timeout = window.setTimeout(() => {
+          (window as any).__invoicePrintShareResult = previousHandler;
+          resolve(false);
+        }, 10 * 60 * 1000);
+        (window as any).__invoicePrintShareResult = (id: string, success: boolean, message: string) => {
+          if (id !== requestId) {
+            if (typeof previousHandler === "function") previousHandler(id, success, message);
+            return;
+          }
+          window.clearTimeout(timeout);
+          (window as any).__invoicePrintShareResult = previousHandler;
+          if (success) toast.success("اكتملت الطباعة", { id: toastId });
+          else toast.error(message || "لم تكتمل الطباعة", { id: toastId });
+          resolve(Boolean(success));
+        };
+        try {
+          // Empty messageText means print-only; the native adapter prints this exact PDF.
+          androidPrint.printPdfThenShare(
+            generated.base64,
+            generated.filename,
+            "",
+            requestId,
+            actualPageSize.toUpperCase()
+          );
+        } catch {
+          window.clearTimeout(timeout);
+          (window as any).__invoicePrintShareResult = previousHandler;
+          resolve(false);
+        }
+      });
+      if (!completed) toast.error("تعذر إكمال الطباعة");
+    } catch (error: any) {
+      toast.error(`تعذر تجهيز الطباعة: ${error?.message || "خطأ غير متوقع"}`, { id: toastId });
+    } finally {
+      cleanup();
     }
+    return;
   }
 
   try {

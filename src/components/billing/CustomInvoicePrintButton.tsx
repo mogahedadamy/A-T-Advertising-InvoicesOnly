@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { Printer, FileDown, Loader2, Share2 } from "lucide-react";
+import { Printer, Loader2, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoice } from "@/lib/billing/types";
 import { INVOICE_TYPE_LABELS } from "@/lib/billing/types";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
 import { formatDisplayReference } from "@/lib/domain/references";
-import { triggerPrintWithElement, exportElementToPdf, shareInvoiceViaWhatsApp } from "@/lib/pdfExport";
+import { triggerPrintWithElement, shareInvoiceViaWhatsApp } from "@/lib/pdfExport";
 import { saveCustomInvoice } from "@/lib/billing/store";
 import { prepareCustomInvoiceElement } from "./customInvoicePrintEngine";
 import { toast } from "sonner";
@@ -52,7 +52,7 @@ export async function printCustomInvoiceDocument(
 
   document.body.classList.add("printing-custom-invoice");
 
-  triggerPrintWithElement(element, docTitle, "a4", () => {
+  await triggerPrintWithElement(element, docTitle, "a4", () => {
     document.body.classList.remove("printing-custom-invoice");
     cleanup();
   });
@@ -60,48 +60,6 @@ export async function printCustomInvoiceDocument(
   return true;
 }
 
-export async function saveCustomInvoiceAsPdf(
-  invoice: CustomInvoice,
-  onBeforePrint?: () => void
-): Promise<boolean> {
-  // الحفظ التلقائي المباشر في النظام لضمان توثيق وأمان البيانات
-  try {
-    await saveCustomInvoice(invoice);
-  } catch (err) {
-    console.warn("Auto-save before PDF save note:", err);
-  }
-
-  const prep = await prepareCustomInvoiceElement(invoice, onBeforePrint);
-  if (!prep || !prep.element) {
-    toast.error("تعذر تجهيز مستند الفاتورة لحفظ ملف PDF. يرجى المحاولة ثانية.");
-    return false;
-  }
-
-  const { element, cleanup } = prep;
-  const isEn =
-    detectInvoiceLanguage(
-      invoice.meta.language,
-      invoice.meta.partyName,
-      invoice.meta.partyEnName,
-      invoice.items
-    ) === "en";
-  const label = isEn ? "Pro-invoice" : (INVOICE_TYPE_LABELS[invoice.meta.type] || "فاتورة");
-  const serial = formatDisplayReference(invoice.reference, invoice.meta.serial, invoice.meta.date);
-  const party = isEn
-    ? (invoice.meta.partyEnName || invoice.meta.partyName || "Client")
-    : (invoice.meta.partyName || "عميل");
-
-  try {
-    const success = await exportElementToPdf(element, {
-      filename: `${label}-${serial}-${party}`,
-      format: "a4",
-      orientation: "portrait",
-    });
-    return success;
-  } finally {
-    cleanup();
-  }
-}
 
 export async function shareCustomInvoiceViaWhatsApp(
   invoice: CustomInvoice,
@@ -193,21 +151,12 @@ export function CustomInvoicePrintButton({
   className,
   size = "default",
 }: Props) {
-  const [isExporting, setIsExporting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const handleExport = async () => {
-    if (isExporting || isPrinting) return;
-    setIsExporting(true);
-    try {
-      await saveCustomInvoiceAsPdf(invoice, onBeforePrint);
-    } finally {
-      setIsExporting(false);
-    }
-  };
+
 
   const handlePrint = async () => {
-    if (isExporting || isPrinting) return;
+    if (isPrinting) return;
     setIsPrinting(true);
     try {
       await printCustomInvoiceDocument(invoice, onBeforePrint);
@@ -220,35 +169,9 @@ export function CustomInvoicePrintButton({
     <div className="flex items-center gap-1.5">
       <Button
         type="button"
-        variant="outline"
-        size={size}
-        onClick={handleExport}
-        disabled={isExporting || isPrinting}
-        className="font-bold border-primary/40 text-primary hover:bg-primary/10 gap-1 sm:gap-1.5 h-8 px-2 sm:px-3 text-xs rounded-xl cursor-pointer"
-        title="تصدير وحفظ ملف PDF أصلي في جهازك"
-      >
-        {isExporting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-        ) : (
-          <FileDown className="h-3.5 w-3.5" />
-        )}
-        <span>
-          {isExporting ? (
-            "جاري الحفظ..."
-          ) : (
-            <>
-              <span className="sm:hidden">حفظ PDF</span>
-              <span className="hidden sm:inline">حفظ PDF أصلي</span>
-            </>
-          )}
-        </span>
-      </Button>
-
-      <Button
-        type="button"
         size={size}
         onClick={handlePrint}
-        disabled={isExporting || isPrinting}
+        disabled={isPrinting}
         className={className || "font-bold shadow-sm gap-1 sm:gap-1.5 h-8 px-2.5 sm:px-3 text-xs rounded-xl cursor-pointer"}
         title="طباعة عبر خدمة النظام أو الطابعة"
       >
