@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useDeferredValue, useRef } from "react";
 import {
   X,
   Phone,
@@ -20,6 +20,16 @@ import {
   ArchiveRestore,
   Trash2,
   ChevronRight,
+  ChevronLeft,
+  ChevronsRight,
+  ChevronsLeft,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpDown,
+  Search,
+  LayoutGrid,
+  List,
+  ArrowUp,
   ExternalLink,
   Wallet,
   ArrowDownLeft,
@@ -28,6 +38,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   CUSTOMER_TYPE_CONFIG,
@@ -83,8 +94,28 @@ export function CustomerProfileModal({
   const [selectedCurrency, setSelectedCurrency] = useState<string>("SDG");
   const [isLoading, setIsLoading] = useState(true);
 
-  // Invoice tab sub-filters
+  // Collapsible KPI Summary
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
+
+  // Invoice tab sub-filters & search & sorting & pagination
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "unpaid" | "partial" | "overdue" | "paid">("all");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const deferredInvoiceSearch = useDeferredValue(invoiceSearch);
+  const [invoiceSort, setInvoiceSort] = useState<"date-desc" | "date-asc" | "debt-desc" | "amount-desc" | "amount-asc">("date-desc");
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoicePageSize, setInvoicePageSize] = useState(25);
+  const [invoiceViewMode, setInvoiceViewMode] = useState<"cards" | "table">("cards");
+
+  // Statement tab search, filter, and pagination
+  const [statementSearch, setStatementSearch] = useState("");
+  const deferredStatementSearch = useDeferredValue(statementSearch);
+  const [statementTypeFilter, setStatementTypeFilter] = useState<"all" | "invoice" | "receipt" | "opening_balance">("all");
+  const [statementPage, setStatementPage] = useState(1);
+  const [statementPageSize, setStatementPageSize] = useState(30);
+
+  // Scroll to top floating button
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Modals inside customer profile
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -126,19 +157,146 @@ export function CustomerProfileModal({
   const handleCurrencyChange = async (cur: string) => {
     playTapSound();
     setSelectedCurrency(cur);
+    setInvoicePage(1);
     if (customer?.id) {
       const stmt = await getCustomerStatement(customer.id, {}, cur);
       setStatement(stmt);
     }
   };
 
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      const matchStatus = invoiceStatusFilter === "all" || inv.status === invoiceStatusFilter;
-      const matchCur = !selectedCurrency || inv.currency === selectedCurrency;
-      return matchStatus && matchCur;
+  // 1. الفواتير الخاصة بالعملة المختارة
+  const currentInvoicesForCurrency = useMemo(() => {
+    return selectedCurrency
+      ? invoices.filter((inv) => !inv.currency || inv.currency === selectedCurrency)
+      : invoices;
+  }, [invoices, selectedCurrency]);
+
+  // 2. إحصائيات وتعداد الفواتير التراكمي
+  const invoiceStatusCounts = useMemo(() => {
+    return {
+      all: currentInvoicesForCurrency.length,
+      unpaid: currentInvoicesForCurrency.filter((i) => i.status === "unpaid").length,
+      partial: currentInvoicesForCurrency.filter((i) => i.status === "partial").length,
+      overdue: currentInvoicesForCurrency.filter((i) => i.status === "overdue").length,
+      paid: currentInvoicesForCurrency.filter((i) => i.status === "paid").length,
+    };
+  }, [currentInvoicesForCurrency]);
+
+  // 3. المعالجة الكاملة للفواتير: فلترة الحالة + البحث الفوري + الترتيب
+  const processedInvoices = useMemo(() => {
+    let list = currentInvoicesForCurrency;
+
+    // تصفية حسب الحالة
+    if (invoiceStatusFilter !== "all") {
+      list = list.filter((inv) => inv.status === invoiceStatusFilter);
+    }
+
+    // تصفية حسب البحث الفوري
+    const q = deferredInvoiceSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((inv) => {
+        return (
+          inv.reference?.toLowerCase().includes(q) ||
+          inv.serial?.toLowerCase().includes(q) ||
+          inv.date?.toLowerCase().includes(q) ||
+          inv.dueDate?.toLowerCase().includes(q) ||
+          inv.projectReference?.toLowerCase().includes(q) ||
+          String(inv.totalAmount).includes(q) ||
+          String(inv.remainingAmount).includes(q)
+        );
+      });
+    }
+
+    // الفرز والترتيب
+    return [...list].sort((a, b) => {
+      switch (invoiceSort) {
+        case "date-asc":
+          return a.date.localeCompare(b.date);
+        case "debt-desc":
+          return (b.remainingAmount || 0) - (a.remainingAmount || 0);
+        case "amount-desc":
+          return (b.totalAmount || 0) - (a.totalAmount || 0);
+        case "amount-asc":
+          return (a.totalAmount || 0) - (b.totalAmount || 0);
+        case "date-desc":
+        default:
+          return b.date.localeCompare(a.date);
+      }
     });
-  }, [invoices, invoiceStatusFilter, selectedCurrency]);
+  }, [currentInvoicesForCurrency, invoiceStatusFilter, deferredInvoiceSearch, invoiceSort]);
+
+  // التصفح والتقسيم إلى صفحات (Pagination) لضمان أقصى سرعة حتى مع آلاف الفواتير
+  const totalInvoicePages = Math.max(1, Math.ceil(processedInvoices.length / invoicePageSize));
+
+  const paginatedInvoices = useMemo(() => {
+    const start = (invoicePage - 1) * invoicePageSize;
+    return processedInvoices.slice(start, start + invoicePageSize);
+  }, [processedInvoices, invoicePage, invoicePageSize]);
+
+  const pageFinancials = useMemo(() => {
+    let pageTotal = 0;
+    let pageRemaining = 0;
+    for (const inv of paginatedInvoices) {
+      pageTotal += inv.totalAmount || 0;
+      pageRemaining += inv.remainingAmount || 0;
+    }
+    return { pageTotal, pageRemaining };
+  }, [paginatedInvoices]);
+
+  // إعادة التصفير إلى الصفحة الأولى عند تغير أي فلتر
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [deferredInvoiceSearch, invoiceStatusFilter, selectedCurrency, invoiceSort, invoicePageSize]);
+
+  // تصفية كشف الحساب والبحث داخله
+  const processedStatementLines = useMemo(() => {
+    if (!statement?.lines) return [];
+    let list = statement.lines;
+
+    if (statementTypeFilter !== "all") {
+      list = list.filter((l) => l.kind === statementTypeFilter);
+    }
+
+    const q = deferredStatementSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((l) => {
+        return (
+          l.label?.toLowerCase().includes(q) ||
+          l.reference?.toLowerCase().includes(q) ||
+          l.notes?.toLowerCase().includes(q) ||
+          l.date?.toLowerCase().includes(q) ||
+          String(l.debit).includes(q) ||
+          String(l.credit).includes(q) ||
+          String(l.runningBalance).includes(q)
+        );
+      });
+    }
+
+    return list;
+  }, [statement, statementTypeFilter, deferredStatementSearch]);
+
+  const totalStatementPages = Math.max(1, Math.ceil(processedStatementLines.length / statementPageSize));
+
+  const paginatedStatementLines = useMemo(() => {
+    const start = (statementPage - 1) * statementPageSize;
+    return processedStatementLines.slice(start, start + statementPageSize);
+  }, [processedStatementLines, statementPage, statementPageSize]);
+
+  useEffect(() => {
+    setStatementPage(1);
+  }, [deferredStatementSearch, statementTypeFilter, statementPageSize]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop > 240) {
+      setShowScrollTop(true);
+    } else {
+      setShowScrollTop(false);
+    }
+  };
+
+  const scrollToTop = () => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handleArchiveToggle = async () => {
     playTapSound();
@@ -351,12 +509,33 @@ export function CustomerProfileModal({
           </div>
 
           {/* 2. Multi-Currency Financial KPI Bar & Currency Switcher */}
-          <div className="p-4 sm:p-5 border-b border-border/60 space-y-2.5 shrink-0 bg-background/50">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-black text-foreground flex items-center gap-1.5">
-                <Wallet className="h-3.5 w-3.5 text-primary" />
-                <span>الملخص المالي والذمم:</span>
-              </span>
+          <div className="p-3.5 sm:p-4 border-b border-border/60 space-y-2.5 shrink-0 bg-background/50">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-foreground flex items-center gap-1.5">
+                  <Wallet className="h-3.5 w-3.5 text-primary" />
+                  <span>الملخص المالي والذمم:</span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsSummaryCollapsed((v) => !v)}
+                  className="h-6 px-2 text-[10.5px] font-bold text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
+                >
+                  {isSummaryCollapsed ? (
+                    <span className="inline-flex items-center gap-1">
+                      <ChevronDown className="h-3 w-3" />
+                      <span>عرض تفاصيل الملخص</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <ChevronUp className="h-3 w-3" />
+                      <span>طي</span>
+                    </span>
+                  )}
+                </Button>
+              </div>
 
               {/* Currency Selector Pills */}
               <div className="flex items-center gap-1">
@@ -377,52 +556,77 @@ export function CustomerProfileModal({
               </div>
             </div>
 
-            {/* KPI Cards Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
-                <span className="text-[10px] font-bold text-muted-foreground block">إجمالي الفواتير الصادرة</span>
-                <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
-                  {formatNumber(currentSummary.totalInvoiced)}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
-                </p>
-                <span className="text-[10px] text-muted-foreground block font-medium">
-                  {currentSummary.totalInvoicesCount} فاتورة
+            {/* If Collapsed: compact 1-line strip for maximum invoice vertical space */}
+            {isSummaryCollapsed ? (
+              <div className="rounded-xl border border-border/70 bg-card px-3 py-2 flex items-center justify-between gap-2 text-xs font-mono flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span>
+                    <span className="text-muted-foreground font-sans text-[10px]">المفوتر: </span>
+                    <strong className="text-foreground font-black">{formatNumber(currentSummary.totalInvoiced)} {selectedCurrency}</strong>
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground font-sans text-[10px]">المحصل: </span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-black">{formatNumber(currentSummary.totalPaid)} {selectedCurrency}</strong>
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground font-sans text-[10px]">المتبقي: </span>
+                    <strong className={currentSummary.outstanding > 0 ? "text-rose-600 dark:text-rose-400 font-black" : "text-foreground font-black"}>
+                      {formatNumber(currentSummary.outstanding)} {selectedCurrency}
+                    </strong>
+                  </span>
+                </div>
+                <span className="text-[10.5px] font-sans font-bold text-muted-foreground">
+                  ({currentSummary.totalInvoicesCount} فاتورة)
                 </span>
               </div>
+            ) : (
+              /* KPI Cards Grid */
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground block">إجمالي الفواتير الصادرة</span>
+                  <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
+                    {formatNumber(currentSummary.totalInvoiced)}{" "}
+                    <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
+                  </p>
+                  <span className="text-[10px] text-muted-foreground block font-medium">
+                    {currentSummary.totalInvoicesCount} فاتورة
+                  </span>
+                </div>
 
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 shadow-2xs space-y-1">
-                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">إجمالي المبالغ المسددة</span>
-                <p className="font-mono text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {formatNumber(currentSummary.totalPaid)}{" "}
-                  <span className="text-[10px] font-normal">{selectedCurrency}</span>
-                </p>
-                <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 block font-medium">
-                  {currentSummary.paidInvoicesCount} مسددة بالكامل
-                </span>
-              </div>
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">إجمالي المبالغ المسددة</span>
+                  <p className="font-mono text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    {formatNumber(currentSummary.totalPaid)}{" "}
+                    <span className="text-[10px] font-normal">{selectedCurrency}</span>
+                  </p>
+                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 block font-medium">
+                    {currentSummary.paidInvoicesCount} مسددة بالكامل
+                  </span>
+                </div>
 
-              <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 shadow-2xs space-y-1">
-                <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">المبالغ المستحقة (ديون)</span>
-                <p className="font-mono text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                  {formatNumber(currentSummary.outstanding)}{" "}
-                  <span className="text-[10px] font-normal">{selectedCurrency}</span>
-                </p>
-                <span className="text-[10px] text-rose-700/80 dark:text-rose-400/80 block font-medium">
-                  {currentSummary.unpaidInvoicesCount} غير مسددة | {currentSummary.overdueInvoicesCount} متأخرة
-                </span>
-              </div>
+                <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">المبالغ المستحقة (ديون)</span>
+                  <p className="font-mono text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                    {formatNumber(currentSummary.outstanding)}{" "}
+                    <span className="text-[10px] font-normal">{selectedCurrency}</span>
+                  </p>
+                  <span className="text-[10px] text-rose-700/80 dark:text-rose-400/80 block font-medium">
+                    {currentSummary.unpaidInvoicesCount} غير مسددة | {currentSummary.overdueInvoicesCount} متأخرة
+                  </span>
+                </div>
 
-              <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
-                <span className="text-[10px] font-bold text-muted-foreground block">أرصدة مقدمة / دفعات دائنة</span>
-                <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
-                  {formatNumber(currentSummary.advanceCredit)}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
-                </p>
-                <span className="text-[10px] text-muted-foreground block font-medium">
-                  رصيد لصالح العميل
-                </span>
+                <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground block">أرصدة مقدمة / دفعات دائنة</span>
+                  <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
+                    {formatNumber(currentSummary.advanceCredit)}{" "}
+                    <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
+                  </p>
+                  <span className="text-[10px] text-muted-foreground block font-medium">
+                    رصيد لصالح العميل
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 3. Direct Actions Bar inside Profile */}
@@ -518,18 +722,115 @@ export function CustomerProfileModal({
           </div>
 
           {/* 5. Tab Content Area (Scrollable) */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-5">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-5 overscroll-contain relative touch-pan-y"
+          >
             {/* ── TAB 1: INVOICES ── */}
             {activeTab === "invoices" && (
               <div className="space-y-3">
-                {/* Status sub-filter pills */}
+                {/* Search, Sort, View Mode & Page Size Toolbar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-card/80 p-2.5 rounded-2xl border border-border/70">
+                  {/* Search box */}
+                  <div className="relative flex-1">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      type="text"
+                      placeholder="بحث برقم الفاتورة، التاريخ، المشروع، المبلغ..."
+                      value={invoiceSearch}
+                      onChange={(e) => setInvoiceSearch(e.target.value)}
+                      className="h-8.5 pr-8 pl-3 text-xs bg-secondary/50 rounded-xl border-border/70 placeholder:text-muted-foreground/70"
+                    />
+                    {invoiceSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceSearch("")}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-0.5 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Controls cluster: Sort, Size, View Mode */}
+                  <div className="flex items-center gap-1.5 shrink-0 justify-between sm:justify-end">
+                    {/* Sort selector */}
+                    <div className="flex items-center gap-1 bg-secondary/50 px-2 py-1 rounded-xl border border-border/60">
+                      <ArrowUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <select
+                        aria-label="ترتيب الفواتير"
+                        value={invoiceSort}
+                        onChange={(e) => setInvoiceSort(e.target.value as any)}
+                        className="bg-transparent text-[11px] font-bold text-foreground border-none outline-hidden cursor-pointer"
+                      >
+                        <option value="date-desc">الأحدث تاريخاً</option>
+                        <option value="date-asc">الأقدم تاريخاً</option>
+                        <option value="debt-desc">الأعلى متبقي (مديونية)</option>
+                        <option value="amount-desc">الأعلى قيمة</option>
+                        <option value="amount-asc">الأقل قيمة</option>
+                      </select>
+                    </div>
+
+                    {/* Page Size selector */}
+                    <div className="flex items-center gap-1 bg-secondary/50 px-2 py-1 rounded-xl border border-border/60">
+                      <span className="text-[10px] text-muted-foreground font-bold">عرض:</span>
+                      <select
+                        aria-label="عدد الفواتير لكل صفحة"
+                        value={invoicePageSize}
+                        onChange={(e) => setInvoicePageSize(Number(e.target.value))}
+                        className="bg-transparent text-[11px] font-bold text-foreground border-none outline-hidden cursor-pointer"
+                      >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center bg-secondary/70 p-0.5 rounded-xl border border-border/60">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setInvoiceViewMode("cards");
+                        }}
+                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                          invoiceViewMode === "cards"
+                            ? "bg-card text-foreground shadow-2xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="عرض البطاقات التفصيلية"
+                      >
+                        <LayoutGrid className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setInvoiceViewMode("table");
+                        }}
+                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                          invoiceViewMode === "table"
+                            ? "bg-card text-foreground shadow-2xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="عرض الجدول المالي عالي الكثافة (موصى به للأعداد الكبيرة)"
+                      >
+                        <List className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status sub-filter pills with live counts */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-none">
                   {[
-                    { key: "all", label: "كل الفواتير" },
-                    { key: "unpaid", label: "غير مسددة" },
-                    { key: "partial", label: "مسددة جزئياً" },
-                    { key: "overdue", label: "متأخرة" },
-                    { key: "paid", label: "مسددة بالكامل" },
+                    { key: "all", label: `كل الفواتير (${invoiceStatusCounts.all})` },
+                    { key: "unpaid", label: `غير مسددة (${invoiceStatusCounts.unpaid})` },
+                    { key: "partial", label: `مسددة جزئياً (${invoiceStatusCounts.partial})` },
+                    { key: "overdue", label: `متأخرة (${invoiceStatusCounts.overdue})` },
+                    { key: "paid", label: `مسددة بالكامل (${invoiceStatusCounts.paid})` },
                   ].map((sub) => (
                     <button
                       key={sub.key}
@@ -538,10 +839,10 @@ export function CustomerProfileModal({
                         playTapSound();
                         setInvoiceStatusFilter(sub.key as any);
                       }}
-                      className={`px-3 py-1 rounded-full font-bold shrink-0 transition-all cursor-pointer ${
+                      className={`px-3 py-1 rounded-full font-bold shrink-0 transition-all cursor-pointer touch-manipulation active:scale-95 ${
                         invoiceStatusFilter === sub.key
-                          ? "bg-secondary text-foreground border border-border shadow-2xs"
-                          : "text-muted-foreground hover:text-foreground"
+                          ? "bg-primary text-white shadow-2xs"
+                          : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
                       }`}
                     >
                       {sub.label}
@@ -549,13 +850,151 @@ export function CustomerProfileModal({
                   ))}
                 </div>
 
-                {filteredInvoices.length === 0 ? (
-                  <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
-                    لا توجد فواتير مطابقة لهذا التصنيف
+                {/* Results count & page summary metrics bar */}
+                {processedInvoices.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between text-[11px] px-1 text-muted-foreground gap-2">
+                    <div>
+                      عرض{" "}
+                      <span className="font-bold text-foreground">
+                        {Math.min((invoicePage - 1) * invoicePageSize + 1, processedInvoices.length)} -{" "}
+                        {Math.min(invoicePage * invoicePageSize, processedInvoices.length)}
+                      </span>{" "}
+                      من إجمالي{" "}
+                      <span className="font-bold text-foreground">{processedInvoices.length}</span> فاتورة
+                      {deferredInvoiceSearch && (
+                        <span className="text-primary font-bold mr-1.5">
+                          (تمت التصفية حسب: "{deferredInvoiceSearch}")
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 font-mono text-[10.5px]">
+                      <span>
+                        إجمالي الصفحة:{" "}
+                        <strong className="text-foreground">{formatNumber(pageFinancials.pageTotal)}</strong>
+                      </span>
+                      <span>
+                        المتبقي:{" "}
+                        <strong className={pageFinancials.pageRemaining > 0 ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}>
+                          {formatNumber(pageFinancials.pageRemaining)}
+                        </strong>{" "}
+                        {selectedCurrency}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* List / Table Content */}
+                {processedInvoices.length === 0 ? (
+                  <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl bg-card/40">
+                    لا توجد فواتير مطابقة لهذا التصنيف أو نتيجة البحث
+                  </div>
+                ) : invoiceViewMode === "table" ? (
+                  /* High Density Table View with Sticky Header */
+                  <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
+                    <div className="overflow-x-auto max-h-[520px] overscroll-contain">
+                      <table className="w-full text-right text-xs">
+                        <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs text-muted-foreground text-[11px] border-b border-border/70 z-10 shadow-xs">
+                          <tr>
+                            <th className="py-2.5 px-3 font-black">رقم الفاتورة</th>
+                            <th className="py-2.5 px-3 font-black">التاريخ</th>
+                            <th className="py-2.5 px-3 font-black">المشروع</th>
+                            <th className="py-2.5 px-3 font-black text-left" dir="ltr">الإجمالي</th>
+                            <th className="py-2.5 px-3 font-black text-left" dir="ltr">المتبقي</th>
+                            <th className="py-2.5 px-3 font-black text-center">الحالة</th>
+                            <th className="py-2.5 px-3 font-black text-center">الإجراءات</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40 font-mono text-[11px]">
+                          {paginatedInvoices.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-secondary/40 transition-colors">
+                              <td className="py-2.5 px-3 font-black text-primary" dir="ltr">
+                                {inv.reference || `#${inv.serial}`}
+                              </td>
+                              <td className="py-2.5 px-3 text-muted-foreground font-sans">
+                                {inv.date}
+                                {inv.dueDate && (
+                                  <span
+                                    className={`block text-[9.5px] ${
+                                      inv.status === "overdue" ? "text-rose-600 font-bold" : "text-muted-foreground/70"
+                                    }`}
+                                  >
+                                    الاستحقاق: {inv.dueDate}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-muted-foreground font-sans">
+                                {inv.projectReference || "—"}
+                              </td>
+                              <td className="py-2.5 px-3 text-left font-black tabular-nums text-foreground" dir="ltr">
+                                {formatNumber(inv.totalAmount)} {inv.currency}
+                              </td>
+                              <td className="py-2.5 px-3 text-left font-black tabular-nums" dir="ltr">
+                                {inv.remainingAmount > 0 ? (
+                                  <span className="text-rose-600 dark:text-rose-400">
+                                    {formatNumber(inv.remainingAmount)} {inv.currency}
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-600 font-sans font-bold">مسددة</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-[9.5px] font-sans font-black border ${inv.statusBadgeColor}`}
+                                >
+                                  {inv.statusLabel}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-sans">
+                                <div className="flex items-center justify-center gap-1">
+                                  {inv.remainingAmount > 0 && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        playTapSound();
+                                        setTargetReceiptInvoiceId(inv.id);
+                                        setReceiptDialogOpen(true);
+                                      }}
+                                      className="h-7 px-2 rounded-lg text-[10.5px] font-bold text-emerald-600 border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15 cursor-pointer"
+                                      title="تحصيل دفعة"
+                                    >
+                                      تحصيل
+                                    </Button>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleInvoicePrint(inv.id)}
+                                    className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+                                    title="طباعة"
+                                  >
+                                    <Printer className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleInvoiceShare(inv.id)}
+                                    className="h-7 w-7 p-0 rounded-lg text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
+                                    title="مشاركة واتساب"
+                                  >
+                                    <Share2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ) : (
+                  /* Cards View */
                   <div className="space-y-2">
-                    {filteredInvoices.map((inv) => (
+                    {paginatedInvoices.map((inv) => (
                       <div
                         key={inv.id}
                         className="rounded-2xl border border-border/70 bg-card hover:bg-secondary/30 transition-all p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
@@ -650,70 +1089,300 @@ export function CustomerProfileModal({
                     ))}
                   </div>
                 )}
+
+                {/* Bottom Pagination Bar for Invoices */}
+                {totalInvoicePages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/60 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={invoicePage <= 1}
+                        onClick={() => {
+                          playTapSound();
+                          setInvoicePage(1);
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة الأولى"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={invoicePage <= 1}
+                        onClick={() => {
+                          playTapSound();
+                          setInvoicePage((p) => Math.max(1, p - 1));
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة السابقة"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      <div className="px-3 py-1 bg-secondary/60 rounded-lg font-mono font-bold text-foreground text-[11px] border border-border/50">
+                        صفحة {invoicePage} من {totalInvoicePages}
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={invoicePage >= totalInvoicePages}
+                        onClick={() => {
+                          playTapSound();
+                          setInvoicePage((p) => Math.min(totalInvoicePages, p + 1));
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة التالية"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={invoicePage >= totalInvoicePages}
+                        onClick={() => {
+                          playTapSound();
+                          setInvoicePage(totalInvoicePages);
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة الأخيرة"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+                      <span>انتقال سريع:</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={totalInvoicePages}
+                        value={invoicePage}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (val >= 1 && val <= totalInvoicePages) {
+                            setInvoicePage(val);
+                          }
+                        }}
+                        className="h-8 w-16 text-center text-xs font-mono font-bold bg-secondary/50 rounded-lg border-border/70 p-1"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* ── TAB 2: STATEMENT (كشف الحساب المحاسبي) ── */}
             {activeTab === "statement" && (
               <div className="space-y-3">
+                {/* Statement Search & Type Toolbar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-card/80 p-2.5 rounded-2xl border border-border/70">
+                  {/* Search box */}
+                  <div className="relative flex-1">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      type="text"
+                      placeholder="بحث في الحركات: البيان، المرجع، المبلغ..."
+                      value={statementSearch}
+                      onChange={(e) => setStatementSearch(e.target.value)}
+                      className="h-8.5 pr-8 pl-3 text-xs bg-secondary/50 rounded-xl border-border/70 placeholder:text-muted-foreground/70"
+                    />
+                    {statementSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setStatementSearch("")}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-0.5 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter & Page Size */}
+                  <div className="flex items-center gap-1.5 shrink-0 justify-between sm:justify-end">
+                    {/* Type Filter Buttons */}
+                    <div className="flex items-center gap-1 bg-secondary/60 p-0.5 rounded-xl border border-border/60">
+                      {[
+                        { key: "all", label: "الكل" },
+                        { key: "invoice", label: "فواتير" },
+                        { key: "receipt", label: "سندات" },
+                        { key: "opening_balance", label: "افتتاحي" },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => {
+                            playTapSound();
+                            setStatementTypeFilter(item.key as any);
+                          }}
+                          className={`px-2.5 py-1 text-[10.5px] rounded-lg font-bold transition-all cursor-pointer ${
+                            statementTypeFilter === item.key
+                              ? "bg-card text-foreground shadow-2xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Page Size */}
+                    <div className="flex items-center gap-1 bg-secondary/50 px-2 py-1 rounded-xl border border-border/60">
+                      <span className="text-[10px] text-muted-foreground font-bold">عرض:</span>
+                      <select
+                        aria-label="عدد أسطر كشف الحساب لكل صفحة"
+                        value={statementPageSize}
+                        onChange={(e) => setStatementPageSize(Number(e.target.value))}
+                        className="bg-transparent text-[11px] font-bold text-foreground border-none outline-hidden cursor-pointer"
+                      >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Statement Table with Sticky Header */}
                 <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
-                  <table className="w-full text-right text-xs">
-                    <thead>
-                      <tr className="bg-muted/40 text-muted-foreground text-[11px] border-b border-border/70">
-                        <th className="py-3 px-3.5 font-black">التاريخ</th>
-                        <th className="py-3 px-3.5 font-black">البيان والحركة</th>
-                        <th className="py-3 px-3.5 font-black text-center">المرجع</th>
-                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">مدين (+)</th>
-                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">دائن (-)</th>
-                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">الرصيد الجاري</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40 font-mono text-[11px]">
-                      {statement?.lines && statement.lines.length > 0 ? (
-                        statement.lines.map((line, idx) => (
-                          <tr key={line.id || idx} className="hover:bg-muted/20 transition-colors">
-                            <td className="py-3 px-3.5 text-muted-foreground">{line.date}</td>
-                            <td className="py-3 px-3.5 font-sans font-bold text-foreground">
-                              {line.label}
-                              {line.notes && (
-                                <span className="block text-[10px] text-muted-foreground font-normal">
-                                  {line.notes}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3.5 text-center text-primary font-bold" dir="ltr">
-                              {line.reference || "—"}
-                            </td>
-                            <td className="py-3 px-3.5 text-left text-rose-600 font-bold tabular-nums" dir="ltr">
-                              {line.debit > 0 ? formatNumber(line.debit) : "—"}
-                            </td>
-                            <td className="py-3 px-3.5 text-left text-emerald-600 font-bold tabular-nums" dir="ltr">
-                              {line.credit > 0 ? formatNumber(line.credit) : "—"}
-                            </td>
-                            <td
-                              className={`py-3 px-3.5 text-left font-black tabular-nums ${
-                                line.runningBalance > 0
-                                  ? "text-rose-600"
-                                  : line.runningBalance < 0
-                                  ? "text-emerald-600"
-                                  : "text-foreground"
-                              }`}
-                              dir="ltr"
-                            >
-                              {formatNumber(line.runningBalance)}
+                  <div className="overflow-x-auto max-h-[520px] overscroll-contain">
+                    <table className="w-full text-right text-xs">
+                      <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs text-muted-foreground text-[11px] border-b border-border/70 z-10 shadow-xs">
+                        <tr>
+                          <th className="py-2.5 px-3.5 font-black">التاريخ</th>
+                          <th className="py-2.5 px-3.5 font-black">البيان والحركة</th>
+                          <th className="py-2.5 px-3.5 font-black text-center">المرجع</th>
+                          <th className="py-2.5 px-3.5 font-black text-left" dir="ltr">مدين (+)</th>
+                          <th className="py-2.5 px-3.5 font-black text-left" dir="ltr">دائن (-)</th>
+                          <th className="py-2.5 px-3.5 font-black text-left" dir="ltr">الرصيد الجاري</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40 font-mono text-[11px]">
+                        {paginatedStatementLines.length > 0 ? (
+                          paginatedStatementLines.map((line, idx) => (
+                            <tr key={line.id || idx} className="hover:bg-muted/20 transition-colors">
+                              <td className="py-2.5 px-3.5 text-muted-foreground font-sans">{line.date}</td>
+                              <td className="py-2.5 px-3.5 font-sans font-bold text-foreground">
+                                {line.label}
+                                {line.notes && (
+                                  <span className="block text-[10px] text-muted-foreground font-normal">
+                                    {line.notes}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3.5 text-center text-primary font-bold" dir="ltr">
+                                {line.reference || "—"}
+                              </td>
+                              <td className="py-2.5 px-3.5 text-left text-rose-600 font-bold tabular-nums" dir="ltr">
+                                {line.debit > 0 ? formatNumber(line.debit) : "—"}
+                              </td>
+                              <td className="py-2.5 px-3.5 text-left text-emerald-600 font-bold tabular-nums" dir="ltr">
+                                {line.credit > 0 ? formatNumber(line.credit) : "—"}
+                              </td>
+                              <td
+                                className={`py-2.5 px-3.5 text-left font-black tabular-nums ${
+                                  line.runningBalance > 0
+                                    ? "text-rose-600"
+                                    : line.runningBalance < 0
+                                    ? "text-emerald-600"
+                                    : "text-foreground"
+                                }`}
+                                dir="ltr"
+                              >
+                                {formatNumber(line.runningBalance)}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="py-12 text-center text-muted-foreground font-sans font-bold">
+                              لا توجد حركات مالية مطابقة للبحث أو التصفية
                             </td>
                           </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={6} className="py-12 text-center text-muted-foreground font-sans font-bold">
-                            لا توجد حركات مالية مسجلة في كشف الحساب
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
+                {/* Statement Pagination */}
+                {totalStatementPages > 1 && (
+                  <div className="flex items-center justify-between pt-2 border-t border-border/60 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={statementPage <= 1}
+                        onClick={() => {
+                          playTapSound();
+                          setStatementPage(1);
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة الأولى"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={statementPage <= 1}
+                        onClick={() => {
+                          playTapSound();
+                          setStatementPage((p) => Math.max(1, p - 1));
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة السابقة"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      <div className="px-3 py-1 bg-secondary/60 rounded-lg font-mono font-bold text-foreground text-[11px] border border-border/50">
+                        صفحة {statementPage} من {totalStatementPages}
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={statementPage >= totalStatementPages}
+                        onClick={() => {
+                          playTapSound();
+                          setStatementPage((p) => Math.min(totalStatementPages, p + 1));
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة التالية"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={statementPage >= totalStatementPages}
+                        onClick={() => {
+                          playTapSound();
+                          setStatementPage(totalStatementPages);
+                        }}
+                        className="h-8 w-8 p-0 rounded-lg cursor-pointer"
+                        title="الصفحة الأخيرة"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="text-muted-foreground text-[11px]">
+                      إجمالي الحركات: <span className="font-bold text-foreground">{processedStatementLines.length}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -793,6 +1462,18 @@ export function CustomerProfileModal({
               </div>
             )}
           </div>
+
+          {/* Floating Scroll to Top Button */}
+          {showScrollTop && (
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="absolute bottom-5 left-5 z-40 p-2.5 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-all cursor-pointer touch-manipulation active:scale-95 animate-in fade-in flex items-center justify-center border border-white/20"
+              title="العودة لأعلى القائمة"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </button>
+          )}
         </DialogContent>
       </Dialog>
 

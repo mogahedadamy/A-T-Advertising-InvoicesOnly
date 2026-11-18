@@ -21,6 +21,8 @@ import {
   AlertCircle,
   RefreshCw,
   ChevronDown,
+  ArrowUpDown,
+  ArrowUp,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
@@ -60,9 +62,11 @@ export function CustomersPage() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [customerSort, setCustomerSort] = useState<"debt-desc" | "spent-desc" | "name-asc" | "date-desc">("debt-desc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
   const [loadingBalances, setLoadingBalances] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Live customer balances map from SQLite transactions
   const [liveBalances, setLiveBalances] = useState<
@@ -129,15 +133,37 @@ export function CustomersPage() {
     });
   }, [customers, deferredSearch, typeFilter, liveBalances]);
 
+  const sortedAndFiltered = useMemo(() => {
+    const list = [...filtered];
+    if (customerSort === "debt-desc") {
+      list.sort((a, b) => {
+        const debtA = liveBalances[a.id]?.outstanding ?? (a.balance > 0 ? a.balance : 0);
+        const debtB = liveBalances[b.id]?.outstanding ?? (b.balance > 0 ? b.balance : 0);
+        return debtB - debtA;
+      });
+    } else if (customerSort === "spent-desc") {
+      list.sort((a, b) => {
+        const spentA = liveBalances[a.id]?.invoiced ?? a.totalSpent ?? 0;
+        const spentB = liveBalances[b.id]?.invoiced ?? b.totalSpent ?? 0;
+        return spentB - spentA;
+      });
+    } else if (customerSort === "name-asc") {
+      list.sort((a, b) => a.name.localeCompare(b.name, "ar"));
+    } else if (customerSort === "date-desc") {
+      list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    }
+    return list;
+  }, [filtered, customerSort, liveBalances]);
+
   const [visibleCount, setVisibleCount] = useState(30);
 
   useEffect(() => {
     setVisibleCount(30);
-  }, [deferredSearch, typeFilter]);
+  }, [deferredSearch, typeFilter, customerSort]);
 
   const visibleCustomers = useMemo(() => {
-    return filtered.slice(0, visibleCount);
-  }, [filtered, visibleCount]);
+    return sortedAndFiltered.slice(0, visibleCount);
+  }, [sortedAndFiltered, visibleCount]);
 
   // Accurate company-wide stats derived from live financial records
   const stats = useMemo(() => {
@@ -242,6 +268,13 @@ export function CustomersPage() {
   return (
     <PageShell>
       <main
+        onScroll={(e) => {
+          if (e.currentTarget.scrollTop > 300) {
+            setShowScrollTop(true);
+          } else {
+            setShowScrollTop(false);
+          }
+        }}
         className="w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-5 min-w-0 scroll-smooth touch-pan-y pb-28 md:pb-12"
         dir="rtl"
       >
@@ -344,28 +377,46 @@ export function CustomersPage() {
           {/* 3. شريط البحث والتصنيف والفلترة السريعة */}
           <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-4 shadow-2xs space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* حقل البحث */}
-              <div className="relative flex-1 max-w-md">
-                <Search className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="بحث باسم العميل، الهاتف، أو العنوان..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-border/80 bg-secondary/35 pr-9 pl-8 text-xs font-bold text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-primary focus:bg-background focus:ring-1 focus:ring-primary"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playTapSound();
-                      setSearch("");
-                    }}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+              {/* حقل البحث والترتيب */}
+              <div className="flex items-center gap-2 flex-1 max-w-lg">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="بحث باسم العميل، الهاتف، أو العنوان..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-border/80 bg-secondary/35 pr-9 pl-8 text-xs font-bold text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-primary focus:bg-background focus:ring-1 focus:ring-primary"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playTapSound();
+                        setSearch("");
+                      }}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* قائمة الترتيب المالي */}
+                <div className="flex items-center gap-1.5 bg-secondary/50 px-2.5 h-10 rounded-xl border border-border/80 shrink-0">
+                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <select
+                    aria-label="ترتيب قائمة العملاء"
+                    value={customerSort}
+                    onChange={(e) => setCustomerSort(e.target.value as any)}
+                    className="bg-transparent text-xs font-bold text-foreground border-none outline-hidden cursor-pointer"
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                    <option value="debt-desc">الأعلى مديونية</option>
+                    <option value="spent-desc">الأعلى تعاملاً</option>
+                    <option value="name-asc">أبجدياً (أ - ي)</option>
+                    <option value="date-desc">الأحدث تسجيلاً</option>
+                  </select>
+                </div>
               </div>
 
               {/* تبويبات الفلترة المعتمدة */}
@@ -394,24 +445,25 @@ export function CustomersPage() {
             </div>
 
             {/* عرض الجدول للشاشات المتوسطة والكبيرة */}
-            <div className="hidden md:block overflow-x-auto pt-1">
-              {filtered.length === 0 ? (
-                <div className="py-14 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
-                  لا يوجد عملاء يطابقون معايير البحث
-                </div>
-              ) : (
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="border-b border-border/70 text-muted-foreground text-[11px]">
-                      <th className="py-3 pr-3.5 font-black">العميل</th>
-                      <th className="py-3 px-3 font-bold">الهاتف</th>
-                      <th className="py-3 px-3 font-bold">التصنيف</th>
-                      <th className="py-3 px-3 font-bold">العنوان</th>
-                      <th className="py-3 px-3 font-mono font-black">إجمالي الفواتير</th>
-                      <th className="py-3 px-3 font-mono font-black">الرصيد / المستحق</th>
-                      <th className="py-3 pl-3.5 font-bold text-center">الإجراءات</th>
-                    </tr>
-                  </thead>
+            <div className="hidden md:block rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
+              <div className="overflow-x-auto max-h-[640px] overscroll-contain">
+                {sortedAndFiltered.length === 0 ? (
+                  <div className="py-14 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl m-4">
+                    لا يوجد عملاء يطابقون معايير البحث
+                  </div>
+                ) : (
+                  <table className="w-full text-right text-xs">
+                    <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs text-muted-foreground text-[11px] border-b border-border/70 z-10 shadow-xs">
+                      <tr>
+                        <th className="py-3 pr-3.5 font-black">العميل</th>
+                        <th className="py-3 px-3 font-bold">الهاتف</th>
+                        <th className="py-3 px-3 font-bold">التصنيف</th>
+                        <th className="py-3 px-3 font-bold">العنوان</th>
+                        <th className="py-3 px-3 font-mono font-black">إجمالي الفواتير</th>
+                        <th className="py-3 px-3 font-mono font-black">الرصيد / المستحق</th>
+                        <th className="py-3 pl-3.5 font-bold text-center">الإجراءات</th>
+                      </tr>
+                    </thead>
                   <tbody className="divide-y divide-border/40">
                     {visibleCustomers.map((c) => {
                       const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
@@ -546,14 +598,15 @@ export function CustomersPage() {
                 </table>
               )}
             </div>
+          </div>
 
-            {/* عرض البطاقات للهواتف الذكية (Mobile Cards) */}
-            <div className="space-y-2.5 md:hidden pt-1">
-              {filtered.length === 0 ? (
-                <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
-                  لا يوجد عملاء يطابقون معايير البحث
-                </div>
-              ) : (
+          {/* عرض البطاقات للهواتف الذكية (Mobile Cards) */}
+          <div className="space-y-2.5 md:hidden pt-1">
+            {sortedAndFiltered.length === 0 ? (
+              <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
+                لا يوجد عملاء يطابقون معايير البحث
+              </div>
+            ) : (
                 visibleCustomers.map((c) => {
                   const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
                   const live = liveBalances[c.id];
@@ -665,7 +718,7 @@ export function CustomersPage() {
               )}
             </div>
 
-            {filtered.length > visibleCount && (
+            {sortedAndFiltered.length > visibleCount && (
               <div className="flex justify-center pt-2">
                 <Button
                   type="button"
@@ -678,13 +731,29 @@ export function CustomersPage() {
                 >
                   <ChevronDown className="h-4 w-4" />
                   <span>
-                    عرض المزيد من العملاء (المتبقي: {filtered.length - visibleCount})
+                    عرض المزيد من العملاء (المتبقي: {sortedAndFiltered.length - visibleCount})
                   </span>
                 </Button>
               </div>
             )}
           </div>
         </div>
+
+        {/* زر الصعود للأعلى السلس */}
+        {showScrollTop && (
+          <button
+            type="button"
+            onClick={() => {
+              playTapSound();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="fixed bottom-20 md:bottom-8 left-5 z-40 p-2.5 rounded-full bg-primary text-white shadow-xl hover:bg-primary/90 transition-all cursor-pointer touch-manipulation active:scale-95 animate-in fade-in flex items-center justify-center border border-white/20"
+            title="العودة لأعلى الصفحة"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
+        )}
       </main>
 
       {/* Customer Dialog for Add/Edit */}
