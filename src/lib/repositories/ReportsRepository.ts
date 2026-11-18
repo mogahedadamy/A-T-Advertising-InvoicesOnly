@@ -460,7 +460,7 @@ export async function getProjectProfitabilityReport(range: DateRange = {}): Prom
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface StatementLine {
-  kind: "invoice" | "receipt";
+  kind: "invoice" | "receipt" | "opening_balance";
   id: string;
   reference: string;
   date: string;
@@ -468,40 +468,79 @@ export interface StatementLine {
   debit: number;
   credit: number;
   runningBalance: number;
+  notes?: string;
+  currency?: string;
 }
 
 export interface CustomerStatement {
   customerId: string;
   customerName: string;
+  currency: string;
   lines: StatementLine[];
   totalInvoiced: number;
   totalCollected: number;
   outstanding: number;
+  openingBalance: number;
 }
 
-export async function getCustomerStatement(customerId: string, range: DateRange = {}): Promise<CustomerStatement> {
+export async function getCustomerStatement(
+  customerId: string,
+  range: DateRange = {},
+  filterCurrency?: string
+): Promise<CustomerStatement> {
   const db = await getDb();
-  const customerRes = await db.query("SELECT name FROM customers WHERE id = ? LIMIT 1", [customerId]);
-  const customerName = String(customerRes.values?.[0]?.name ?? "عميل");
+  const customerRes = await db.query(
+    "SELECT name, created_at, opening_balance, opening_balance_date, opening_balance_type, opening_balance_currency, opening_balance_notes FROM customers WHERE id = ? LIMIT 1",
+    [customerId]
+  );
+  const cRow = customerRes.values?.[0] || {};
+  const customerName = String(cRow.name ?? "عميل");
+  const targetCurrency = filterCurrency || cRow.opening_balance_currency || "SDG";
 
   const invoiceClause = rangeClause(range, "i.date");
   const invoicesRes = await db.query(
-    `SELECT i.id, i.reference, i.serial, i.date, i.total_amount
+    `SELECT i.id, i.reference, i.serial, i.date, i.total_amount, i.currency, i.notes
        FROM custom_invoices i
-      WHERE i.type = 'sales' AND i.cancelled_at IS NULL AND (i.customer_id = ? OR i.party_name = ?)${invoiceClause.sql}
+      WHERE i.type = 'sales' AND i.cancelled_at IS NULL
+        AND (i.customer_id = ? OR (i.customer_id IS NULL AND LOWER(TRIM(i.party_name)) = LOWER(TRIM(?))))
+        AND COALESCE(i.currency, 'SDG') = ?${invoiceClause.sql}
       ORDER BY i.date ASC, i.created_at ASC`,
-    [customerId, customerName, ...invoiceClause.values]
+    [customerId, customerName, targetCurrency, ...invoiceClause.values]
   );
   const paymentClause = rangeClause(range, "p.paid_at");
   const paymentsRes = await db.query(
-    `SELECT p.id, p.reference, p.paid_at, p.amount, p.method
+    `SELECT p.id, p.reference, p.paid_at, p.amount, p.method, COALESCE(p.currency, 'SDG') AS currency, p.notes
        FROM customer_payments p
-      WHERE p.cancelled_at IS NULL AND p.customer_id = ?${paymentClause.sql}
+      WHERE p.cancelled_at IS NULL AND p.customer_id = ?
+        AND COALESCE(p.currency, 'SDG') = ?${paymentClause.sql}
       ORDER BY p.paid_at ASC, p.created_at ASC`,
-    [customerId, ...paymentClause.values]
+    [customerId, targetCurrency, ...paymentClause.values]
   );
 
   const events: { date: string; order: number; line: Omit<StatementLine, "runningBalance"> }[] = [];
+
+  // 1. Add opening balance if exists and currency matches
+  const openingBal = Number(cRow.opening_balance) || 0;
+  const openingCur = cRow.opening_balance_currency || "SDG";
+  if (openingBal > 0 && openingCur === targetCurrency) {
+    const isCredit = cRow.opening_balance_type === "credit";
+    events.push({
+      date: String(cRow.opening_balance_date || cRow.created_at || "2026-01-01").slice(0, 10),
+      order: -1,
+      line: {
+        kind: "opening_balance",
+        id: `opening-${customerId}`,
+        reference: "رصيد سابق",
+        date: String(cRow.opening_balance_date || cRow.created_at || "").slice(0, 10),
+        label: isCredit ? "رصيد افتتاحي دائن (دفعة مقدمة)" : "رصيد افتتاحي مدين (مستحقات سابقة)",
+        debit: isCredit ? 0 : round2(openingBal),
+        credit: isCredit ? round2(openingBal) : 0,
+        notes: cRow.opening_balance_notes ? String(cRow.opening_balance_notes) : undefined,
+        currency: targetCurrency,
+      },
+    });
+  }
+
   for (const row of invoicesRes.values ?? []) {
     events.push({
       date: String(row.date ?? ""),
@@ -514,6 +553,8 @@ export async function getCustomerStatement(customerId: string, range: DateRange 
         label: "فاتورة مبيعات",
         debit: num(row.total_amount),
         credit: 0,
+        notes: row.notes ? String(row.notes) : undefined,
+        currency: String(row.currency || "SDG"),
       },
     });
   }
@@ -526,9 +567,11 @@ export async function getCustomerStatement(customerId: string, range: DateRange 
         id: String(row.id),
         reference: String(row.reference ?? ""),
         date: String(row.paid_at ?? ""),
-        label: `تحصيل (${row.method ?? "cash"})`,
+        label: `سند تحصيل (${row.method ?? "نقدي"})`,
         debit: 0,
         credit: num(row.amount),
+        notes: row.notes ? String(row.notes) : undefined,
+        currency: String(row.currency || "SDG"),
       },
     });
   }
@@ -548,10 +591,12 @@ export async function getCustomerStatement(customerId: string, range: DateRange 
   return {
     customerId,
     customerName,
+    currency: targetCurrency,
     lines,
     totalInvoiced: round2(totalInvoiced),
     totalCollected: round2(totalCollected),
     outstanding: round2(Math.max(0, totalInvoiced - totalCollected)),
+    openingBalance: round2(openingBal),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useDeferredValue } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Search,
   UserPlus,
@@ -16,6 +16,11 @@ import {
   ExternalLink,
   ShieldCheck,
   ChevronDown,
+  Archive,
+  ArchiveRestore,
+  Wallet,
+  AlertTriangle,
+  FolderOpen,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import {
@@ -23,12 +28,18 @@ import {
   addCustomer,
   updateCustomer,
   deleteCustomer,
+  archiveCustomer,
+  unarchiveCustomer,
+  checkCanDeleteCustomer,
+  getAllCustomerFinancialSummaries,
   CUSTOMER_TYPE_CONFIG,
   type CustomerRecord,
   type CustomerType,
 } from "@/lib/customersStore";
 import { formatNumber } from "@/lib/printCalculator";
 import { CustomerDialog } from "./CustomerDialog";
+import { CustomerProfileModal } from "./CustomerProfileModal";
+import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
 import { playTapSound, playDeleteSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
 
@@ -38,6 +49,8 @@ const TABS: { key: string; label: string }[] = [
   { key: "company", label: "شركات تجارية (ب)" },
   { key: "individual", label: "زبون عابر / نقدي" },
   { key: "internal", label: "تشغيل داخلي" },
+  { key: "debtors", label: "العملاء المدينون" },
+  { key: "archived", label: "المؤرشفين" },
 ];
 
 export function CustomersPage() {
@@ -48,6 +61,41 @@ export function CustomersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
 
+  // Live customer balances map from SQLite transactions
+  const [liveBalances, setLiveBalances] = useState<
+    Record<string, { outstanding: number; invoiced: number; collected: number; overdueCount: number }>
+  >({});
+
+  // Profile modal state
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [selectedProfileCustomer, setSelectedProfileCustomer] = useState<CustomerRecord | null>(null);
+
+  // Invoice creation modal from customer row
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceTargetCustomer, setInvoiceTargetCustomer] = useState<CustomerRecord | null>(null);
+
+  const loadLiveBalances = async () => {
+    try {
+      const map = await getAllCustomerFinancialSummaries();
+      setLiveBalances(map);
+    } catch (err) {
+      console.warn("[CustomersPage] failed to load live balances:", err);
+    }
+  };
+
+  useEffect(() => {
+    void loadLiveBalances();
+    const handleFinanceChange = () => void loadLiveBalances();
+    if (typeof window !== "undefined") {
+      window.addEventListener("finance-changed", handleFinanceChange);
+      window.addEventListener("native-storage-ready", handleFinanceChange);
+      return () => {
+        window.removeEventListener("finance-changed", handleFinanceChange);
+        window.removeEventListener("native-storage-ready", handleFinanceChange);
+      };
+    }
+  }, []);
+
   const filtered = useMemo(() => {
     return customers.filter((c) => {
       const q = (deferredSearch || "").trim().toLowerCase();
@@ -57,11 +105,23 @@ export function CustomersPage() {
         (c.phone && c.phone.includes(q)) ||
         (c.address && c.address.toLowerCase().includes(q));
 
-      const matchType = typeFilter === "all" || c.type === typeFilter;
-
-      return matchSearch && matchType;
+      // Handling filter tabs
+      if (typeFilter === "archived") {
+        return matchSearch && Boolean(c.isArchived);
+      }
+      if (c.isArchived) {
+        return false; // hide archived from active tabs
+      }
+      if (typeFilter === "all") {
+        return matchSearch;
+      }
+      if (typeFilter === "debtors") {
+        const liveBal = liveBalances[c.id]?.outstanding ?? c.balance;
+        return matchSearch && liveBal > 0.009;
+      }
+      return matchSearch && c.type === typeFilter;
     });
-  }, [customers, deferredSearch, typeFilter]);
+  }, [customers, deferredSearch, typeFilter, liveBalances]);
 
   const [visibleCount, setVisibleCount] = useState(30);
 
@@ -73,20 +133,35 @@ export function CustomersPage() {
     return filtered.slice(0, visibleCount);
   }, [filtered, visibleCount]);
 
+  // Accurate company-wide stats derived from live financial records
   const stats = useMemo(() => {
-    const totalSpent = customers.reduce((s, c) => s + (c.totalSpent || 0), 0);
-    const totalDebt = customers.reduce((s, c) => s + (c.balance > 0 ? c.balance : 0), 0);
-    const agencyCount = customers.filter((c) => c.type === "agency").length;
-    const companyCount = customers.filter((c) => c.type === "company").length;
+    const activeCustomers = customers.filter((c) => !c.isArchived);
+
+    let totalSpent = 0;
+    let totalDebt = 0;
+
+    for (const c of activeCustomers) {
+      const live = liveBalances[c.id];
+      if (live) {
+        totalSpent += live.invoiced;
+        totalDebt += live.outstanding;
+      } else {
+        totalSpent += c.totalSpent || 0;
+        totalDebt += c.balance > 0 ? c.balance : 0;
+      }
+    }
+
+    const agencyCount = activeCustomers.filter((c) => c.type === "agency").length;
+    const companyCount = activeCustomers.filter((c) => c.type === "company").length;
 
     return {
-      total: customers.length,
+      total: activeCustomers.length,
       agencyCount,
       companyCount,
       totalSpent,
       totalDebt,
     };
-  }, [customers]);
+  }, [customers, liveBalances]);
 
   const handleSave = async (data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">) => {
     try {
@@ -100,6 +175,7 @@ export function CustomersPage() {
         toast.success("تمت إضافة العميل الجديد بنجاح");
       }
       setEditingCustomer(null);
+      void loadLiveBalances();
     } catch (err) {
       toast.error("تعذّر حفظ بيانات العميل", {
         description: err instanceof Error ? err.message : undefined,
@@ -108,17 +184,47 @@ export function CustomersPage() {
   };
 
   const handleDelete = async (c: CustomerRecord) => {
-    if (confirm(`هل أنت متأكد من حذف العميل "${c.name}"؟`)) {
+    playTapSound();
+    const check = await checkCanDeleteCustomer(c.id);
+    if (!check.allowed) {
+      playDeleteSound();
+      toast.error("لا يمكن حذف هذا العميل", {
+        description: check.reason,
+        action: {
+          label: "أرشفة العميل",
+          onClick: async () => {
+            await archiveCustomer(c.id);
+            toast.info(`تم نقل العميل "${c.name}" إلى الأرشيف`);
+            void loadLiveBalances();
+          },
+        },
+        duration: 8000,
+      });
+      return;
+    }
+
+    if (confirm(`هل أنت متأكد من الحذف النهائي للعميل "${c.name}"؟ (لا توجد عليه أي معاملات سابقة)`)) {
       try {
         await deleteCustomer(c.id);
         playDeleteSound();
-        toast.info(`تم حذف العميل "${c.name}"`);
-      } catch (err) {
-        toast.error("تعذّر حذف العميل", {
-          description: err instanceof Error ? err.message : undefined,
-        });
+        toast.info(`تم حذف العميل "${c.name}" نهائياً`);
+        void loadLiveBalances();
+      } catch (err: any) {
+        toast.error(err?.message || "تعذّر حذف العميل");
       }
     }
+  };
+
+  const handleOpenProfile = (c: CustomerRecord) => {
+    playTapSound();
+    setSelectedProfileCustomer(c);
+    setProfileModalOpen(true);
+  };
+
+  const handleOpenInvoiceCreation = (c: CustomerRecord) => {
+    playTapSound();
+    setInvoiceTargetCustomer(c);
+    setInvoiceDialogOpen(true);
   };
 
   return (
@@ -136,14 +242,14 @@ export function CustomersPage() {
                   <Users className="h-4 w-4" />
                 </span>
                 <h1 className="text-base sm:text-lg font-black text-foreground tracking-tight">
-                  دليل العملاء والحسابات
+                  دليل العملاء والحسابات المالية
                 </h1>
                 <span className="text-[11px] font-mono font-black text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 tabular-nums shrink-0">
-                  {stats.total} عميل مسجل
+                  {stats.total} عميل نشط
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-muted-foreground font-medium mt-1">
-                إدارة سجل وكالات الدعاية والشركات ومتابعة الأرصدة والمديونيات والسحوبات المالية
+                إدارة ملفات العملاء التجارية، الفواتير، التحصيلات، والمتابعة المالية اللحظية
               </p>
             </div>
 
@@ -163,12 +269,12 @@ export function CustomersPage() {
             </div>
           </div>
 
-          {/* 2. مؤشرات الأداء المالي للعملاء (KPI Grid) */}
+          {/* 2. مؤشرات الأداء المالي للعملاء (KPI Grid) - محسوبة لحظياً من قاعدة البيانات */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5 text-primary" />
-                <span>إجمالي العملاء</span>
+                <span>إجمالي العملاء النشطين</span>
               </span>
               <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
                 {stats.total}
@@ -188,7 +294,7 @@ export function CustomersPage() {
             <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
                 <CreditCard className="h-3.5 w-3.5 text-[#C5A059]" />
-                <span>إجمالي المسحوبات</span>
+                <span>إجمالي الفواتير والمطالبات</span>
               </span>
               <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
                 {formatNumber(stats.totalSpent)}{" "}
@@ -199,7 +305,7 @@ export function CustomersPage() {
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/[0.04] p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                <span>المديونيات المستحقة</span>
+                <span>المديونيات المستحقة الفعلية</span>
               </span>
               <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
                 {formatNumber(stats.totalDebt)}{" "}
@@ -235,7 +341,7 @@ export function CustomersPage() {
                 )}
               </div>
 
-              {/* تبويبات الفلترة حسب تصنيف العميل */}
+              {/* تبويبات الفلترة حسب تصنيف العميل والمديونيات والمؤرشفين */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                 {TABS.map((tab) => {
                   const active = typeFilter === tab.key;
@@ -274,27 +380,48 @@ export function CustomersPage() {
                       <th className="py-2.5 px-3 font-bold">الهاتف</th>
                       <th className="py-2.5 px-3 font-bold">التصنيف</th>
                       <th className="py-2.5 px-3 font-bold">العنوان</th>
-                      <th className="py-2.5 px-3 font-mono font-bold text-center">الطلبات</th>
-                      <th className="py-2.5 px-3 font-mono font-black">إجمالي المسحوبات</th>
-                      <th className="py-2.5 px-3 font-mono font-bold">الرصيد / الذمة</th>
+                      <th className="py-2.5 px-3 font-mono font-black">إجمالي الفواتير</th>
+                      <th className="py-2.5 px-3 font-mono font-black">الرصيد / المستحق</th>
                       <th className="py-2.5 pl-3 font-bold text-center">الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     {visibleCustomers.map((c) => {
                       const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
+                      const live = liveBalances[c.id];
+                      const totalInvoiced = live ? live.invoiced : c.totalSpent || 0;
+                      const outstanding = live ? live.outstanding : (c.balance > 0 ? c.balance : 0);
+                      const hasOverdue = live && live.overdueCount > 0;
 
                       return (
-                        <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                        <tr
+                          key={c.id}
+                          className="hover:bg-muted/30 transition-colors cursor-pointer group"
+                          onClick={() => handleOpenProfile(c)}
+                        >
                           <td className="py-3 pr-3 font-bold text-foreground">
-                            <div className="font-black text-xs text-foreground">{c.name}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-black text-xs text-foreground group-hover:text-primary transition-colors">
+                                {c.name}
+                              </span>
+                              {hasOverdue && (
+                                <span className="rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 px-1.5 py-0.2 text-[9px] font-black">
+                                  متأخرات
+                                </span>
+                              )}
+                              {c.isArchived && (
+                                <span className="rounded-full bg-muted text-muted-foreground border border-border px-1.5 py-0.2 text-[9px] font-bold">
+                                  مؤرشف
+                                </span>
+                              )}
+                            </div>
                             {c.notes && (
                               <div className="text-[10px] text-muted-foreground truncate max-w-xs font-normal">
                                 {c.notes}
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
                             {c.phone ? (
                               <a
                                 href={`tel:${c.phone}`}
@@ -318,38 +445,43 @@ export function CustomersPage() {
                           <td className="py-3 px-3 text-muted-foreground text-[11px]">
                             {c.address || "—"}
                           </td>
-                          <td className="py-3 px-3 font-mono font-bold text-foreground text-center tabular-nums">
-                            {c.totalOrders || 0}
-                          </td>
                           <td className="py-3 px-3 font-mono font-black text-foreground tabular-nums">
-                            {formatNumber(c.totalSpent || 0)}{" "}
+                            {formatNumber(totalInvoiced)}{" "}
                             <span className="text-[10px] text-muted-foreground font-normal">ج.س</span>
                           </td>
                           <td className="py-3 px-3 font-mono font-black tabular-nums">
-                            {c.balance > 0 ? (
-                              <span className="text-rose-600 dark:text-rose-400">
-                                {formatNumber(c.balance)} ج.س عليه
-                              </span>
-                            ) : c.balance < 0 ? (
-                              <span className="text-emerald-600 dark:text-emerald-400">
-                                {formatNumber(Math.abs(c.balance))} ج.س له
+                            {outstanding > 0.009 ? (
+                              <span className="text-rose-600 dark:text-rose-400 font-black">
+                                {formatNumber(outstanding)} ج.س عليه
                               </span>
                             ) : (
-                              <span className="text-muted-foreground font-normal text-[11px]">
+                              <span className="text-emerald-600 font-bold text-[11px]">
                                 متزن (0)
                               </span>
                             )}
                           </td>
-                          <td className="py-3 pl-3 text-center">
+                          <td className="py-3 pl-3 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="inline-flex items-center gap-1.5 justify-center">
-                              <Link
-                                to="/billing"
-                                title="إنشاء فاتورة جديدة لهذا العميل"
-                                className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-black text-primary hover:bg-primary hover:text-white transition active:scale-95"
+                              <button
+                                type="button"
+                                onClick={() => handleOpenProfile(c)}
+                                title="عرض الملف المالي والتجاري للعميل"
+                                className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-black text-primary hover:bg-primary hover:text-white transition active:scale-95 cursor-pointer"
+                              >
+                                <FolderOpen className="h-3 w-3" />
+                                <span>الملف المالي</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInvoiceCreation(c)}
+                                title="إصدار فاتورة جديدة لهذا العميل"
+                                className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/80 px-2 py-1 text-[11px] font-bold text-foreground hover:bg-primary hover:text-white transition active:scale-95 cursor-pointer"
                               >
                                 <PlusCircle className="h-3 w-3" />
                                 <span>فاتورة</span>
-                              </Link>
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => {
@@ -362,6 +494,7 @@ export function CustomersPage() {
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
+
                               <button
                                 type="button"
                                 onClick={() => handleDelete(c)}
@@ -389,11 +522,15 @@ export function CustomersPage() {
               ) : (
                 visibleCustomers.map((c) => {
                   const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
+                  const live = liveBalances[c.id];
+                  const totalInvoiced = live ? live.invoiced : c.totalSpent || 0;
+                  const outstanding = live ? live.outstanding : (c.balance > 0 ? c.balance : 0);
 
                   return (
                     <div
                       key={c.id}
-                      className="rounded-2xl border border-border/70 bg-secondary/30 p-3.5 space-y-2.5 shadow-2xs"
+                      onClick={() => handleOpenProfile(c)}
+                      className="rounded-2xl border border-border/70 bg-secondary/30 p-3.5 space-y-2.5 shadow-2xs cursor-pointer active:scale-[0.99] transition"
                     >
                       <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2">
                         <div>
@@ -401,6 +538,7 @@ export function CustomersPage() {
                           {c.phone && (
                             <a
                               href={`tel:${c.phone}`}
+                              onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 text-[11px] text-primary font-mono font-bold mt-0.5"
                               dir="ltr"
                             >
@@ -418,31 +556,45 @@ export function CustomersPage() {
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
-                          <span className="text-[10px] text-muted-foreground font-bold">عدد الطلبات</span>
-                          <p className="font-mono font-bold text-foreground tabular-nums">{c.totalOrders || 0} طلب</p>
+                          <span className="text-[10px] text-muted-foreground font-bold">إجمالي الفواتير</span>
+                          <p className="font-mono font-bold text-foreground tabular-nums">
+                            {formatNumber(totalInvoiced)} ج.س
+                          </p>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground font-bold">الرصيد / الذمة</span>
+                          <span className="text-[10px] text-muted-foreground font-bold">الرصيد / المستحق</span>
                           <p className="font-mono font-black tabular-nums">
-                            {c.balance > 0 ? (
-                              <span className="text-rose-600 dark:text-rose-400">{formatNumber(c.balance)} ج.س عليه</span>
-                            ) : c.balance < 0 ? (
-                              <span className="text-emerald-600 dark:text-emerald-400">{formatNumber(Math.abs(c.balance))} ج.س له</span>
+                            {outstanding > 0.009 ? (
+                              <span className="text-rose-600 dark:text-rose-400">
+                                {formatNumber(outstanding)} ج.س عليه
+                              </span>
                             ) : (
-                              <span className="text-muted-foreground">متزن (0)</span>
+                              <span className="text-emerald-600">متزن (0)</span>
                             )}
                           </p>
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
-                        <Link
-                          to="/billing"
-                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-xs font-black text-white shadow-xs active:scale-95 transition"
+                      <div
+                        className="pt-2 border-t border-border/50 flex items-center justify-between gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleOpenProfile(c)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-xs font-black text-white shadow-xs active:scale-95 transition cursor-pointer"
                         >
-                          <PlusCircle className="h-3.5 w-3.5" />
-                          <span>فاتورة جديدة</span>
-                        </Link>
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          <span>فتح الملف المالي</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenInvoiceCreation(c)}
+                          className="rounded-xl border border-border/70 bg-card p-2 text-foreground hover:bg-secondary cursor-pointer transition active:scale-90"
+                          title="إصدار فاتورة"
+                        >
+                          <PlusCircle className="h-3.5 w-3.5 text-primary" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -491,6 +643,7 @@ export function CustomersPage() {
         </div>
       </main>
 
+      {/* Customer Dialog for Add/Edit */}
       <CustomerDialog
         open={dialogOpen}
         onClose={() => {
@@ -499,6 +652,36 @@ export function CustomersPage() {
         }}
         onSave={handleSave}
         initialData={editingCustomer}
+      />
+
+      {/* Customer Profile Modal for full financial/commercial view */}
+      {selectedProfileCustomer && (
+        <CustomerProfileModal
+          open={profileModalOpen}
+          onOpenChange={(open) => {
+            setProfileModalOpen(open);
+            if (!open) void loadLiveBalances();
+          }}
+          customer={selectedProfileCustomer}
+          onCustomerUpdated={() => void loadLiveBalances()}
+          onCreateInvoice={(c) => handleOpenInvoiceCreation(c)}
+        />
+      )}
+
+      {/* Custom Invoice Dialog opened directly with selected customer */}
+      <CustomInvoiceDialog
+        open={invoiceDialogOpen}
+        onOpenChange={(open) => {
+          setInvoiceDialogOpen(open);
+          if (!open) {
+            setInvoiceTargetCustomer(null);
+            void loadLiveBalances();
+          }
+        }}
+        initialType="sales"
+        onSaved={() => {
+          void loadLiveBalances();
+        }}
       />
     </PageShell>
   );

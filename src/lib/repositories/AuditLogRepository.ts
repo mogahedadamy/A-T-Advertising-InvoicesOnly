@@ -11,7 +11,17 @@
 
 import { getDb } from "@/lib/database";
 
-export type AuditAction = "create" | "update" | "cancel" | "reverse" | "restore" | "migrate" | "reference_backfill";
+export type AuditAction =
+  | "create"
+  | "update"
+  | "cancel"
+  | "reverse"
+  | "restore"
+  | "migrate"
+  | "reference_backfill"
+  | "archive"
+  | "unarchive"
+  | "delete";
 
 export interface AuditEntry {
   id: string;

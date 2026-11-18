@@ -1,11 +1,14 @@
 import React, { useState } from "react";
-import { X, Calendar, User, ChevronDown, ChevronUp, FolderGit2, Building } from "lucide-react";
+import { X, Calendar, User, ChevronDown, ChevronUp, FolderGit2, Building, Users, Link2, Unlink } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { CustomInvoiceType } from "@/lib/billing/types";
 import { AppCurrency } from "@/lib/currency/types";
 import { CurrencySelector } from "@/components/currency/CurrencySelector";
 import { useCustomers, type CustomerRecord } from "@/lib/customersStore";
+import { getProjectsSnapshot } from "@/lib/projectsStore";
+import { CustomerPickerModal } from "@/components/customers/CustomerPickerModal";
 import { ProjectPicker } from "@/components/projects/ProjectPicker";
 import { SupplierPicker } from "@/components/suppliers/SupplierPicker";
 import { playTapSound } from "@/lib/soundEffects";
@@ -58,6 +61,7 @@ export function CustomInvoiceMetaSection({
   setLanguage,
   currency = "SDG",
   setCurrency,
+  customerId,
   setCustomerId,
   projectId,
   setProjectId,
@@ -68,10 +72,13 @@ export function CustomInvoiceMetaSection({
 }: Props) {
   const isPurchase = type === "purchase";
   const customers = useCustomers();
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(
     Boolean(attn.trim() || partyEnName.trim() || projectId || (isPurchase && (supplierId || supplierInvoiceNumber?.trim())))
   );
+
+  const linkedCustomer = !isPurchase && customerId ? customers.find((c) => c.id === customerId) : null;
 
   const searchTrim = partyName.trim().toLowerCase();
   const matchedCustomers =
@@ -153,7 +160,7 @@ export function CustomInvoiceMetaSection({
         </div>
       </div>
 
-      {/* 2. اسم العميل / الجهة مع البحث التلقائي */}
+      {/* 2. اسم العميل / الجهة مع زر العملاء المباشر */}
       <div className="space-y-1.5 relative">
         <div className="flex items-center justify-between">
           <Label className="text-[11px] font-black text-foreground flex items-center gap-1.5 text-right">
@@ -162,75 +169,106 @@ export function CustomInvoiceMetaSection({
             <span className="text-rose-500 font-bold">*</span>
           </Label>
 
-          {quickCustomers.length > 0 && !partyName && (
-            <div className="hidden sm:flex items-center gap-1 text-[10.5px] text-muted-foreground">
-              <span className="font-bold text-[10px]">اختيار سريع:</span>
-              {quickCustomers.map((qc) => (
-                <button
-                  key={qc.id}
-                  type="button"
-                  onClick={() => handleSelectCustomer(qc)}
-                  className="px-2 py-0.5 rounded-lg bg-secondary/80 hover:bg-primary/10 hover:text-primary text-[10px] font-bold transition cursor-pointer"
-                >
-                  {qc.name.slice(0, 16)}
-                </button>
-              ))}
+          {/* شارة الربط بملف العميل عند اختياره */}
+          {!isPurchase && linkedCustomer && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black animate-in fade-in">
+              <Link2 className="h-3 w-3" />
+              <span>مرتبط بملف: {linkedCustomer.name}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  playTapSound();
+                  if (setCustomerId) setCustomerId(null);
+                }}
+                className="hover:text-rose-500 transition-colors p-0.5"
+                title="إلغاء الربط بالعميل (تبقى الفاتورة مستقلة)"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
             </div>
           )}
         </div>
 
-        <div className="relative">
-          <Input
-            value={partyName}
-            onChange={(e) => {
-              setPartyName(e.target.value);
-              setShowSuggestions(true);
-            }}
-            onFocus={() => setShowSuggestions(true)}
-            placeholder={
-              isPurchase
-                ? "اكتب اسم المورد أو الجهة التجارية..."
-                : "اكتب اسم العميل أو الشركة (مثال: شركة السلام، مستشفى الأمل...)"
-            }
-            className={`h-10 text-xs sm:text-sm rounded-xl font-bold bg-background text-right ${
-              partyName ? "pl-8" : ""
-            }`}
-          />
-          {partyName && (
-            <button
-              type="button"
-              onClick={() => {
-                setPartyName("");
-                if (setCustomerId) setCustomerId(null);
+        <div className="flex items-center gap-2">
+          {/* حقل اسم العميل للكتابة اليدوية الحرة */}
+          <div className="relative flex-1">
+            <Input
+              value={partyName}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPartyName(val);
+                setShowSuggestions(true);
+                // إذا كان هناك ربط سابق بعميل وعدل المستخدم الاسم يدوياً:
+                if (customerId && setCustomerId) {
+                  const currentLinked = customers.find((c) => c.id === customerId);
+                  if (currentLinked && currentLinked.name.trim().toLowerCase() !== val.trim().toLowerCase()) {
+                    setCustomerId(null);
+                  }
+                }
               }}
-              aria-label="مسح الاسم"
-              className="absolute left-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder={
+                isPurchase
+                  ? "اكتب اسم المورد أو المحل التجاري..."
+                  : "اكتب اسم العميل أو اضغط على «العملاء» للاختيار..."
+              }
+              className={`h-10 text-xs sm:text-sm rounded-xl font-bold bg-background text-right ${
+                partyName ? "pl-8" : ""
+              }`}
+            />
+            {partyName && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPartyName("");
+                  if (setCustomerId) setCustomerId(null);
+                }}
+                aria-label="مسح الاسم"
+                className="absolute left-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
 
-          {showSuggestions && matchedCustomers.length > 0 && (
-            <div className="absolute z-30 top-full mt-1 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden py-1">
-              <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/40 border-b border-border/50">
-                عملاء مطابقون في السجل (اضغط للاختيار الفوري):
+            {showSuggestions && matchedCustomers.length > 0 && (
+              <div className="absolute z-30 top-full mt-1 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden py-1">
+                <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/40 border-b border-border/50">
+                  عملاء مطابقون في السجل (اضغط للاختيار الفوري):
+                </div>
+                {matchedCustomers.map((cust) => (
+                  <button
+                    key={cust.id}
+                    type="button"
+                    onClick={() => handleSelectCustomer(cust)}
+                    className="w-full text-right px-3 py-2 text-xs font-bold hover:bg-primary/10 hover:text-primary transition flex items-center justify-between cursor-pointer border-b border-border/20 last:border-0"
+                  >
+                    <span>{cust.name}</span>
+                    {cust.phone && (
+                      <span className="text-[10px] font-mono text-muted-foreground" dir="ltr">
+                        {cust.phone}
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
-              {matchedCustomers.map((cust) => (
-                <button
-                  key={cust.id}
-                  type="button"
-                  onClick={() => handleSelectCustomer(cust)}
-                  className="w-full text-right px-3 py-2 text-xs font-bold hover:bg-primary/10 hover:text-primary transition flex items-center justify-between cursor-pointer border-b border-border/20 last:border-0"
-                >
-                  <span>{cust.name}</span>
-                  {cust.phone && (
-                    <span className="text-[10px] font-mono text-muted-foreground" dir="ltr">
-                      {cust.phone}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+            )}
+          </div>
+
+          {/* زر العملاء المستقل الواضح في القسم الرئيسي */}
+          {!isPurchase && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                playTapSound();
+                setCustomerPickerOpen(true);
+              }}
+              className="h-10 px-3.5 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary hover:text-white text-primary text-xs font-black gap-1.5 shrink-0 active:scale-95 shadow-2xs cursor-pointer transition-all"
+              title="اختيار عميل مسجل من السجل"
+            >
+              <Users className="h-4 w-4" />
+              <span>العملاء</span>
+            </Button>
           )}
         </div>
       </div>
@@ -308,7 +346,21 @@ export function CustomInvoiceMetaSection({
             {setProjectId && (
               <ProjectPicker
                 value={projectId ?? null}
-                onChange={setProjectId}
+                onChange={(nextProjId) => {
+                  setProjectId(nextProjId);
+                  if (!isPurchase && nextProjId && setCustomerId) {
+                    const linkedProj = getProjectsSnapshot().find((p) => p.id === nextProjId);
+                    if (linkedProj?.customerId) {
+                      const linkedCust = customers.find((c) => c.id === linkedProj.customerId);
+                      if (linkedCust) {
+                        setCustomerId(linkedCust.id);
+                        if (!partyName.trim()) {
+                          setPartyName(linkedCust.name);
+                        }
+                      }
+                    }
+                  }
+                }}
                 label="المشروع المرتبط (اختياري)"
                 hint="ربط الفاتورة بمشروع معين لربط إيراداتها وحساباتها مع مساحة عمل المشروع."
               />
@@ -368,6 +420,16 @@ export function CustomInvoiceMetaSection({
           </div>
         )}
       </div>
+
+      {/* نافذة اختيار العميل المنبثقة السريعة */}
+      {!isPurchase && (
+        <CustomerPickerModal
+          open={customerPickerOpen}
+          onOpenChange={setCustomerPickerOpen}
+          selectedCustomerId={customerId}
+          onSelect={handleSelectCustomer}
+        />
+      )}
     </div>
   );
 }

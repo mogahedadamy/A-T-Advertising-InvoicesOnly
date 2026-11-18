@@ -1,4 +1,19 @@
 import { useSyncExternalStore } from "react";
+import { Capacitor } from "@capacitor/core";
+import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
+import {
+  getAllCustomers as repoGetAllCustomers,
+  upsertCustomer as repoUpsertCustomer,
+  deleteCustomer as repoDeleteCustomer,
+  archiveCustomer as repoArchiveCustomer,
+  unarchiveCustomer as repoUnarchiveCustomer,
+  canDeleteCustomer as repoCanDeleteCustomer,
+  getCustomerFinancialSummary as repoGetCustomerFinancialSummary,
+  getCustomerInvoicesList as repoGetCustomerInvoicesList,
+  getAllCustomerFinancialSummaries as repoGetAllCustomerFinancialSummaries,
+  type CustomerFinancialProfile,
+  type CustomerInvoiceItemRow,
+} from "./repositories/CustomerRepository";
 
 export type CustomerType = "agency" | "company" | "individual" | "internal";
 
@@ -13,6 +28,12 @@ export interface CustomerRecord {
   totalSpent: number;
   balance: number; // positive = credit/debt owed by client, negative = prepaid, 0 = settled
   createdAt: string;
+  isArchived?: boolean;
+  openingBalance?: number;
+  openingBalanceCurrency?: string;
+  openingBalanceDate?: string;
+  openingBalanceType?: "debit" | "credit";
+  openingBalanceNotes?: string;
 }
 
 export const CUSTOMER_TYPE_CONFIG: Record<CustomerType, { label: string; color: string; bg: string }> = {
@@ -38,13 +59,6 @@ export const CUSTOMER_TYPE_CONFIG: Record<CustomerType, { label: string; color: 
   },
 };
 
-import { Capacitor } from "@capacitor/core";
-import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
-import {
-  upsertCustomer as repoUpsertCustomer,
-  deleteCustomer as repoDeleteCustomer,
-} from "./repositories/CustomerRepository";
-
 const STORAGE_KEY = "future_print_customers_v2";
 
 const INITIAL_DEMO_CUSTOMERS: CustomerRecord[] = [];
@@ -57,10 +71,24 @@ function loadCustomersFromStorage(): CustomerRecord[] {
 let customersSnapshot: CustomerRecord[] = loadCustomersFromStorage();
 const subscribers = new Set<() => void>();
 
+export async function refreshCustomersFromDb(): Promise<void> {
+  try {
+    const list = await repoGetAllCustomers({ includeArchived: true });
+    customersSnapshot = list;
+    notify();
+  } catch (err) {
+    console.warn("[customersStore] refresh from DB skipped or failed:", err);
+  }
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("native-storage-ready", () => {
     customersSnapshot = loadCustomersFromStorage();
+    void refreshCustomersFromDb();
     subscribers.forEach((fn) => fn());
+  });
+  window.addEventListener("finance-changed", () => {
+    void refreshCustomersFromDb();
   });
 }
 
@@ -92,10 +120,14 @@ export async function addCustomer(
     id: `cust-${Date.now()}`,
     totalOrders: 0,
     totalSpent: 0,
+    balance: data.balance ?? (data.openingBalanceType === "debit" ? data.openingBalance ?? 0 : -(data.openingBalance ?? 0)),
     createdAt: new Date().toISOString(),
+    isArchived: false,
   };
-  if (Capacitor.isNativePlatform()) {
+  try {
     await repoUpsertCustomer(customer);
+  } catch (err) {
+    console.warn("[customersStore] repoUpsertCustomer warning:", err);
   }
   customersSnapshot = [customer, ...customersSnapshot];
   notify();
@@ -106,17 +138,56 @@ export async function updateCustomer(id: string, updates: Partial<CustomerRecord
   const existing = customersSnapshot.find((c) => c.id === id);
   if (!existing) return;
   const updatedRecord: CustomerRecord = { ...existing, ...updates };
-  if (Capacitor.isNativePlatform()) {
+  try {
     await repoUpsertCustomer(updatedRecord);
+  } catch (err) {
+    console.warn("[customersStore] repoUpsertCustomer warning:", err);
   }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? updatedRecord : c));
   notify();
 }
 
-export async function deleteCustomer(id: string): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
-    await repoDeleteCustomer(id);
+/**
+ * Checks whether customer deletion is permitted
+ */
+export async function checkCanDeleteCustomer(id: string) {
+  try {
+    return await repoCanDeleteCustomer(id);
+  } catch {
+    return { allowed: true, invoiceCount: 0, paymentCount: 0, projectCount: 0 };
   }
+}
+
+/**
+ * Permanently deletes a customer if zero transactions exist.
+ * Rejects with a descriptive error if historical transactions exist.
+ */
+export async function deleteCustomer(id: string): Promise<void> {
+  const check = await repoCanDeleteCustomer(id);
+  if (!check.allowed) {
+    throw new Error(check.reason);
+  }
+  await repoDeleteCustomer(id);
   customersSnapshot = customersSnapshot.filter((c) => c.id !== id);
   notify();
 }
+
+export async function archiveCustomer(id: string): Promise<void> {
+  await repoArchiveCustomer(id);
+  customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: true } : c));
+  notify();
+}
+
+export async function unarchiveCustomer(id: string): Promise<void> {
+  await repoUnarchiveCustomer(id);
+  customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: false } : c));
+  notify();
+}
+
+export {
+  repoGetCustomerFinancialSummary as getCustomerFinancialSummary,
+  repoGetCustomerInvoicesList as getCustomerInvoicesList,
+  repoGetAllCustomerFinancialSummaries as getAllCustomerFinancialSummaries,
+  type CustomerFinancialProfile,
+  type CustomerInvoiceItemRow,
+};

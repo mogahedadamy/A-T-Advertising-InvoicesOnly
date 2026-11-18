@@ -23,6 +23,7 @@ import {
 } from "./v2BusinessModel";
 import { V3_VERSION, applyV3 } from "./v3Finance";
 import { applyV4 } from "./v4Currency";
+import { applyV5 } from "./v5CustomerModule";
 
 export const SCHEMA_VERSION = V3_VERSION;
 
@@ -134,6 +135,18 @@ export async function runPendingMigrations(
     await applyV4(db);
   } catch (err) {
     outcome.warnings.push(`currency self-heal: ${String(err)}`);
+  }
+
+  // Customer module self-heal: archiving, opening balances, and safe invoice linking
+  try {
+    const v5 = await applyV5(db);
+    if (v5.columnsAdded.length > 0 || v5.reconciledInvoices > 0) {
+      outcome.applied.push(
+        `v5 (customer module: columns=${v5.columnsAdded.length}, reconciled=${v5.reconciledInvoices})`
+      );
+    }
+  } catch (err) {
+    outcome.warnings.push(`customer module self-heal: ${String(err)}`);
   }
 
   // Always safe to re-run: keeps a usable account available for money operations.
