@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
   Building2,
   Calendar,
-  FolderKanban,
+  FileText,
   Plus,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
@@ -11,6 +11,8 @@ import { ModuleGrid } from "@/components/dashboard/ModuleGrid";
 import { useUserProfile } from "@/lib/userProfileStore";
 import { UserProfileDialog } from "@/components/common/UserProfileDialog";
 import { AppTourLauncherBanner } from "@/components/common/AppTourAssistant";
+import { playTapSound } from "@/lib/soundEffects";
+import { toast } from "sonner";
 
 function getGreeting(name?: string) {
   const h = new Date().getHours();
@@ -95,13 +97,18 @@ export function HomePage() {
                   <Plus className="h-4 w-4" />
                   <span>إصدار فاتورة</span>
                 </Link>
-                <Link
-                  to="/projects"
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTapSound();
+                    toast.info("قسم إصدار الخطابات والمراسلات الرسمية قيد التطوير حالياً، وسيتوفر قريباً بقوالب ونماذج معتمدة.");
+                  }}
                   className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-border/80 bg-background/80 px-3.5 text-xs font-black text-foreground hover:border-primary/40 hover:text-primary active:scale-[0.98] transition-all cursor-pointer"
+                  title="إصدار خطاب ومراسلة رسمية (قيد التطوير)"
                 >
-                  <FolderKanban className="h-4 w-4 text-primary" />
-                  <span>المشاريع</span>
-                </Link>
+                  <FileText className="h-4 w-4 text-primary" />
+                  <span>إصدار خطاب</span>
+                </button>
               </div>
             </div>
           </section>

@@ -14,10 +14,12 @@ import { ProjectFinancialTracer } from "./details/ProjectFinancialTracer";
 import { ProjectInvoicesTab } from "./details/ProjectInvoicesTab";
 import { ProjectQuotationsTab } from "./details/ProjectQuotationsTab";
 import { ProjectExecutionTab } from "./details/ProjectExecutionTab";
+import type { Project } from "@/lib/domain/projects";
 
 interface Props {
   projectId: string | null;
   onOpenChange: (open: boolean) => void;
+  initialProject?: Project | null;
 }
 
 /**
@@ -25,7 +27,7 @@ interface Props {
  * الملخص المالي الفوري، الفواتير، عروض الأسعار (مع التحويل المباشر لفاتورة مبيعات)، وحالة التنفيذ.
  * تم تفكيك المكون المعماري إلى وحدات فرعية نظيفة (< 250 سطر) تحت مجلد details/.
  */
-export function ProjectDetailsDialog({ projectId, onOpenChange }: Props) {
+export function ProjectDetailsDialog({ projectId, onOpenChange, initialProject }: Props) {
   const { toast } = useToast();
   const {
     project,
@@ -53,7 +55,7 @@ export function ProjectDetailsDialog({ projectId, onOpenChange }: Props) {
     handleConvertQuotationToSales,
     handleCancelProject,
     handleQuickExecutionChange,
-  } = useProjectDetails(projectId, onOpenChange);
+  } = useProjectDetails(projectId, onOpenChange, initialProject);
 
   return (
     <>

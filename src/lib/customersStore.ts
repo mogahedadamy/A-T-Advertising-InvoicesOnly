@@ -15,7 +15,15 @@ import {
   type CustomerInvoiceItemRow,
 } from "./repositories/CustomerRepository";
 
-export type CustomerType = "agency" | "company" | "individual" | "internal";
+export type CustomerType =
+  | "company"
+  | "institution"
+  | "client"
+  | "individual"
+  | "agency"
+  | "internal";
+
+export const PRIMARY_CUSTOMER_TYPES = ["company", "institution", "client", "individual"] as const;
 
 export interface CustomerRecord {
   id: string;
@@ -37,25 +45,36 @@ export interface CustomerRecord {
 }
 
 export const CUSTOMER_TYPE_CONFIG: Record<CustomerType, { label: string; color: string; bg: string }> = {
-  agency: {
-    label: "وكالة دعاية (أ)",
-    color: "text-primary",
-    bg: "bg-primary/10 border-primary/20",
-  },
   company: {
-    label: "شركة تجارية (ب)",
-    color: "text-[#C5A059]",
+    label: "شركة",
+    color: "text-[#0D4A39] dark:text-emerald-400",
+    bg: "bg-[#0D4A39]/10 border-[#0D4A39]/20",
+  },
+  institution: {
+    label: "مؤسسة",
+    color: "text-[#C5A059] dark:text-[#dfbe7e]",
     bg: "bg-[#C5A059]/10 border-[#C5A059]/20",
   },
+  client: {
+    label: "زبون",
+    color: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-500/10 border-blue-500/20",
+  },
   individual: {
-    label: "زبون عابر / نقدي",
+    label: "أفراد",
     color: "text-slate-700 dark:text-slate-300",
     bg: "bg-slate-500/10 border-slate-500/20",
   },
+  // التوافق العكسي مع السجلات السابقة المخزنة مسبقاً
+  agency: {
+    label: "مؤسسة",
+    color: "text-[#C5A059] dark:text-[#dfbe7e]",
+    bg: "bg-[#C5A059]/10 border-[#C5A059]/20",
+  },
   internal: {
-    label: "تشغيل داخلي",
-    color: "text-muted-foreground",
-    bg: "bg-secondary border-border/80",
+    label: "مؤسسة",
+    color: "text-[#C5A059] dark:text-[#dfbe7e]",
+    bg: "bg-[#C5A059]/10 border-[#C5A059]/20",
   },
 };
 

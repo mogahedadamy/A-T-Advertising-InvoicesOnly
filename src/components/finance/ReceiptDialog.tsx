@@ -405,8 +405,8 @@ export function ReceiptDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-md max-h-safe-dialog overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-sm sm:text-base font-black text-foreground">تحصيل من عميل</DialogTitle>
+        <DialogHeader className="border-b border-border/50 pb-2.5 mb-1">
+          <DialogTitle className="text-base sm:text-lg font-black text-slate-900 dark:text-white">تحصيل من عميل</DialogTitle>
         </DialogHeader>
 
         {loadingInit ? (

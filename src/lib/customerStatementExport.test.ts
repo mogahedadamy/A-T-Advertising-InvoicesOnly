@@ -8,7 +8,7 @@ describe("customerStatementExport", () => {
     id: "cust-test-1",
     name: "شركة النور للتجارة",
     phone: "0912345678",
-    type: "business",
+    type: "company",
     address: "الخرطوم، شارع الستين",
     totalOrders: 3,
     totalSpent: 1500000,
@@ -48,18 +48,23 @@ describe("customerStatementExport", () => {
     ],
   };
 
-  it("builds an authentic A4 statement DOM element matching brand identity", () => {
+  it("builds an authentic A5 landscape statement DOM element matching brand identity", () => {
     const el = buildStatementDomElement(mockStatement, mockCustomer, "SDG");
     expect(el).toBeInstanceOf(HTMLElement);
     expect(el.classList.contains("statement-print-root")).toBe(true);
     expect(el.classList.contains("standard-invoice-sheet")).toBe(true);
+    expect(el.style.width).toBe("210mm");
+    expect(el.style.maxHeight).toBe("148mm");
     expect(el.innerHTML).toContain("كشف حساب مالي");
     expect(el.innerHTML).toContain("شركة النور للتجارة");
+    expect(el.innerHTML).toContain("شركة");
     expect(el.innerHTML).toContain("cust-test-1");
     expect(el.innerHTML).toContain("0912345678");
     expect(el.innerHTML).toContain("INV-001");
     expect(el.innerHTML).toContain("REC-001");
     expect(el.innerHTML).toContain("بنك الخرطوم 3283046");
     expect(el.innerHTML).toContain("طارق عثمان علي");
+    // Explicit requirement: "توثيق إلكتروني معتمد" removed below QR code
+    expect(el.innerHTML).not.toContain("توثيق إلكتروني معتمد");
   });
 });

@@ -30,11 +30,15 @@ import {
 } from "@/lib/domain/projects";
 import { playErrorSound, playSuccessSound, playTapSound } from "@/lib/soundEffects";
 
-export function useProjectDetails(projectId: string | null, onOpenChange: (open: boolean) => void) {
+export function useProjectDetails(
+  projectId: string | null,
+  onOpenChange: (open: boolean) => void,
+  initialProject?: Project | null
+) {
   const { toast } = useToast();
   const customers = useCustomers();
 
-  const [project, setProject] = useState<Project | null>(null);
+  const [project, setProject] = useState<Project | null>(initialProject ?? null);
   const [relations, setRelations] = useState<ProjectRelations | null>(null);
   const [summary, setSummary] = useState<ProjectFinancialSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,25 +51,54 @@ export function useProjectDetails(projectId: string | null, onOpenChange: (open:
   const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
 
+  useEffect(() => {
+    if (initialProject && (!projectId || initialProject.id === projectId)) {
+      setProject(initialProject);
+    }
+  }, [initialProject, projectId]);
+
   const load = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     setError(null);
     try {
-      const [rels, sum, freshProject] = await Promise.all([
-        getProjectRelations(projectId),
-        getProjectFinancialSummary(projectId),
-        getProjectById(projectId).catch(() => undefined),
-      ]);
+      const memoryProject =
+        getProjectFromSnapshot(projectId) ??
+        (initialProject?.id === projectId ? initialProject : null);
+      if (memoryProject) {
+        setProject(memoryProject);
+      }
+
+      // 1. Fetch relations with per-query resilience
+      const rels = await getProjectRelations(projectId);
       setRelations(rels);
+
+      // 2. Build financial summary directly reusing relations (zero duplicate queries)
+      const sum = await getProjectFinancialSummary(projectId, rels);
       setSummary(sum);
-      setProject(freshProject ?? getProjectFromSnapshot(projectId) ?? null);
+
+      // 3. Keep project data fresh
+      const freshProject = await getProjectById(projectId).catch(() => undefined);
+      if (freshProject) {
+        setProject(freshProject);
+      } else if (memoryProject) {
+        setProject(memoryProject);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذّر تحميل بيانات المشروع.");
+      console.warn("[useProjectDetails] load failed:", err);
+      const currentOrSnap =
+        getProjectFromSnapshot(projectId) ??
+        (initialProject?.id === projectId ? initialProject : null);
+      if (currentOrSnap) {
+        setProject(currentOrSnap);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : "تعذّر تحميل بيانات المشروع.");
+      }
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, initialProject]);
 
   useEffect(() => {
     if (!projectId) {

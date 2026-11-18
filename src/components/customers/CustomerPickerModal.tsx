@@ -6,6 +6,7 @@ import {
   useCustomers,
   addCustomer,
   CUSTOMER_TYPE_CONFIG,
+  PRIMARY_CUSTOMER_TYPES,
   type CustomerRecord,
   type CustomerType,
 } from "@/lib/customersStore";
@@ -34,7 +35,7 @@ export function CustomerPickerModal({
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [newType, setNewType] = useState<CustomerType>("agency");
+  const [newType, setNewType] = useState<CustomerType>("company");
   const [isSaving, setIsSaving] = useState(false);
 
   const activeCustomers = useMemo(() => {
@@ -158,9 +159,9 @@ export function CustomerPickerModal({
                   onChange={(e) => setNewType(e.target.value as CustomerType)}
                   className={fieldStyle}
                 >
-                  {Object.entries(CUSTOMER_TYPE_CONFIG).map(([k, cfg]) => (
+                  {PRIMARY_CUSTOMER_TYPES.map((k) => (
                     <option key={k} value={k}>
-                      {cfg.label}
+                      {CUSTOMER_TYPE_CONFIG[k].label}
                     </option>
                   ))}
                 </select>
@@ -215,8 +216,9 @@ export function CustomerPickerModal({
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
               {[
                 { key: "all", label: "الكل" },
-                { key: "agency", label: "وكالات (أ)" },
-                { key: "company", label: "شركات (ب)" },
+                { key: "company", label: "شركة" },
+                { key: "institution", label: "مؤسسة" },
+                { key: "client", label: "زبون" },
                 { key: "individual", label: "أفراد" },
               ].map((tab) => {
                 const active = typeFilter === tab.key;

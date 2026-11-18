@@ -302,107 +302,129 @@ export interface ProjectRelations {
 /**
  * Everything actually linked to one project, read from the owning tables.
  * Nothing is synthesised: an empty list means nothing is linked yet.
+ * Queries are individually guarded to prevent transient database locks or missing
+ * optional tables from breaking the project workspace load.
  */
 export async function getProjectRelations(projectId: string): Promise<ProjectRelations> {
   const db = await getDb();
 
-  const invoicesRes = await db.query(
-    `SELECT id, reference, serial, type, date, total_amount
-       FROM custom_invoices
-      WHERE project_id = ? AND cancelled_at IS NULL
-      ORDER BY date DESC, created_at DESC`,
-    [projectId]
-  );
   const salesInvoices: LinkedDocumentSummary[] = [];
   const purchaseInvoices: LinkedDocumentSummary[] = [];
   const customProformas: LinkedDocumentSummary[] = [];
-  for (const row of invoicesRes.values ?? []) {
-    const type = String(row.type ?? "");
-    const item: LinkedDocumentSummary = {
-      id: String(row.id),
-      reference: String(row.reference ?? row.serial ?? ""),
-      label:
-        type === "purchase"
-          ? "فاتورة مشتريات"
-          : type === "proforma"
-          ? "فاتورة مبدئية"
-          : "فاتورة مبيعات",
-      date: String(row.date ?? ""),
-      total: Number(row.total_amount) || 0,
-    };
-    if (type === "sales") {
-      salesInvoices.push(item);
-    } else if (type === "purchase") {
-      purchaseInvoices.push(item);
-    } else if (type === "proforma") {
-      customProformas.push(item);
+
+  try {
+    const invoicesRes = await db.query(
+      `SELECT id, reference, serial, type, date, total_amount
+         FROM custom_invoices
+        WHERE project_id = ? AND cancelled_at IS NULL
+        ORDER BY date DESC, created_at DESC`,
+      [projectId]
+    );
+    for (const row of invoicesRes.values ?? []) {
+      const type = String(row.type ?? "");
+      const item: LinkedDocumentSummary = {
+        id: String(row.id),
+        reference: String(row.reference ?? row.serial ?? ""),
+        label:
+          type === "purchase"
+            ? "فاتورة مشتريات"
+            : type === "proforma"
+            ? "فاتورة مبدئية"
+            : "فاتورة مبيعات",
+        date: String(row.date ?? ""),
+        total: Number(row.total_amount) || 0,
+      };
+      if (type === "sales") {
+        salesInvoices.push(item);
+      } else if (type === "purchase") {
+        purchaseInvoices.push(item);
+      } else if (type === "proforma") {
+        customProformas.push(item);
+      }
     }
+  } catch (err) {
+    console.warn("[ProjectRepository] invoices query warning:", err);
   }
 
-  const quotationsRes = await db.query(
-    `SELECT id, serial, date, total_amount, status
-       FROM proforma_invoices
-      WHERE project_id = ?
-      ORDER BY date DESC, created_at DESC`,
-    [projectId]
-  );
-
-  const findConvertedSales = (quoteId: string) =>
-    salesInvoices.find(
-      (s) => s.id === `sales-from-${quoteId}` || s.id.startsWith(`sales-from-${quoteId}-r`)
+  let quotations: LinkedDocumentSummary[] = [...customProformas];
+  try {
+    const quotationsRes = await db.query(
+      `SELECT id, serial, date, total_amount, status
+         FROM proforma_invoices
+        WHERE project_id = ?
+        ORDER BY date DESC, created_at DESC`,
+      [projectId]
     );
 
-  const quotations: LinkedDocumentSummary[] = [
-    ...customProformas,
-    ...(quotationsRes.values ?? []).map((row: any) => ({
+    const findConvertedSales = (quoteId: string) =>
+      salesInvoices.find(
+        (s) => s.id === `sales-from-${quoteId}` || s.id.startsWith(`sales-from-${quoteId}-r`)
+      );
+
+    const legacyQuotes: LinkedDocumentSummary[] = (quotationsRes.values ?? []).map((row: any) => ({
       id: String(row.id),
       reference: String(row.serial ?? ""),
       label: "عرض سعر",
       date: String(row.date ?? ""),
       total: Number(row.total_amount) || 0,
       status: row.status ?? undefined,
-    })),
-  ].map((quote) => {
-    const match = findConvertedSales(quote.id);
-    return match
-      ? { ...quote, convertedSalesId: match.id, convertedSalesReference: match.reference }
-      : quote;
-  });
+    }));
 
-  const ordersRes = await db.query(
-    `SELECT id, order_number, created_at, total_cost, status
-       FROM orders
-      WHERE project_id = ?
-      ORDER BY created_at DESC`,
-    [projectId]
-  );
-  const orders: LinkedDocumentSummary[] = (ordersRes.values ?? []).map((row: any) => ({
-    id: String(row.id),
-    reference: String(row.order_number ?? ""),
-    label: "أمر شغل",
-    date: String(row.created_at ?? "").slice(0, 10),
-    total: Number(row.total_cost) || 0,
-    status: row.status ?? undefined,
-  }));
+    quotations = [...customProformas, ...legacyQuotes].map((quote) => {
+      const match = findConvertedSales(quote.id);
+      return match
+        ? { ...quote, convertedSalesId: match.id, convertedSalesReference: match.reference }
+        : quote;
+    });
+  } catch (err) {
+    console.warn("[ProjectRepository] quotations query warning:", err);
+  }
+
+  const orders: LinkedDocumentSummary[] = [];
+  try {
+    const ordersRes = await db.query(
+      `SELECT id, order_number, created_at, total_cost, status
+         FROM orders
+        WHERE project_id = ?
+        ORDER BY created_at DESC`,
+      [projectId]
+    );
+    for (const row of ordersRes.values ?? []) {
+      orders.push({
+        id: String(row.id),
+        reference: String(row.order_number ?? ""),
+        label: "أمر شغل",
+        date: String(row.created_at ?? "").slice(0, 10),
+        total: Number(row.total_cost) || 0,
+        status: row.status ?? undefined,
+      });
+    }
+  } catch (err) {
+    console.warn("[ProjectRepository] orders query warning:", err);
+  }
 
   // Payments are allocated to invoices, so the project's collections are the
   // sum of allocations on its own invoices — never a global total (§9.1).
   let collectedAmount = 0;
   let paymentCount = 0;
   if (salesInvoices.length > 0) {
-    const invoiceIds = salesInvoices.map((inv) => inv.id);
-    const placeholders = invoiceIds.map(() => "?").join(",");
-    const allocationsRes = await db.query(
-      `SELECT a.payment_id AS payment_id, SUM(a.amount) AS allocated
-         FROM customer_payment_allocations a
-         JOIN customer_payments p ON p.id = a.payment_id
-        WHERE a.invoice_id IN (${placeholders}) AND p.cancelled_at IS NULL
-        GROUP BY a.payment_id`,
-      invoiceIds
-    );
-    for (const row of allocationsRes.values ?? []) {
-      paymentCount += 1;
-      collectedAmount += Number(row.allocated) || 0;
+    try {
+      const invoiceIds = salesInvoices.map((inv) => inv.id);
+      const placeholders = invoiceIds.map(() => "?").join(",");
+      const allocationsRes = await db.query(
+        `SELECT a.payment_id AS payment_id, SUM(a.amount) AS allocated
+           FROM customer_payment_allocations a
+           JOIN customer_payments p ON p.id = a.payment_id
+          WHERE a.invoice_id IN (${placeholders}) AND p.cancelled_at IS NULL
+          GROUP BY a.payment_id`,
+        invoiceIds
+      );
+      for (const row of allocationsRes.values ?? []) {
+        paymentCount += 1;
+        collectedAmount += Number(row.allocated) || 0;
+      }
+    } catch (err) {
+      console.warn("[ProjectRepository] allocations query warning:", err);
     }
   }
 
@@ -467,10 +489,27 @@ export async function getProjectCostTotals(projectId: string): Promise<{
 }
 
 /** The complete financial picture of a project, derived from records only. */
-export async function getProjectFinancialSummary(projectId: string): Promise<ProjectFinancialSummary> {
-  const project = await getProjectById(projectId);
-  const relations = await getProjectRelations(projectId);
-  const costs = await getProjectCostTotals(projectId);
+export async function getProjectFinancialSummary(
+  projectId: string,
+  existingRelations?: ProjectRelations
+): Promise<ProjectFinancialSummary> {
+  const project = await getProjectById(projectId).catch(() => undefined);
+  const relations =
+    existingRelations ??
+    (await getProjectRelations(projectId).catch(() => ({
+      salesInvoices: [],
+      purchaseInvoices: [],
+      quotations: [],
+      orders: [],
+      paymentCount: 0,
+      collectedAmount: 0,
+      invoicedAmount: 0,
+    })));
+  const costs = await getProjectCostTotals(projectId).catch(() => ({
+    directCosts: 0,
+    paidToSuppliers: 0,
+    costRecordCount: 0,
+  }));
 
   return buildProjectFinancialSummary({
     invoicedAmount: relations.invoicedAmount,

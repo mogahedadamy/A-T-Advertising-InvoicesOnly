@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import {
   CUSTOMER_TYPE_CONFIG,
+  PRIMARY_CUSTOMER_TYPES,
   type CustomerRecord,
   type CustomerType,
 } from "@/lib/customersStore";
@@ -27,7 +28,7 @@ const SUPPORTED_CURRENCIES: { code: AppCurrency; label: string }[] = [
 export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [type, setType] = useState<CustomerType>("agency");
+  const [type, setType] = useState<CustomerType>("company");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -42,7 +43,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
     if (initialData) {
       setName(initialData.name || "");
       setPhone(initialData.phone || "");
-      setType(initialData.type || "agency");
+      setType(initialData.type || "company");
       setAddress(initialData.address || "");
       setNotes(initialData.notes || "");
       setOpeningBalance(String(initialData.openingBalance ?? (initialData.balance ? Math.abs(initialData.balance) : 0)));
@@ -53,7 +54,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
     } else {
       setName("");
       setPhone("");
-      setType("agency");
+      setType("company");
       setAddress("");
       setNotes("");
       setOpeningBalance("0");
@@ -159,9 +160,9 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
                 onChange={(e) => setType(e.target.value as CustomerType)}
                 className={fieldStyle}
               >
-                {Object.entries(CUSTOMER_TYPE_CONFIG).map(([k, cfg]) => (
+                {PRIMARY_CUSTOMER_TYPES.map((k) => (
                   <option key={k} value={k}>
-                    {cfg.label}
+                    {CUSTOMER_TYPE_CONFIG[k].label}
                   </option>
                 ))}
               </select>

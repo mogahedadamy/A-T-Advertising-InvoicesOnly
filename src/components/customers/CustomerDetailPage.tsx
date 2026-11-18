@@ -347,7 +347,7 @@ export function CustomerDetailPage({
     }
   };
 
-  const typeConfig = CUSTOMER_TYPE_CONFIG[customer.type] || CUSTOMER_TYPE_CONFIG.agency;
+  const typeConfig = CUSTOMER_TYPE_CONFIG[customer.type] || CUSTOMER_TYPE_CONFIG.company;
   const currentSummary = financialProfile?.summariesByCurrency[selectedCurrency] || {
     currency: selectedCurrency,
     totalInvoiced: 0,
@@ -448,22 +448,10 @@ export function CustomerDetailPage({
                 disabled={isExportingStatement || !statement}
                 onClick={handlePrintStatement}
                 className="h-9 px-3 rounded-xl text-xs font-bold gap-1.5 border-border/80 text-foreground hover:bg-secondary active:scale-[0.97] cursor-pointer"
-                title="طباعة كشف الحساب المالي"
+                title="طباعة كشف الحساب المالي (A5 عرضي)"
               >
                 <Printer className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="hidden sm:inline">طباعة الكشف</span>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isExportingStatement || !statement}
-                onClick={handleShareStatement}
-                className="h-9 px-3 rounded-xl text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.97] cursor-pointer"
-                title="مشاركة كشف الحساب عبر واتساب"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">مشاركة واتساب</span>
               </Button>
 
               <Button
@@ -487,7 +475,7 @@ export function CustomerDetailPage({
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-black text-foreground flex items-center gap-1.5">
                   <Wallet className="h-4 w-4 text-primary" />
-                  <span>المركز المالي للعميل بالعملة المحددة:</span>
+                  <span>السجل المالي بالعملة:</span>
                 </span>
 
                 {/* أزرار العملات */}
@@ -597,10 +585,10 @@ export function CustomerDetailPage({
           </div>
 
           {/* 3. تبويبات مساحة العمل الكاملة (Workspace Navigation Tabs) */}
-          <div className="rounded-2xl border border-border/70 bg-card p-1 shadow-2xs flex items-center gap-1.5 text-xs font-black overflow-x-auto scrollbar-none">
+          <div className="rounded-2xl border border-border/70 bg-card p-1 shadow-2xs flex items-center gap-1.5 text-xs font-black overflow-x-auto scrollbar-none touch-pan-x overscroll-x-contain select-none">
             {[
               { key: "invoices", label: `سجل الفواتير (${invoices.length})` },
-              { key: "statement", label: `كشف الحساب المالي (${statement?.lines.length || 0})` },
+              { key: "statement", label: `كشف الحساب المالي (${selectedCurrency}) (${statement?.lines.length || 0})` },
               { key: "projects", label: `المشاريع المرتبطة (${projects.length})` },
               { key: "info", label: "بيانات العميل والافتتاحي" },
             ].map((tab) => (
@@ -721,7 +709,7 @@ export function CustomerDetailPage({
                 </div>
 
                 {/* تبويبات الفلترة حسب الحالة مع أعداد حية */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none touch-pan-x overscroll-x-contain select-none">
                   {[
                     { key: "all", label: `كل الفواتير (${invoiceStatusCounts.all})` },
                     { key: "unpaid", label: `غير مسددة (${invoiceStatusCounts.unpaid})` },
@@ -789,7 +777,7 @@ export function CustomerDetailPage({
                 ) : invoiceViewMode === "table" ? (
                   /* عرض الجدول المالي عالي الكثافة مع ترويسة مثبتة */
                   <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
-                    <div className="overflow-x-auto max-h-[640px] overscroll-contain">
+                    <div className="overflow-x-auto max-h-[640px] overscroll-contain touch-pan-x">
                       <table className="w-full text-right text-xs">
                         <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs text-muted-foreground text-[11px] border-b border-border/70 z-10 shadow-xs">
                           <tr>
@@ -1155,16 +1143,16 @@ export function CustomerDetailPage({
 
                 {/* جدول كشف الحساب المحاسبي مع ترويسة مثبتة */}
                 <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
-                  <div className="overflow-x-auto max-h-[640px] overscroll-contain">
+                  <div className="overflow-x-auto max-h-[640px] overscroll-contain touch-pan-x">
                     <table className="w-full text-right text-xs">
                       <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs text-muted-foreground text-[11px] border-b border-border/70 z-10 shadow-xs">
                         <tr>
                           <th className="py-3 px-3.5 font-black">التاريخ</th>
                           <th className="py-3 px-3.5 font-black">البيان والحركة</th>
                           <th className="py-3 px-3.5 font-black text-center">المرجع</th>
-                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">مدين (+)</th>
-                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">دائن (-)</th>
-                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">الرصيد الجاري</th>
+                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">مدين (+) [{selectedCurrency}]</th>
+                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">دائن (-) [{selectedCurrency}]</th>
+                          <th className="py-3 px-3.5 font-black text-left" dir="ltr">الرصيد الجاري [{selectedCurrency}]</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/40 font-mono text-[11px]">

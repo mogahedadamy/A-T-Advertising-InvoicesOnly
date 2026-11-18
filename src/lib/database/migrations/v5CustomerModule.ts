@@ -123,5 +123,13 @@ export async function applyV5(db: MigrationDatabase): Promise<V5Outcome> {
   const columnsAdded = await addCustomerModuleColumns(db);
   await ensureCustomerIndexes(db);
   const reconciledInvoices = await reconcileOrphanInvoicesToCustomers(db);
+
+  // Normalize legacy categories to modern executive labels
+  try {
+    await db.run("UPDATE customers SET type = 'institution' WHERE type = 'agency' OR type = 'internal'");
+  } catch (err) {
+    console.warn("[Migration v5] customer type normalization notice:", err);
+  }
+
   return { columnsAdded, reconciledInvoices };
 }

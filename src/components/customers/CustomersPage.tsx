@@ -50,10 +50,10 @@ import { cn } from "@/lib/utils";
 const TABS: { key: string; label: string }[] = [
   { key: "all", label: "كل العملاء" },
   { key: "debtors", label: "العملاء المدينون" },
-  { key: "agency", label: "وكالات دعاية (أ)" },
-  { key: "company", label: "شركات تجارية (ب)" },
-  { key: "individual", label: "زبون عابر / نقدي" },
-  { key: "internal", label: "تشغيل داخلي" },
+  { key: "company", label: "شركات" },
+  { key: "institution", label: "مؤسسات" },
+  { key: "client", label: "زبائن" },
+  { key: "individual", label: "أفراد" },
   { key: "archived", label: "المؤرشفين" },
 ];
 
@@ -151,6 +151,9 @@ export function CustomersPage() {
       if (typeFilter === "debtors") {
         const liveBal = liveBalances[c.id]?.outstanding ?? c.balance;
         return matchSearch && liveBal > 0.009;
+      }
+      if (typeFilter === "institution") {
+        return matchSearch && (c.type === "institution" || c.type === "agency" || c.type === "internal");
       }
       return matchSearch && c.type === typeFilter;
     });

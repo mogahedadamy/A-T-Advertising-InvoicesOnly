@@ -62,6 +62,7 @@ export function ProjectsPage() {
   const [filter, setFilter] = useState<ProjectFilterKey>("all");
   const [formOpen, setFormOpen] = useState(false);
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
+  const [openProjectInitial, setOpenProjectInitial] = useState<Project | null>(null);
   const [receiptTargetProject, setReceiptTargetProject] = useState<Project | null>(null);
   const [totals, setTotals] = useState<
     Record<string, { invoiced: number; collected: number; status: ProjectFinancialStatus }>
@@ -396,6 +397,7 @@ export function ProjectsPage() {
                       key={project.id}
                       onClick={() => {
                         playTapSound();
+                        setOpenProjectInitial(project);
                         setOpenProjectId(project.id);
                       }}
                       className="group flex flex-col justify-between gap-3 rounded-2xl border border-border/70 bg-card/90 p-3.5 sm:p-4 text-right transition-all hover:border-primary/50 hover:bg-muted/20 hover:shadow-xs active:scale-[0.99] cursor-pointer"
@@ -586,13 +588,20 @@ export function ProjectsPage() {
         onOpenChange={setFormOpen}
         onSaved={(project) => {
           void refreshProjectsFromDb();
+          setOpenProjectInitial(project);
           setOpenProjectId(project.id);
         }}
       />
 
       <ProjectDetailsDialog
         projectId={openProjectId}
-        onOpenChange={(open) => !open && setOpenProjectId(null)}
+        initialProject={openProjectInitial}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpenProjectId(null);
+            setOpenProjectInitial(null);
+          }
+        }}
       />
 
       <ReceiptDialog
