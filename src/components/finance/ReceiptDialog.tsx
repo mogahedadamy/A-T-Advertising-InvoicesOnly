@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Plus, Sparkles, UserPlus, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Plus, SlidersHorizontal, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -531,7 +531,7 @@ export function ReceiptDialog({
                       onClick={autoAllocateCustomerInvoices}
                       className="h-7 rounded-lg gap-1 text-[10px] font-black text-primary px-2"
                     >
-                      <Sparkles className="h-3 w-3" />
+                      <SlidersHorizontal className="h-3 w-3" />
                       توزيع تلقائي
                     </Button>
                   )}

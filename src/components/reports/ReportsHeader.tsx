@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowRight, RefreshCw, Calendar, Sparkles } from "lucide-react";
+import { ArrowRight, RefreshCw, Calendar, BarChart3 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,7 @@ export function ReportsHeader({
           <div>
             <h1 className="text-base sm:text-lg font-black tracking-tight text-foreground flex items-center gap-1.5">
               <span>التقارير المالية والتشغيلية</span>
-              <Sparkles className="h-4 w-4 text-[#C5A059]" />
+              <BarChart3 className="h-4 w-4 text-[#C5A059]" />
             </h1>
             <p className="text-[11px] font-medium text-muted-foreground">
               مؤشرات حية، تحليل الربحية، والتدفقات النقدية

@@ -6,7 +6,7 @@ import {
   FileSpreadsheet,
   Plus,
   ShoppingBag,
-  Sparkles,
+  Activity,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -52,7 +52,7 @@ export function ProjectFinancialTracer({
         <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2">
           <div className="flex items-center gap-2">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary border border-primary/20">
-              <Sparkles className="h-4 w-4" />
+              <Activity className="h-4 w-4" />
             </span>
             <div>
               <h4 className="text-xs font-black text-foreground">مسار التتبع الذكي للمشروع (Automatic Tracer)</h4>

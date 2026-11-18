@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import {
   RotateCcw,
   CheckCircle2,
-  Sparkles,
   FileCheck,
   AlertTriangle,
   UploadCloud,
@@ -182,7 +181,7 @@ export function RestoreHubDialog({
               <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-card to-amber-500/5 p-4 space-y-3 relative overflow-hidden shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <FileCheck className="h-3.5 w-3.5" />
                     <span>النسخة المحددة للاستعادة</span>
                   </span>
                   <span className="text-[11px] font-bold text-muted-foreground">

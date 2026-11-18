@@ -1,28 +1,29 @@
-import { useState, useMemo, useEffect, useDeferredValue } from "react";
+import React, { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Search,
   UserPlus,
   Users,
   Phone,
+  PhoneCall,
   MapPin,
-  PlusCircle,
+  Plus,
   Pencil,
   Trash2,
   X,
   CreditCard,
-  Building,
-  PhoneCall,
-  ExternalLink,
-  ShieldCheck,
-  ChevronDown,
+  Building2,
+  Receipt,
+  FolderKanban,
   Archive,
   ArchiveRestore,
   Wallet,
-  AlertTriangle,
-  FolderOpen,
+  AlertCircle,
+  RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
+import { Button } from "@/components/ui/button";
 import {
   useCustomers,
   addCustomer,
@@ -42,14 +43,15 @@ import { CustomerProfileModal } from "./CustomerProfileModal";
 import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
 import { playTapSound, playDeleteSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const TABS: { key: string; label: string }[] = [
   { key: "all", label: "كل العملاء" },
+  { key: "debtors", label: "العملاء المدينون" },
   { key: "agency", label: "وكالات دعاية (أ)" },
   { key: "company", label: "شركات تجارية (ب)" },
   { key: "individual", label: "زبون عابر / نقدي" },
   { key: "internal", label: "تشغيل داخلي" },
-  { key: "debtors", label: "العملاء المدينون" },
   { key: "archived", label: "المؤرشفين" },
 ];
 
@@ -60,6 +62,7 @@ export function CustomersPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
+  const [loadingBalances, setLoadingBalances] = useState(false);
 
   // Live customer balances map from SQLite transactions
   const [liveBalances, setLiveBalances] = useState<
@@ -75,11 +78,14 @@ export function CustomersPage() {
   const [invoiceTargetCustomer, setInvoiceTargetCustomer] = useState<CustomerRecord | null>(null);
 
   const loadLiveBalances = async () => {
+    setLoadingBalances(true);
     try {
       const map = await getAllCustomerFinancialSummaries();
       setLiveBalances(map);
     } catch (err) {
       console.warn("[CustomersPage] failed to load live balances:", err);
+    } finally {
+      setLoadingBalances(false);
     }
   };
 
@@ -139,15 +145,19 @@ export function CustomersPage() {
 
     let totalSpent = 0;
     let totalDebt = 0;
+    let debtorsCount = 0;
 
     for (const c of activeCustomers) {
       const live = liveBalances[c.id];
       if (live) {
         totalSpent += live.invoiced;
         totalDebt += live.outstanding;
+        if (live.outstanding > 0.009) debtorsCount++;
       } else {
         totalSpent += c.totalSpent || 0;
-        totalDebt += c.balance > 0 ? c.balance : 0;
+        const curDebt = c.balance > 0 ? c.balance : 0;
+        totalDebt += curDebt;
+        if (curDebt > 0.009) debtorsCount++;
       }
     }
 
@@ -158,8 +168,10 @@ export function CustomersPage() {
       total: activeCustomers.length,
       agencyCount,
       companyCount,
+      commercialCount: agencyCount + companyCount,
       totalSpent,
       totalDebt,
+      debtorsCount,
     };
   }, [customers, liveBalances]);
 
@@ -230,16 +242,16 @@ export function CustomersPage() {
   return (
     <PageShell>
       <main
-        className="w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-5 min-w-0 scroll-smooth touch-pan-y pb-24 md:pb-10"
+        className="w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-5 min-w-0 scroll-smooth touch-pan-y pb-28 md:pb-12"
         dir="rtl"
       >
-        <div className="mx-auto max-w-7xl space-y-3 sm:space-y-4 w-full max-w-full">
-          {/* 1. ترويسة الصفحة التنفيذية المدمجة */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-border/70 shadow-2xs border-r-4 border-r-primary">
+        <div className="mx-auto max-w-7xl space-y-3.5 sm:space-y-4 w-full">
+          {/* 1. ترويسة الصفحة التنفيذية المعتمدة لشركة T.A */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 sm:p-4 rounded-2xl border border-border/70 shadow-2xs border-r-4 border-r-primary">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
-                  <Users className="h-4 w-4" />
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                  <Users className="h-4.5 w-4.5" />
                 </span>
                 <h1 className="text-base sm:text-lg font-black text-foreground tracking-tight">
                   دليل العملاء والحسابات المالية
@@ -254,24 +266,39 @@ export function CustomersPage() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  playTapSound();
+                  void loadLiveBalances();
+                }}
+                disabled={loadingBalances}
+                aria-label="تحديث الأرصدة"
+                className="h-9 w-9 rounded-xl p-0 text-muted-foreground border-border/80 hover:bg-secondary cursor-pointer"
+              >
+                <RefreshCw className={cn("h-4 w-4", loadingBalances && "animate-spin")} />
+              </Button>
+
+              <Button
                 type="button"
                 onClick={() => {
                   playTapSound();
                   setEditingCustomer(null);
                   setDialogOpen(true);
                 }}
-                className="h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.98] transition-all w-full sm:w-auto inline-flex items-center justify-center cursor-pointer"
+                className="h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.97] transition-all touch-manipulation cursor-pointer"
               >
                 <UserPlus className="h-4 w-4" />
                 <span>إضافة عميل جديد</span>
-              </button>
+              </Button>
             </div>
           </div>
 
-          {/* 2. مؤشرات الأداء المالي للعملاء (KPI Grid) - محسوبة لحظياً من قاعدة البيانات */}
+          {/* 2. مؤشرات الأداء المالي (KPI Cards Grid) - مطابقة 100% لفلسفة T.A */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs space-y-1">
+            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5 text-primary" />
                 <span>إجمالي العملاء النشطين</span>
@@ -281,19 +308,19 @@ export function CustomersPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-                <Building className="h-3.5 w-3.5" />
-                <span>وكالات الدعاية (أ)</span>
+            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
+              <span className="text-[11px] font-bold text-[#C5A059] flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                <span>الوكالات والشركات</span>
               </span>
-              <p className="font-mono text-lg sm:text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums">
-                {stats.agencyCount}
+              <p className="font-mono text-lg sm:text-xl font-black text-[#C5A059] tabular-nums">
+                {stats.commercialCount}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs space-y-1">
+            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
-                <CreditCard className="h-3.5 w-3.5 text-[#C5A059]" />
+                <Receipt className="h-3.5 w-3.5 text-primary" />
                 <span>إجمالي الفواتير والمطالبات</span>
               </span>
               <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
@@ -302,10 +329,10 @@ export function CustomersPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/[0.04] p-3 sm:p-3.5 shadow-2xs space-y-1">
+            <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 sm:p-3.5 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <span>المديونيات المستحقة الفعلية</span>
+                <Wallet className="h-3.5 w-3.5" />
+                <span>المديونيات القائمة المستحقة</span>
               </span>
               <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
                 {formatNumber(stats.totalDebt)}{" "}
@@ -315,9 +342,9 @@ export function CustomersPage() {
           </div>
 
           {/* 3. شريط البحث والتصنيف والفلترة السريعة */}
-          <div className="rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-3 sm:p-4 shadow-2xs space-y-3">
+          <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-4 shadow-2xs space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* حقل البحث بالاسم أو الهاتف */}
+              {/* حقل البحث */}
               <div className="relative flex-1 max-w-md">
                 <Search className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -325,7 +352,7 @@ export function CustomersPage() {
                   placeholder="بحث باسم العميل، الهاتف، أو العنوان..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-border/80 bg-secondary/40 pr-9 pl-8 text-xs font-bold text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary focus:bg-background focus:ring-1 focus:ring-primary"
+                  className="h-10 w-full rounded-xl border border-border/80 bg-secondary/35 pr-9 pl-8 text-xs font-bold text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-primary focus:bg-background focus:ring-1 focus:ring-primary"
                 />
                 {search && (
                   <button
@@ -341,7 +368,7 @@ export function CustomersPage() {
                 )}
               </div>
 
-              {/* تبويبات الفلترة حسب تصنيف العميل والمديونيات والمؤرشفين */}
+              {/* تبويبات الفلترة المعتمدة */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                 {TABS.map((tab) => {
                   const active = typeFilter === tab.key;
@@ -353,10 +380,10 @@ export function CustomersPage() {
                         playTapSound();
                         setTypeFilter(tab.key);
                       }}
-                      className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black transition-all cursor-pointer touch-manipulation active:scale-95 ${
+                      className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer touch-manipulation active:scale-95 ${
                         active
-                          ? "bg-primary text-white shadow-xs shadow-primary/30"
-                          : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/60"
+                          ? "bg-primary text-white shadow-2xs"
+                          : "bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
                       }`}
                     >
                       {tab.label}
@@ -369,23 +396,23 @@ export function CustomersPage() {
             {/* عرض الجدول للشاشات المتوسطة والكبيرة */}
             <div className="hidden md:block overflow-x-auto pt-1">
               {filtered.length === 0 ? (
-                <div className="py-14 text-center text-xs font-bold text-muted-foreground/70 border border-dashed border-border/60 rounded-xl">
+                <div className="py-14 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
                   لا يوجد عملاء يطابقون معايير البحث
                 </div>
               ) : (
                 <table className="w-full text-right text-xs">
                   <thead>
                     <tr className="border-b border-border/70 text-muted-foreground text-[11px]">
-                      <th className="py-2.5 pr-3 font-black">العميل</th>
-                      <th className="py-2.5 px-3 font-bold">الهاتف</th>
-                      <th className="py-2.5 px-3 font-bold">التصنيف</th>
-                      <th className="py-2.5 px-3 font-bold">العنوان</th>
-                      <th className="py-2.5 px-3 font-mono font-black">إجمالي الفواتير</th>
-                      <th className="py-2.5 px-3 font-mono font-black">الرصيد / المستحق</th>
-                      <th className="py-2.5 pl-3 font-bold text-center">الإجراءات</th>
+                      <th className="py-3 pr-3.5 font-black">العميل</th>
+                      <th className="py-3 px-3 font-bold">الهاتف</th>
+                      <th className="py-3 px-3 font-bold">التصنيف</th>
+                      <th className="py-3 px-3 font-bold">العنوان</th>
+                      <th className="py-3 px-3 font-mono font-black">إجمالي الفواتير</th>
+                      <th className="py-3 px-3 font-mono font-black">الرصيد / المستحق</th>
+                      <th className="py-3 pl-3.5 font-bold text-center">الإجراءات</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/50">
+                  <tbody className="divide-y divide-border/40">
                     {visibleCustomers.map((c) => {
                       const cfg = CUSTOMER_TYPE_CONFIG[c.type] || CUSTOMER_TYPE_CONFIG.individual;
                       const live = liveBalances[c.id];
@@ -396,27 +423,27 @@ export function CustomersPage() {
                       return (
                         <tr
                           key={c.id}
-                          className="hover:bg-muted/30 transition-colors cursor-pointer group"
+                          className="hover:bg-muted/20 transition-colors cursor-pointer group"
                           onClick={() => handleOpenProfile(c)}
                         >
-                          <td className="py-3 pr-3 font-bold text-foreground">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-black text-xs text-foreground group-hover:text-primary transition-colors">
+                          <td className="py-3 pr-3.5 font-bold text-foreground">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-sm text-foreground group-hover:text-primary transition-colors">
                                 {c.name}
                               </span>
                               {hasOverdue && (
-                                <span className="rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 px-1.5 py-0.2 text-[9px] font-black">
+                                <span className="rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 px-2 py-0.2 text-[9px] font-black">
                                   متأخرات
                                 </span>
                               )}
                               {c.isArchived && (
-                                <span className="rounded-full bg-muted text-muted-foreground border border-border px-1.5 py-0.2 text-[9px] font-bold">
+                                <span className="rounded-full bg-muted text-muted-foreground border border-border px-2 py-0.2 text-[9px] font-bold">
                                   مؤرشف
                                 </span>
                               )}
                             </div>
                             {c.notes && (
-                              <div className="text-[10px] text-muted-foreground truncate max-w-xs font-normal">
+                              <div className="text-[11px] text-muted-foreground truncate max-w-xs font-normal mt-0.5">
                                 {c.notes}
                               </div>
                             )}
@@ -425,7 +452,7 @@ export function CustomersPage() {
                             {c.phone ? (
                               <a
                                 href={`tel:${c.phone}`}
-                                className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-primary hover:underline"
+                                className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-primary hover:underline"
                                 dir="ltr"
                               >
                                 <PhoneCall className="h-3 w-3 text-primary/70" />
@@ -437,12 +464,12 @@ export function CustomersPage() {
                           </td>
                           <td className="py-3 px-3">
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black border ${cfg.bg} ${cfg.color} border-current/20`}
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black border ${cfg.bg} ${cfg.color}`}
                             >
                               {cfg.label}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-muted-foreground text-[11px]">
+                          <td className="py-3 px-3 text-muted-foreground text-xs">
                             {c.address || "—"}
                           </td>
                           <td className="py-3 px-3 font-mono font-black text-foreground tabular-nums">
@@ -455,54 +482,61 @@ export function CustomersPage() {
                                 {formatNumber(outstanding)} ج.س عليه
                               </span>
                             ) : (
-                              <span className="text-emerald-600 font-bold text-[11px]">
+                              <span className="text-emerald-600 font-bold text-xs">
                                 متزن (0)
                               </span>
                             )}
                           </td>
-                          <td className="py-3 pl-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className="py-3 pl-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="inline-flex items-center gap-1.5 justify-center">
-                              <button
+                              <Button
                                 type="button"
+                                size="sm"
                                 onClick={() => handleOpenProfile(c)}
                                 title="عرض الملف المالي والتجاري للعميل"
-                                className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-black text-primary hover:bg-primary hover:text-white transition active:scale-95 cursor-pointer"
+                                className="h-8 px-3 rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-white border border-primary/20 text-xs font-black transition-all active:scale-95 cursor-pointer"
                               >
-                                <FolderOpen className="h-3 w-3" />
+                                <FolderKanban className="h-3.5 w-3.5" />
                                 <span>الملف المالي</span>
-                              </button>
+                              </Button>
 
-                              <button
+                              <Button
                                 type="button"
+                                size="sm"
+                                variant="outline"
                                 onClick={() => handleOpenInvoiceCreation(c)}
                                 title="إصدار فاتورة جديدة لهذا العميل"
-                                className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/80 px-2 py-1 text-[11px] font-bold text-foreground hover:bg-primary hover:text-white transition active:scale-95 cursor-pointer"
+                                className="h-8 px-2.5 rounded-xl border-border/80 text-foreground hover:bg-secondary text-xs font-bold transition-all active:scale-95 cursor-pointer"
                               >
-                                <PlusCircle className="h-3 w-3" />
+                                <Plus className="h-3.5 w-3.5" />
                                 <span>فاتورة</span>
-                              </button>
+                              </Button>
 
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => {
                                   playTapSound();
                                   setEditingCustomer(c);
                                   setDialogOpen(true);
                                 }}
                                 title="تعديل البيانات"
-                                className="rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer transition"
+                                className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer transition"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
-                              </button>
+                              </Button>
 
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => handleDelete(c)}
                                 title="حذف"
-                                className="rounded-lg p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 cursor-pointer transition"
+                                className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 cursor-pointer transition"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -516,7 +550,7 @@ export function CustomersPage() {
             {/* عرض البطاقات للهواتف الذكية (Mobile Cards) */}
             <div className="space-y-2.5 md:hidden pt-1">
               {filtered.length === 0 ? (
-                <div className="py-12 text-center text-xs font-bold text-muted-foreground/70 border border-dashed border-border/60 rounded-xl">
+                <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
                   لا يوجد عملاء يطابقون معايير البحث
                 </div>
               ) : (
@@ -530,16 +564,16 @@ export function CustomersPage() {
                     <div
                       key={c.id}
                       onClick={() => handleOpenProfile(c)}
-                      className="rounded-2xl border border-border/70 bg-secondary/30 p-3.5 space-y-2.5 shadow-2xs cursor-pointer active:scale-[0.99] transition"
+                      className="rounded-2xl border border-border/70 bg-card p-3.5 space-y-3 shadow-2xs cursor-pointer active:scale-[0.99] transition-all"
                     >
-                      <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2">
+                      <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2.5">
                         <div>
-                          <p className="font-black text-foreground text-sm">{c.name}</p>
+                          <p className="font-black text-foreground text-sm tracking-tight">{c.name}</p>
                           {c.phone && (
                             <a
                               href={`tel:${c.phone}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-[11px] text-primary font-mono font-bold mt-0.5"
+                              className="inline-flex items-center gap-1.5 text-xs text-primary font-mono font-bold mt-1"
                               dir="ltr"
                             >
                               <PhoneCall className="h-3 w-3" />
@@ -548,22 +582,22 @@ export function CustomersPage() {
                           )}
                         </div>
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-black border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-black border ${cfg.bg} ${cfg.color} shrink-0`}
                         >
                           {cfg.label}
                         </span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-[10px] text-muted-foreground font-bold">إجمالي الفواتير</span>
-                          <p className="font-mono font-bold text-foreground tabular-nums">
+                        <div className="rounded-xl border border-border/60 bg-secondary/30 p-2">
+                          <span className="text-[10px] text-muted-foreground font-bold block">إجمالي الفواتير</span>
+                          <p className="font-mono font-bold text-foreground tabular-nums mt-0.5">
                             {formatNumber(totalInvoiced)} ج.س
                           </p>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-muted-foreground font-bold">الرصيد / المستحق</span>
-                          <p className="font-mono font-black tabular-nums">
+                        <div className="rounded-xl border border-border/60 bg-secondary/30 p-2">
+                          <span className="text-[10px] text-muted-foreground font-bold block">الرصيد / المستحق</span>
+                          <p className="font-mono font-black tabular-nums mt-0.5">
                             {outstanding > 0.009 ? (
                               <span className="text-rose-600 dark:text-rose-400">
                                 {formatNumber(outstanding)} ج.س عليه
@@ -576,45 +610,54 @@ export function CustomersPage() {
                       </div>
 
                       <div
-                        className="pt-2 border-t border-border/50 flex items-center justify-between gap-2"
+                        className="pt-2.5 border-t border-border/50 flex items-center justify-between gap-2"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleOpenProfile(c)}
-                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-xs font-black text-white shadow-xs active:scale-95 transition cursor-pointer"
+                          className="flex-1 h-9 rounded-xl bg-primary hover:bg-primary/90 text-white font-black text-xs gap-1.5 shadow-xs active:scale-[0.97] touch-manipulation cursor-pointer"
                         >
-                          <FolderOpen className="h-3.5 w-3.5" />
+                          <FolderKanban className="h-4 w-4" />
                           <span>فتح الملف المالي</span>
-                        </button>
-                        <button
+                        </Button>
+
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleOpenInvoiceCreation(c)}
-                          className="rounded-xl border border-border/70 bg-card p-2 text-foreground hover:bg-secondary cursor-pointer transition active:scale-90"
+                          className="h-9 w-9 p-0 rounded-xl border-border/80 text-foreground hover:bg-secondary active:scale-90 cursor-pointer"
                           title="إصدار فاتورة"
                         >
-                          <PlusCircle className="h-3.5 w-3.5 text-primary" />
-                        </button>
-                        <button
+                          <Plus className="h-4 w-4 text-primary" />
+                        </Button>
+
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => {
                             playTapSound();
                             setEditingCustomer(c);
                             setDialogOpen(true);
                           }}
-                          className="rounded-xl border border-border/70 bg-card p-2 text-foreground hover:bg-secondary cursor-pointer transition active:scale-90"
+                          className="h-9 w-9 p-0 rounded-xl border-border/80 text-foreground hover:bg-secondary active:scale-90 cursor-pointer"
                           title="تعديل البيانات"
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
+                        </Button>
+
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleDelete(c)}
-                          className="rounded-xl border border-border/70 bg-card p-2 text-rose-500 hover:bg-rose-500/10 cursor-pointer transition active:scale-90"
+                          className="h-9 w-9 p-0 rounded-xl border-border/80 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 active:scale-90 cursor-pointer"
                           title="حذف"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   );
@@ -624,19 +667,20 @@ export function CustomersPage() {
 
             {filtered.length > visibleCount && (
               <div className="flex justify-center pt-2">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => {
                     playTapSound();
                     setVisibleCount((prev) => prev + 30);
                   }}
-                  className="rounded-xl px-5 py-2 text-xs font-bold gap-2 border border-border/80 text-foreground hover:bg-muted inline-flex items-center cursor-pointer transition active:scale-95"
+                  className="rounded-xl px-5 py-2 text-xs font-bold gap-2 border-border/80 text-foreground hover:bg-secondary cursor-pointer transition active:scale-95"
                 >
                   <ChevronDown className="h-4 w-4" />
                   <span>
                     عرض المزيد من العملاء (المتبقي: {filtered.length - visibleCount})
                   </span>
-                </button>
+                </Button>
               </div>
             )}
           </div>

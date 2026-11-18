@@ -39,23 +39,23 @@ export interface CustomerRecord {
 export const CUSTOMER_TYPE_CONFIG: Record<CustomerType, { label: string; color: string; bg: string }> = {
   agency: {
     label: "وكالة دعاية (أ)",
-    color: "text-purple-600 dark:text-purple-400",
-    bg: "bg-purple-500/10",
+    color: "text-primary",
+    bg: "bg-primary/10 border-primary/20",
   },
   company: {
     label: "شركة تجارية (ب)",
-    color: "text-blue-600 dark:text-blue-400",
-    bg: "bg-blue-500/10",
+    color: "text-[#C5A059]",
+    bg: "bg-[#C5A059]/10 border-[#C5A059]/20",
   },
   individual: {
     label: "زبون عابر / نقدي",
-    color: "text-emerald-600 dark:text-emerald-400",
-    bg: "bg-emerald-500/10",
+    color: "text-slate-700 dark:text-slate-300",
+    bg: "bg-slate-500/10 border-slate-500/20",
   },
   internal: {
     label: "تشغيل داخلي",
-    color: "text-amber-600 dark:text-amber-400",
-    bg: "bg-amber-500/10",
+    color: "text-muted-foreground",
+    bg: "bg-secondary border-border/80",
   },
 };
 

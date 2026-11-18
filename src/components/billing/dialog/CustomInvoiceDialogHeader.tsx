@@ -1,6 +1,6 @@
 import React from "react";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, TrendingUp, ShoppingBag, Eye, Edit3, Sparkles } from "lucide-react";
+import { FileText, TrendingUp, ShoppingBag, Eye, Edit3, Info } from "lucide-react";
 import { INVOICE_TYPE_LABELS, type CustomInvoiceType, type CustomInvoice } from "@/lib/billing/types";
 import { playTapSound } from "@/lib/soundEffects";
 
@@ -119,7 +119,7 @@ export function CustomInvoiceDialogHeader({
 
         {/* دليل إرشادي سريع (UI/UX Guide) */}
         <div className="hidden lg:flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
-          <Sparkles className="h-3 w-3 text-[#C5A059]" />
+          <Info className="h-3 w-3 text-[#C5A059]" />
           <span>
             {activeTab === "edit"
               ? "اضغط «معاينة الفاتورة الرسمية» لمشاهدة القالب المطبوع فوراً"

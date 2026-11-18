@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Plus, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -306,7 +306,7 @@ export function SupplierPaymentDialog({ open, onOpenChange, initialSupplierId, i
                     onClick={autoAllocate}
                     className="h-7 rounded-lg gap-1 text-[10px] font-black text-primary px-2"
                   >
-                    <Sparkles className="h-3 w-3" />
+                    <SlidersHorizontal className="h-3 w-3" />
                     توزيع تلقائي
                   </Button>
                 )}

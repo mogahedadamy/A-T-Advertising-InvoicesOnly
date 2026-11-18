@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Sparkles, Package, Briefcase, Wrench, FileSpreadsheet, ChevronDown, ChevronUp } from "lucide-react";
+import { Layers, Package, Briefcase, Wrench, FileSpreadsheet, ChevronDown, ChevronUp } from "lucide-react";
 import { playAddSound, playTapSound } from "@/lib/soundEffects";
 
 export interface ItemPreset {
@@ -34,7 +34,7 @@ export const UNIVERSAL_ITEM_PRESETS: ItemPreset[] = [
 ];
 
 const CATEGORIES = [
-  { id: "all", label: "الكل", icon: Sparkles },
+  { id: "all", label: "الكل", icon: Layers },
   { id: "goods", label: "بضائع وتوريدات", icon: Package },
   { id: "services", label: "خدمات وأعمال", icon: Briefcase },
   { id: "maintenance", label: "صيانة وتشغيل", icon: Wrench },
@@ -71,7 +71,7 @@ export function CustomInvoiceQuickPresets({ onSelectPreset }: Props) {
         className="w-full px-3 py-2 flex items-center justify-between text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition cursor-pointer"
       >
         <div className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          <Layers className="h-3.5 w-3.5 text-primary" />
           <span>قوالب بنود وخدمات تجارية جاهزة (إدراج سريع بنقرة واحدة)</span>
         </div>
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">

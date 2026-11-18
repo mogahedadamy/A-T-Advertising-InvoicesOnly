@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
   User,
-  Sparkles,
   Check,
   X,
   ShieldCheck,
@@ -128,7 +127,7 @@ export function UserProfileDialog({
               {currentInitials}
             </div>
             <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow ring-2 ring-card">
-              <Sparkles className="h-3 w-3" />
+              <Check className="h-3 w-3" />
             </span>
           </div>
         </div>

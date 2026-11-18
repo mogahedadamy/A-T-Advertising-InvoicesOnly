@@ -4,15 +4,15 @@ import {
   Phone,
   PhoneCall,
   MapPin,
-  Building,
+  Building2,
   Calendar,
   FileText,
   CreditCard,
-  PlusCircle,
+  Plus,
   Printer,
   Share2,
-  FolderGit2,
-  AlertTriangle,
+  FolderKanban,
+  AlertCircle,
   CheckCircle2,
   Clock,
   Pencil,
@@ -22,9 +22,9 @@ import {
   ChevronRight,
   ExternalLink,
   Wallet,
-  ArrowUpRight,
   ArrowDownLeft,
   Filter,
+  Check,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -84,7 +84,7 @@ export function CustomerProfileModal({
   const [isLoading, setIsLoading] = useState(true);
 
   // Invoice tab sub-filters
-  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "paid" | "partial" | "unpaid" | "overdue">("all");
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "unpaid" | "partial" | "overdue" | "paid">("all");
 
   // Modals inside customer profile
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -241,20 +241,20 @@ export function CustomerProfileModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           dir="rtl"
-          className="max-w-4xl w-[96vw] max-h-[92vh] flex flex-col p-3 sm:p-5 rounded-3xl bg-card border-border shadow-2xl overflow-hidden gap-3"
+          className="max-w-4xl w-[96vw] max-h-[92vh] flex flex-col p-0 rounded-3xl bg-card border border-border/80 shadow-2xl overflow-hidden gap-0"
         >
-          {/* 1. Header: Customer Identity & Actions */}
-          <div className="border-b border-border/60 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+          {/* 1. Header: Customer Identity & Toolbar */}
+          <div className="p-4 sm:p-5 border-b border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
-                  <Building className="h-5 w-5" />
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                  <Building2 className="h-5 w-5" />
                 </span>
-                <h2 className="text-base sm:text-lg font-black text-foreground">
+                <h2 className="text-base sm:text-lg font-black text-foreground tracking-tight">
                   {customer.name}
                 </h2>
                 <span
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-black border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
+                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-black border ${cfg.bg} ${cfg.color} shrink-0`}
                 >
                   {cfg.label}
                 </span>
@@ -262,9 +262,9 @@ export function CustomerProfileModal({
                 {/* Status Badge */}
                 {financialProfile && (
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-black border ${financialProfile.statusBg} ${financialProfile.statusColor} shrink-0 flex items-center gap-1`}
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-black border ${financialProfile.statusBg} ${financialProfile.statusColor} shrink-0`}
                   >
-                    <span>{financialProfile.statusLabel}</span>
+                    {financialProfile.statusLabel}
                   </span>
                 )}
 
@@ -276,15 +276,15 @@ export function CustomerProfileModal({
               </div>
 
               {/* Contact info row */}
-              <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground font-medium">
                 {customer.phone ? (
                   <div className="flex items-center gap-2">
                     <a
                       href={`tel:${customer.phone}`}
-                      className="inline-flex items-center gap-1 text-primary font-mono font-bold hover:underline"
+                      className="inline-flex items-center gap-1.5 text-primary font-mono font-bold hover:underline"
                       dir="ltr"
                     >
-                      <PhoneCall className="h-3 w-3" />
+                      <PhoneCall className="h-3.5 w-3.5" />
                       <span>{customer.phone}</span>
                     </a>
                     <a
@@ -301,7 +301,7 @@ export function CustomerProfileModal({
                 )}
                 {customer.address && (
                   <span className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3 text-muted-foreground/80" />
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground/80" />
                     <span>{customer.address}</span>
                   </span>
                 )}
@@ -318,11 +318,11 @@ export function CustomerProfileModal({
                   playTapSound();
                   setEditDialogOpen(true);
                 }}
-                className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1 cursor-pointer"
+                className="h-8.5 px-3 rounded-xl text-xs font-bold gap-1.5 border-border/80 text-foreground hover:bg-secondary active:scale-[0.97] touch-manipulation cursor-pointer"
                 title="تعديل بيانات العميل"
               >
-                <Pencil className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">تعديل</span>
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>تعديل</span>
               </Button>
 
               <Button
@@ -330,11 +330,11 @@ export function CustomerProfileModal({
                 variant="outline"
                 size="sm"
                 onClick={handleArchiveToggle}
-                className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1 cursor-pointer"
+                className="h-8.5 px-3 rounded-xl text-xs font-bold gap-1.5 border-border/80 text-foreground hover:bg-secondary active:scale-[0.97] touch-manipulation cursor-pointer"
                 title={customer.isArchived ? "إلغاء الأرشفة" : "أرشفة العميل"}
               >
-                {customer.isArchived ? <ArchiveRestore className="h-3.5 w-3.5 text-primary" /> : <Archive className="h-3.5 w-3.5" />}
-                <span className="hidden sm:inline">{customer.isArchived ? "استعادة" : "أرشفة"}</span>
+                {customer.isArchived ? <ArchiveRestore className="h-3.5 w-3.5 text-primary" /> : <Archive className="h-3.5 w-3.5 text-muted-foreground" />}
+                <span>{customer.isArchived ? "استعادة" : "أرشفة"}</span>
               </Button>
 
               <Button
@@ -342,7 +342,7 @@ export function CustomerProfileModal({
                 variant="outline"
                 size="sm"
                 onClick={handleDeleteAttempt}
-                className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1 text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                className="h-8.5 w-8.5 p-0 rounded-xl text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/30 active:scale-[0.97] touch-manipulation cursor-pointer"
                 title="حذف العميل نهائياً"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -351,11 +351,11 @@ export function CustomerProfileModal({
           </div>
 
           {/* 2. Multi-Currency Financial KPI Bar & Currency Switcher */}
-          <div className="space-y-2 shrink-0">
+          <div className="p-4 sm:p-5 border-b border-border/60 space-y-2.5 shrink-0 bg-background/50">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-black text-muted-foreground flex items-center gap-1.5">
+              <span className="text-xs font-black text-foreground flex items-center gap-1.5">
                 <Wallet className="h-3.5 w-3.5 text-primary" />
-                <span>الملخص المالي حسب العملة:</span>
+                <span>الملخص المالي والذمم:</span>
               </span>
 
               {/* Currency Selector Pills */}
@@ -365,10 +365,10 @@ export function CustomerProfileModal({
                     key={cur}
                     type="button"
                     onClick={() => handleCurrencyChange(cur)}
-                    className={`px-2.5 py-0.5 rounded-lg text-[10.5px] font-mono font-black transition cursor-pointer ${
+                    className={`px-3 py-1 rounded-full text-xs font-mono font-black transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       selectedCurrency === cur
                         ? "bg-primary text-white shadow-2xs"
-                        : "bg-secondary text-muted-foreground hover:text-foreground"
+                        : "bg-secondary/70 text-muted-foreground hover:text-foreground border border-border/50"
                     }`}
                   >
                     {cur}
@@ -378,47 +378,47 @@ export function CustomerProfileModal({
             </div>
 
             {/* KPI Cards Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="rounded-xl border border-border/80 bg-secondary/30 p-2.5 space-y-0.5">
-                <span className="text-[10px] font-bold text-muted-foreground block">إجمالي الفواتير والمطالبات</span>
-                <p className="font-mono text-base font-black text-foreground tabular-nums">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground block">إجمالي الفواتير الصادرة</span>
+                <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
                   {formatNumber(currentSummary.totalInvoiced)}{" "}
                   <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
                 </p>
-                <span className="text-[9.5px] text-muted-foreground block">
-                  {currentSummary.totalInvoicesCount} فاتورة صادرة
+                <span className="text-[10px] text-muted-foreground block font-medium">
+                  {currentSummary.totalInvoicesCount} فاتورة
                 </span>
               </div>
 
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 space-y-0.5">
-                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">إجمالي المدفوع والمحصل</span>
-                <p className="font-mono text-base font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">إجمالي المبالغ المسددة</span>
+                <p className="font-mono text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
                   {formatNumber(currentSummary.totalPaid)}{" "}
                   <span className="text-[10px] font-normal">{selectedCurrency}</span>
                 </p>
-                <span className="text-[9.5px] text-emerald-700/80 dark:text-emerald-400/80 block">
+                <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 block font-medium">
                   {currentSummary.paidInvoicesCount} مسددة بالكامل
                 </span>
               </div>
 
-              <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-2.5 space-y-0.5">
-                <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">المبالغ المستحقة (دين)</span>
-                <p className="font-mono text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">
+              <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">المبالغ المستحقة (ديون)</span>
+                <p className="font-mono text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">
                   {formatNumber(currentSummary.outstanding)}{" "}
                   <span className="text-[10px] font-normal">{selectedCurrency}</span>
                 </p>
-                <span className="text-[9.5px] text-rose-700/80 dark:text-rose-400/80 block">
+                <span className="text-[10px] text-rose-700/80 dark:text-rose-400/80 block font-medium">
                   {currentSummary.unpaidInvoicesCount} غير مسددة | {currentSummary.overdueInvoicesCount} متأخرة
                 </span>
               </div>
 
-              <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-2.5 space-y-0.5">
-                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 block">أرصدة مقدمة / دفعات دائنة</span>
-                <p className="font-mono text-base font-black text-blue-600 dark:text-blue-400 tabular-nums">
+              <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground block">أرصدة مقدمة / دفعات دائنة</span>
+                <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
                   {formatNumber(currentSummary.advanceCredit)}{" "}
-                  <span className="text-[10px] font-normal">{selectedCurrency}</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
                 </p>
-                <span className="text-[9.5px] text-blue-700/80 dark:text-blue-400/80 block">
+                <span className="text-[10px] text-muted-foreground block font-medium">
                   رصيد لصالح العميل
                 </span>
               </div>
@@ -426,8 +426,8 @@ export function CustomerProfileModal({
           </div>
 
           {/* 3. Direct Actions Bar inside Profile */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-y border-border/50 py-2 shrink-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-border/60 bg-muted/15 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 type="button"
                 size="sm"
@@ -440,9 +440,9 @@ export function CustomerProfileModal({
                     toast.info("يرجى فتح صفحة الفواتير لإصدار فاتورة");
                   }
                 }}
-                className="h-8 px-3 rounded-xl text-xs font-black gap-1.5 bg-primary text-white shadow-2xs cursor-pointer active:scale-95"
+                className="h-9 px-4 rounded-xl text-xs font-black gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.97] touch-manipulation cursor-pointer"
               >
-                <PlusCircle className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
                 <span>إصدار فاتورة جديدة</span>
               </Button>
 
@@ -455,24 +455,24 @@ export function CustomerProfileModal({
                   setTargetReceiptInvoiceId(null);
                   setReceiptDialogOpen(true);
                 }}
-                className="h-8 px-3 rounded-xl text-xs font-black gap-1.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer active:scale-95"
+                className="h-9 px-4 rounded-xl text-xs font-black gap-1.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-[0.97] touch-manipulation cursor-pointer"
               >
-                <ArrowDownLeft className="h-3.5 w-3.5" />
+                <ArrowDownLeft className="h-4 w-4" />
                 <span>تحصيل دفعة (سند قبض)</span>
               </Button>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={isExportingStatement || !statement}
                 onClick={handlePrintStatement}
-                className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1 cursor-pointer"
+                className="h-9 px-3 rounded-xl text-xs font-bold gap-1.5 border-border/80 text-foreground hover:bg-secondary active:scale-[0.97] touch-manipulation cursor-pointer"
                 title="طباعة كشف الحساب المالي"
               >
-                <Printer className="h-3.5 w-3.5" />
+                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="hidden sm:inline">طباعة الكشف</span>
               </Button>
 
@@ -482,7 +482,7 @@ export function CustomerProfileModal({
                 size="sm"
                 disabled={isExportingStatement || !statement}
                 onClick={handleShareStatement}
-                className="h-8 px-2.5 rounded-xl text-xs font-bold gap-1 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
+                className="h-9 px-3 rounded-xl text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.97] touch-manipulation cursor-pointer"
                 title="مشاركة كشف الحساب عبر واتساب"
               >
                 <Share2 className="h-3.5 w-3.5" />
@@ -492,12 +492,12 @@ export function CustomerProfileModal({
           </div>
 
           {/* 4. Tab Navigation */}
-          <div className="flex items-center gap-1 border-b border-border/50 pb-1 text-xs font-black shrink-0">
+          <div className="px-4 sm:px-5 border-b border-border/60 bg-card flex items-center gap-1.5 text-xs font-black shrink-0 overflow-x-auto scrollbar-none py-2">
             {[
-              { key: "invoices", label: `الفواتير (${invoices.length})` },
-              { key: "statement", label: `كشف الحساب (${statement?.lines.length || 0})` },
-              { key: "projects", label: `المشاريع (${projects.length})` },
-              { key: "info", label: "بيانات العميل" },
+              { key: "invoices", label: `سجل الفواتير (${invoices.length})` },
+              { key: "statement", label: `كشف الحساب المالي (${statement?.lines.length || 0})` },
+              { key: "projects", label: `المشاريع المرتبطة (${projects.length})` },
+              { key: "info", label: "بيانات العميل والافتتاحي" },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -506,7 +506,7 @@ export function CustomerProfileModal({
                   playTapSound();
                   setActiveTab(tab.key as any);
                 }}
-                className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full transition-all cursor-pointer touch-manipulation active:scale-95 shrink-0 ${
                   activeTab === tab.key
                     ? "bg-primary text-white shadow-2xs"
                     : "text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -518,12 +518,12 @@ export function CustomerProfileModal({
           </div>
 
           {/* 5. Tab Content Area (Scrollable) */}
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+          <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-5">
             {/* ── TAB 1: INVOICES ── */}
             {activeTab === "invoices" && (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {/* Status sub-filter pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-none">
                   {[
                     { key: "all", label: "كل الفواتير" },
                     { key: "unpaid", label: "غير مسددة" },
@@ -534,10 +534,13 @@ export function CustomerProfileModal({
                     <button
                       key={sub.key}
                       type="button"
-                      onClick={() => setInvoiceStatusFilter(sub.key as any)}
-                      className={`px-2.5 py-1 rounded-lg font-bold shrink-0 transition cursor-pointer ${
+                      onClick={() => {
+                        playTapSound();
+                        setInvoiceStatusFilter(sub.key as any);
+                      }}
+                      className={`px-3 py-1 rounded-full font-bold shrink-0 transition-all cursor-pointer ${
                         invoiceStatusFilter === sub.key
-                          ? "bg-secondary text-foreground border border-border"
+                          ? "bg-secondary text-foreground border border-border shadow-2xs"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -555,7 +558,7 @@ export function CustomerProfileModal({
                     {filteredInvoices.map((inv) => (
                       <div
                         key={inv.id}
-                        className="rounded-2xl border border-border/70 bg-secondary/20 hover:bg-secondary/40 transition p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                        className="rounded-2xl border border-border/70 bg-card hover:bg-secondary/30 transition-all p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
@@ -563,18 +566,18 @@ export function CustomerProfileModal({
                               {inv.reference || `#${inv.serial}`}
                             </span>
                             <span
-                              className={`rounded-full px-2 py-0.2 text-[9.5px] font-black border ${inv.statusBadgeColor}`}
+                              className={`rounded-full px-2.5 py-0.5 text-[9.5px] font-black border ${inv.statusBadgeColor}`}
                             >
                               {inv.statusLabel}
                             </span>
                             {inv.projectReference && (
-                              <span className="text-[10px] font-mono bg-secondary px-2 py-0.5 rounded-md text-muted-foreground">
+                              <span className="text-[10px] font-mono bg-secondary px-2 py-0.5 rounded-md text-muted-foreground border border-border/60">
                                 {inv.projectReference}
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span>التاريخ: {inv.date}</span>
                             {inv.dueDate && (
                               <span className={inv.status === "overdue" ? "text-rose-600 font-bold" : ""}>
@@ -587,13 +590,13 @@ export function CustomerProfileModal({
                         {/* Amounts & Row Actions */}
                         <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
                           <div className="text-right sm:text-left">
-                            <div className="font-mono text-xs font-black text-foreground">
+                            <div className="font-mono text-sm font-black text-foreground tabular-nums">
                               {formatNumber(inv.totalAmount)}{" "}
-                              <span className="text-[10px] font-normal">{inv.currency}</span>
+                              <span className="text-[10px] font-normal text-muted-foreground">{inv.currency}</span>
                             </div>
-                            <div className="text-[10px] text-muted-foreground">
+                            <div className="text-[10.5px]">
                               {inv.remainingAmount > 0 ? (
-                                <span className="text-rose-600 dark:text-rose-400 font-bold">
+                                <span className="text-rose-600 dark:text-rose-400 font-bold font-mono tabular-nums">
                                   متبقي: {formatNumber(inv.remainingAmount)} {inv.currency}
                                 </span>
                               ) : (
@@ -602,7 +605,7 @@ export function CustomerProfileModal({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5">
                             {inv.remainingAmount > 0 && (
                               <Button
                                 type="button"
@@ -613,7 +616,7 @@ export function CustomerProfileModal({
                                   setTargetReceiptInvoiceId(inv.id);
                                   setReceiptDialogOpen(true);
                                 }}
-                                className="h-7 px-2 rounded-lg text-[10.5px] font-bold text-emerald-600 border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15"
+                                className="h-8 px-2.5 rounded-xl text-xs font-bold text-emerald-600 border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15 cursor-pointer active:scale-95"
                                 title="تحصيل دفعة لهذه الفاتورة"
                               >
                                 تحصيل
@@ -625,10 +628,10 @@ export function CustomerProfileModal({
                               size="sm"
                               variant="ghost"
                               onClick={() => handleInvoicePrint(inv.id)}
-                              className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground"
+                              className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
                               title="طباعة الفاتورة"
                             >
-                              <Printer className="h-3.5 w-3.5" />
+                              <Printer className="h-4 w-4" />
                             </Button>
 
                             <Button
@@ -636,10 +639,10 @@ export function CustomerProfileModal({
                               size="sm"
                               variant="ghost"
                               onClick={() => handleInvoiceShare(inv.id)}
-                              className="h-7 w-7 p-0 rounded-lg text-emerald-600 hover:bg-emerald-500/10"
+                              className="h-8 w-8 p-0 rounded-xl text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
                               title="مشاركة الفاتورة واتساب"
                             >
-                              <Share2 className="h-3.5 w-3.5" />
+                              <Share2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -650,45 +653,45 @@ export function CustomerProfileModal({
               </div>
             )}
 
-            {/* ── TAB 2: STATEMENT (كشف الحساب) ── */}
+            {/* ── TAB 2: STATEMENT (كشف الحساب المحاسبي) ── */}
             {activeTab === "statement" && (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-border/70 overflow-hidden bg-card">
+                <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-2xs">
                   <table className="w-full text-right text-xs">
                     <thead>
-                      <tr className="bg-secondary/60 text-muted-foreground text-[10.5px] border-b border-border/70">
-                        <th className="py-2.5 px-3 font-black">التاريخ</th>
-                        <th className="py-2.5 px-3 font-black">البيان والحركة</th>
-                        <th className="py-2.5 px-3 font-black text-center">المرجع</th>
-                        <th className="py-2.5 px-3 font-black text-left" dir="ltr">مدين (+)</th>
-                        <th className="py-2.5 px-3 font-black text-left" dir="ltr">دائن (-)</th>
-                        <th className="py-2.5 px-3 font-black text-left" dir="ltr">الرصيد الجاري</th>
+                      <tr className="bg-muted/40 text-muted-foreground text-[11px] border-b border-border/70">
+                        <th className="py-3 px-3.5 font-black">التاريخ</th>
+                        <th className="py-3 px-3.5 font-black">البيان والحركة</th>
+                        <th className="py-3 px-3.5 font-black text-center">المرجع</th>
+                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">مدين (+)</th>
+                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">دائن (-)</th>
+                        <th className="py-3 px-3.5 font-black text-left" dir="ltr">الرصيد الجاري</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/40 font-mono text-[11px]">
                       {statement?.lines && statement.lines.length > 0 ? (
                         statement.lines.map((line, idx) => (
-                          <tr key={line.id || idx} className="hover:bg-muted/30 transition-colors">
-                            <td className="py-2.5 px-3 text-muted-foreground">{line.date}</td>
-                            <td className="py-2.5 px-3 font-sans font-bold text-foreground">
+                          <tr key={line.id || idx} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-3.5 text-muted-foreground">{line.date}</td>
+                            <td className="py-3 px-3.5 font-sans font-bold text-foreground">
                               {line.label}
                               {line.notes && (
-                                <span className="block text-[9.5px] text-muted-foreground font-normal">
+                                <span className="block text-[10px] text-muted-foreground font-normal">
                                   {line.notes}
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 text-center text-primary" dir="ltr">
+                            <td className="py-3 px-3.5 text-center text-primary font-bold" dir="ltr">
                               {line.reference || "—"}
                             </td>
-                            <td className="py-2.5 px-3 text-left text-rose-600 font-bold" dir="ltr">
+                            <td className="py-3 px-3.5 text-left text-rose-600 font-bold tabular-nums" dir="ltr">
                               {line.debit > 0 ? formatNumber(line.debit) : "—"}
                             </td>
-                            <td className="py-2.5 px-3 text-left text-emerald-600 font-bold" dir="ltr">
+                            <td className="py-3 px-3.5 text-left text-emerald-600 font-bold tabular-nums" dir="ltr">
                               {line.credit > 0 ? formatNumber(line.credit) : "—"}
                             </td>
                             <td
-                              className={`py-2.5 px-3 text-left font-black ${
+                              className={`py-3 px-3.5 text-left font-black tabular-nums ${
                                 line.runningBalance > 0
                                   ? "text-rose-600"
                                   : line.runningBalance < 0
@@ -703,7 +706,7 @@ export function CustomerProfileModal({
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="py-10 text-center text-muted-foreground font-sans font-bold">
+                          <td colSpan={6} className="py-12 text-center text-muted-foreground font-sans font-bold">
                             لا توجد حركات مالية مسجلة في كشف الحساب
                           </td>
                         </tr>
@@ -725,7 +728,7 @@ export function CustomerProfileModal({
                   projects.map((prj) => (
                     <div
                       key={prj.id}
-                      className="rounded-2xl border border-border/70 bg-secondary/30 p-3 flex items-center justify-between gap-3 shadow-2xs"
+                      className="rounded-2xl border border-border/70 bg-card p-3.5 flex items-center justify-between gap-3 shadow-2xs"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -734,13 +737,13 @@ export function CustomerProfileModal({
                           </span>
                           <span className="font-black text-xs text-foreground">{prj.title}</span>
                         </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {prj.deliveryDate ? `التسليم: ${prj.deliveryDate}` : `الإنشاء: ${prj.createdAt.slice(0, 10)}`}
+                        <div className="text-xs text-muted-foreground">
+                          {prj.deliveryDate ? `موعد التسليم: ${prj.deliveryDate}` : `الإنشاء: ${prj.createdAt.slice(0, 10)}`}
                         </div>
                       </div>
 
                       <div className="text-left font-mono text-xs">
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold bg-secondary border border-border text-foreground">
+                        <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-secondary border border-border/80 text-foreground">
                           {prj.executionStatus}
                         </span>
                       </div>
@@ -753,10 +756,10 @@ export function CustomerProfileModal({
             {/* ── TAB 4: CUSTOMER INFO (بيانات العميل) ── */}
             {activeTab === "info" && (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-border/70 bg-secondary/20 p-4 space-y-3 text-xs">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-border/70 bg-card p-4 sm:p-5 space-y-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <span className="text-[10px] text-muted-foreground font-bold">معرف العميل (ID)</span>
+                      <span className="text-[10px] text-muted-foreground font-bold">معرف العميل في النظام (ID)</span>
                       <p className="font-mono font-bold text-foreground mt-0.5">{customer.id}</p>
                     </div>
                     <div>
@@ -768,7 +771,7 @@ export function CustomerProfileModal({
                   </div>
 
                   {customer.openingBalance ? (
-                    <div className="border-t border-border/50 pt-2.5">
+                    <div className="border-t border-border/50 pt-3">
                       <span className="text-[10px] text-muted-foreground font-bold">حركة الرصيد الافتتاحي</span>
                       <p className="font-bold text-foreground mt-0.5">
                         {formatNumber(customer.openingBalance)} {customer.openingBalanceCurrency || "SDG"}{" "}
@@ -781,7 +784,7 @@ export function CustomerProfileModal({
                   ) : null}
 
                   {customer.notes && (
-                    <div className="border-t border-border/50 pt-2.5">
+                    <div className="border-t border-border/50 pt-3">
                       <span className="text-[10px] text-muted-foreground font-bold">ملاحظات وشروط خاصة</span>
                       <p className="text-foreground mt-0.5">{customer.notes}</p>
                     </div>

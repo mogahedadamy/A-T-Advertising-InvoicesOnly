@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, ReceiptText, Eye, Sparkles } from "lucide-react";
+import { Plus, ReceiptText, Eye, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoiceItem } from "@/lib/billing/types";
 import { formatAccountingNumber } from "../StandardInvoiceDocument";
@@ -186,7 +186,7 @@ export function CustomInvoiceItemsTable({
         {onPreviewClick && (
           <div className="pt-2 border-t border-primary/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium">
-              <Sparkles className="h-3.5 w-3.5 text-[#C5A059] shrink-0" />
+              <FileCheck className="h-3.5 w-3.5 text-[#C5A059] shrink-0" />
               <span>جاهز لمشاهدة شكل الفاتورة والختم الرسمي A4؟</span>
             </div>
 

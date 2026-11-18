@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, TrendingUp, ShoppingBag, Receipt, Sparkles } from "lucide-react";
+import { FileText, TrendingUp, ShoppingBag, Receipt } from "lucide-react";
 import type { CustomInvoice } from "@/lib/billing/types";
 import { formatAccountingNumber } from "./StandardInvoiceDocument";
 

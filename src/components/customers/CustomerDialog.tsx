@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { X, UserPlus, Building, Phone, MapPin, FileText, Wallet } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { UserPlus, Pencil, Building2, Phone, MapPin, Wallet, Calendar, FileText, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   CUSTOMER_TYPE_CONFIG,
@@ -7,6 +8,7 @@ import {
   type CustomerType,
 } from "@/lib/customersStore";
 import { AppCurrency } from "@/lib/currency/types";
+import { playTapSound } from "@/lib/soundEffects";
 
 interface Props {
   open: boolean;
@@ -62,8 +64,6 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
     }
   }, [initialData, open]);
 
-  if (!open) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -89,47 +89,43 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
   };
 
   const fieldStyle =
-    "h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
+    "h-10 w-full rounded-xl border border-border/80 bg-background px-3 text-xs font-bold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      dir="rtl"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] px-[max(1rem,env(safe-area-inset-left,0px))] animate-in fade-in"
-    >
-      <div className="w-full max-w-lg max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-2xl space-y-3.5">
+    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <DialogContent
+        dir="rtl"
+        className="max-w-lg w-[95vw] p-0 rounded-2xl bg-card border-border/80 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/60 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
-              <UserPlus className="h-4 w-4" />
-            </div>
+        <div className="p-4 sm:p-5 border-b border-border/60 bg-muted/20 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+              {initialData ? <Pencil className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+            </span>
             <div>
-              <h2 className="text-sm font-black text-foreground">
-                {initialData ? "تعديل ملف وبيانات العميل" : "إضافة عميل جديد"}
-              </h2>
-              <p className="text-[10px] text-muted-foreground">
-                سجل بيانات التواصل، التصنيف التجاري، والرصيد الافتتاحي الموثق
-              </p>
+              <DialogTitle className="text-sm sm:text-base font-black text-foreground">
+                {initialData ? "تعديل ملف العميل" : "إضافة عميل جديد"}
+              </DialogTitle>
+              <DialogDescription className="text-[11px] text-muted-foreground mt-0.5">
+                سجل بيانات التواصل والتصنيف التجاري والرصيد المالي الموثق
+              </DialogDescription>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {/* الاسم والتصنيف */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground">اسم العميل / الوكالة أو الشركة *</label>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black text-foreground flex items-center gap-1">
+              <span>اسم العميل / الوكالة أو الشركة</span>
+              <span className="text-rose-500">*</span>
+            </label>
             <input
               type="text"
               required
+              autoFocus={!initialData}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="مثال: وكالة الأفق للدعاية والإعلان"
@@ -138,8 +134,11 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-muted-foreground">رقم الهاتف للتواصل والواتساب</label>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black text-foreground flex items-center gap-1">
+                <Phone className="h-3 w-3 text-muted-foreground" />
+                <span>رقم الهاتف للتواصل والواتساب</span>
+              </label>
               <input
                 type="tel"
                 dir="ltr"
@@ -150,8 +149,11 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-muted-foreground">تصنيف العميل</label>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black text-foreground flex items-center gap-1">
+                <Building2 className="h-3 w-3 text-muted-foreground" />
+                <span>تصنيف العميل</span>
+              </label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as CustomerType)}
@@ -166,8 +168,11 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground">العنوان / المنطقة أو المدينة</label>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black text-foreground flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-muted-foreground" />
+              <span>العنوان / المنطقة أو المدينة</span>
+            </label>
             <input
               type="text"
               value={address}
@@ -177,14 +182,17 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             />
           </div>
 
-          {/* قسم الرصيد الافتتاحي المطور والموثق كحركة مالية */}
-          <div className="rounded-xl border border-border/80 bg-secondary/30 p-3 space-y-2.5">
-            <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-              <Wallet className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[11px] font-black text-foreground">الرصيد الافتتاحي (حركة مالية موثقة)</span>
+          {/* قسم الرصيد الافتتاحي الموثق كحركة مالية */}
+          <div className="rounded-2xl border border-border/80 bg-secondary/25 p-3.5 space-y-3">
+            <div className="flex items-center justify-between border-b border-border/50 pb-2">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="h-4 w-4 text-[#C5A059]" />
+                <span className="text-xs font-black text-foreground">الرصيد الافتتاحي (حركة مالية محاسبية)</span>
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground">Opening Balance</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted-foreground">قيمة الرصيد</label>
                 <input
@@ -227,7 +235,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             </div>
 
             {parseFloat(openingBalance) > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-border/40">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-border/40">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted-foreground">تاريخ الرصيد الافتتاحي</label>
                   <input
@@ -251,36 +259,39 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             )}
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground">ملاحظات وشروط خاصة بالعميل</label>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black text-foreground flex items-center gap-1">
+              <FileText className="h-3 w-3 text-muted-foreground" />
+              <span>ملاحظات وشروط خاصة بالعميل</span>
+            </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="مثال: خصم وكالة 10%، سداد أسبوعي..."
-              className="w-full rounded-xl border border-border bg-background p-2.5 text-xs font-semibold text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-xl border border-border/80 bg-background p-2.5 text-xs font-bold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
             />
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-between gap-2 pt-3 border-t border-border/60">
+          {/* Action Footer */}
+          <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-border/60">
             <Button
               type="submit"
-              className="h-9 bg-primary px-5 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary-deep cursor-pointer"
+              className="h-10 px-6 rounded-xl font-black text-xs bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.97] touch-manipulation cursor-pointer"
             >
               {initialData ? "تحديث بيانات العميل" : "حفظ العميل"}
             </Button>
             <Button
               type="button"
-              variant="secondary"
+              variant="outline"
               onClick={onClose}
-              className="h-9 px-4 text-xs font-bold cursor-pointer"
+              className="h-10 px-5 rounded-xl font-bold text-xs border-border/80 text-foreground hover:bg-secondary active:scale-[0.97] touch-manipulation cursor-pointer"
             >
               إلغاء
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

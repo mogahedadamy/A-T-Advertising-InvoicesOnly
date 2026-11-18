@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Wrench,
-  Sparkles,
   LayoutDashboard,
   Calculator,
   CheckCircle2,
@@ -69,7 +68,7 @@ export function UnderDevelopmentView({
               <Icon className="h-12 w-12 text-primary animate-pulse" />
             </div>
             <div className="absolute -bottom-1 -left-1 flex h-7 w-7 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md">
-              <Sparkles className="h-4 w-4" />
+              <Wrench className="h-4 w-4" />
             </div>
           </div>
 

@@ -10,7 +10,7 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Sparkles,
+  Activity,
   TrendingUp,
   User,
   Wallet,
@@ -456,7 +456,7 @@ export function ProjectsPage() {
                       <div className="rounded-xl border border-border/50 bg-secondary/30 p-2.5 space-y-2">
                         <div className="flex items-center justify-between text-[11px] font-bold">
                           <span className="text-muted-foreground flex items-center gap-1">
-                            <Sparkles className="h-3 w-3 text-primary shrink-0" />
+                            <Activity className="h-3 w-3 text-primary shrink-0" />
                             <span>مسار التحصيل التلقائي</span>
                           </span>
                           <span className="font-mono text-primary font-black tabular-nums">{percentCollected}%</span>
