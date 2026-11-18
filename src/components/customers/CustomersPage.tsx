@@ -323,6 +323,8 @@ export function CustomersPage() {
             }
           }}
           initialType="sales"
+          initialCustomer={invoiceTargetCustomer || selectedProfileCustomer}
+          initialCustomerId={invoiceTargetCustomer?.id || selectedProfileCustomer?.id}
           onSaved={() => {
             void loadLiveBalances();
           }}
@@ -845,6 +847,8 @@ export function CustomersPage() {
           }
         }}
         initialType="sales"
+        initialCustomer={invoiceTargetCustomer}
+        initialCustomerId={invoiceTargetCustomer?.id}
         onSaved={() => {
           void loadLiveBalances();
         }}

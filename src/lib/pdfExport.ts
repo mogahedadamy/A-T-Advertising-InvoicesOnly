@@ -43,10 +43,13 @@ export function buildStandaloneInvoiceHtml(
   const targetSheet =
     element.classList.contains("standard-invoice-sheet") ||
     element.classList.contains("proforma-sheet") ||
-    element.classList.contains("invoice-paper")
+    element.classList.contains("invoice-paper") ||
+    element.classList.contains("statement-print-root") ||
+    element.classList.contains("statement-print-document")
       ? element
-      : element.querySelector<HTMLElement>(".standard-invoice-sheet, .proforma-sheet, .invoice-paper") ||
-        element;
+      : element.querySelector<HTMLElement>(
+          ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .statement-print-root, .statement-print-document"
+        ) || element;
 
   const targetDir =
     (typeof (targetSheet as any)?.getAttribute === "function" ? targetSheet.getAttribute("dir") : null) ||

@@ -13,7 +13,7 @@ import {
 } from "@/lib/billing/store";
 import { AppCurrency } from "@/lib/currency/types";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
-import { getCustomersSnapshot } from "@/lib/customersStore";
+import { getCustomersSnapshot, type CustomerRecord } from "@/lib/customersStore";
 import { getProjectsSnapshot, refreshProjectsFromDb } from "@/lib/projectsStore";
 import { printCustomInvoiceDocument, saveCustomInvoiceAsPdf, shareCustomInvoiceViaWhatsApp } from "../CustomInvoicePrintButton";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +27,8 @@ interface UseCustomInvoiceFormParams {
   invoiceToEdit?: CustomInvoice | null;
   onSaved?: (invoice: CustomInvoice) => void;
   initialProjectId?: string | null;
+  initialCustomerId?: string | null;
+  initialCustomer?: CustomerRecord | null;
 }
 
 export function useCustomInvoiceForm({
@@ -37,6 +39,8 @@ export function useCustomInvoiceForm({
   invoiceToEdit,
   onSaved,
   initialProjectId,
+  initialCustomerId,
+  initialCustomer,
 }: UseCustomInvoiceFormParams) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"edit" | "preview">("edit");
@@ -94,9 +98,10 @@ export function useCustomInvoiceForm({
       setSupplierInvoiceNumber("");
       setDate(new Date().toISOString().split("T")[0]);
 
-      let prefilledCustomerId: string | null = null;
-      let prefilledPartyName = "";
-      if (nextProjectId && initialType !== "purchase") {
+      let prefilledCustomerId: string | null = initialCustomerId ?? initialCustomer?.id ?? null;
+      let prefilledPartyName = initialCustomer?.name ?? "";
+
+      if (!prefilledCustomerId && nextProjectId && initialType !== "purchase") {
         const linkedProject = getProjectsSnapshot().find((p) => p.id === nextProjectId);
         if (linkedProject?.customerId) {
           const linkedCustomer = getCustomersSnapshot().find((c) => c.id === linkedProject.customerId);
@@ -106,6 +111,14 @@ export function useCustomInvoiceForm({
           }
         }
       }
+
+      if (prefilledCustomerId && !prefilledPartyName) {
+        const found = getCustomersSnapshot().find((c) => c.id === prefilledCustomerId);
+        if (found) {
+          prefilledPartyName = found.name;
+        }
+      }
+
       setCustomerId(prefilledCustomerId);
       setPartyName(prefilledPartyName);
       setPartyEnName("");
@@ -128,7 +141,7 @@ export function useCustomInvoiceForm({
       }
     }
     setActiveTab("edit");
-  }, [open, invoiceToEdit, initialType, initialItems, initialProjectId]);
+  }, [open, invoiceToEdit, initialType, initialItems, initialProjectId, initialCustomerId, initialCustomer]);
 
   const effectiveLang = detectInvoiceLanguage(language, partyName, partyEnName, items);
   const isRtl = effectiveLang === "ar";

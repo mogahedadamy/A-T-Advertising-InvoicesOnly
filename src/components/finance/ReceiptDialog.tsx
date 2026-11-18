@@ -404,9 +404,9 @@ export function ReceiptDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir="rtl" className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent dir="rtl" className="max-w-md max-h-safe-dialog overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-black">تحصيل من عميل</DialogTitle>
+          <DialogTitle className="text-sm sm:text-base font-black text-foreground">تحصيل من عميل</DialogTitle>
         </DialogHeader>
 
         {loadingInit ? (
@@ -606,73 +606,73 @@ export function ReceiptDialog({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {/* شريط الإجراءات: إضافة فاتورة أو توزيع تلقائي */}
-                  <div className="flex items-center justify-between gap-2">
-                    {unallocatedCustomerInvoices.length > 0 ? (
-                      <div className="flex-1">
-                        <Select
-                          value="__none__"
-                          onValueChange={(val) => {
-                            if (val && val !== "__none__") {
-                              handlePickInvoiceToPay(val);
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="h-9 rounded-xl text-xs font-bold bg-background border-primary/40 hover:border-primary text-right">
-                            <SelectValue placeholder="➕ اختر الفاتورة المراد سدادها..." />
-                          </SelectTrigger>
-                          <SelectContent dir="rtl" className="max-h-60">
-                            <SelectItem value="__none__" disabled className="text-xs font-bold text-muted-foreground">
-                              — اضغط لاختيار الفاتورة المراد سدادها —
-                            </SelectItem>
-                            {unallocatedCustomerInvoices.map((inv) => (
-                              <SelectItem key={inv.id} value={inv.id} className="py-2">
-                                <div className="flex items-center justify-between gap-3 text-xs w-full">
-                                  <div className="flex items-center gap-1.5 font-mono font-black text-primary" dir="ltr">
-                                    <span>{inv.reference}</span>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground">{inv.date}</span>
-                                  <span className="font-bold text-foreground">
-                                    المتبقي: {formatNumber(inv.settlement.outstanding)} ج.س
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <p className="text-[10.5px] font-bold text-muted-foreground">
-                        تم إدراج جميع فواتير العميل المستحقة
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={addRow}
-                        disabled={unallocatedCustomerInvoices.length === 0}
-                        className="h-9 rounded-xl gap-1 text-[10.5px] font-bold border-border/80"
+                  {/* شريط الإجراءات المتجاوب: اختيار الفاتورة بكامل العرض لمنع أي قص للشاشات الصغيرة */}
+                  {unallocatedCustomerInvoices.length > 0 ? (
+                    <div className="space-y-2">
+                      <Select
+                        value="__none__"
+                        onValueChange={(val) => {
+                          if (val && val !== "__none__") {
+                            handlePickInvoiceToPay(val);
+                          }
+                        }}
                       >
-                        <Plus className="h-3 w-3" />
-                        إضافة فاتورة
-                      </Button>
-                      {customerOpenInvoices.length > 1 && (
+                        <SelectTrigger className="w-full h-10 rounded-xl text-xs font-bold bg-background border-primary/40 hover:border-primary text-right">
+                          <SelectValue placeholder="— اضغط لاختيار الفاتورة المراد سدادها —" />
+                        </SelectTrigger>
+                        <SelectContent dir="rtl" className="max-h-60">
+                          <SelectItem value="__none__" disabled className="text-xs font-bold text-muted-foreground">
+                            — اضغط لاختيار الفاتورة المراد سدادها —
+                          </SelectItem>
+                          {unallocatedCustomerInvoices.map((inv) => (
+                            <SelectItem key={inv.id} value={inv.id} className="py-2">
+                              <div className="flex items-center justify-between gap-3 text-xs w-full">
+                                <div className="flex items-center gap-1.5 font-mono font-black text-primary" dir="ltr">
+                                  <span>{inv.reference}</span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground">{inv.date}</span>
+                                <span className="font-bold text-foreground">
+                                  المتبقي: {formatNumber(inv.settlement.outstanding)} ج.س
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap text-[10.5px]">
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={autoAllocateCustomerInvoices}
-                          className="h-9 shrink-0 rounded-xl gap-1 text-[10.5px] font-bold border-border/80"
+                          onClick={addRow}
+                          disabled={unallocatedCustomerInvoices.length === 0}
+                          className="h-8 rounded-xl gap-1 font-bold border-border/80 text-foreground hover:bg-secondary"
                         >
-                          <SlidersHorizontal className="h-3 w-3 text-primary" />
-                          توزيع تلقائي
+                          <Plus className="h-3 w-3" />
+                          إضافة فاتورة
                         </Button>
-                      )}
+                        {customerOpenInvoices.length > 1 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={autoAllocateCustomerInvoices}
+                            className="h-8 rounded-xl gap-1 font-bold border-primary/30 text-primary hover:bg-primary/10 mr-auto"
+                          >
+                            <SlidersHorizontal className="h-3 w-3" />
+                            توزيع تلقائي للمبلغ
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-center">
+                      <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                        ✓ تم إدراج جميع فواتير العميل المستحقة
+                      </p>
+                    </div>
+                  )}
 
                   {/* قائمة الفواتير المختارة للسداد */}
                   {rows.length === 0 ? (

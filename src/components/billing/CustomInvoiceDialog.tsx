@@ -17,6 +17,7 @@ import { CustomInvoiceItemsTable } from "./dialog/CustomInvoiceItemsTable";
 import { registerBackHandler } from "@/lib/backButtonHandler";
 import { playTapSound } from "@/lib/soundEffects";
 import { useCustomInvoiceForm } from "./dialog/useCustomInvoiceForm";
+import type { CustomerRecord } from "@/lib/customersStore";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,8 @@ interface Props {
   invoiceToEdit?: CustomInvoice | null;
   onSaved?: (invoice: CustomInvoice) => void;
   initialProjectId?: string | null;
+  initialCustomerId?: string | null;
+  initialCustomer?: CustomerRecord | null;
 }
 
 /**
@@ -42,6 +45,8 @@ export function CustomInvoiceDialog({
   invoiceToEdit,
   onSaved,
   initialProjectId,
+  initialCustomerId,
+  initialCustomer,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -60,6 +65,8 @@ export function CustomInvoiceDialog({
     invoiceToEdit,
     onSaved,
     initialProjectId,
+    initialCustomerId,
+    initialCustomer,
   });
 
   return (

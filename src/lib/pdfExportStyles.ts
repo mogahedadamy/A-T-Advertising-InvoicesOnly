@@ -134,6 +134,9 @@ html, body {
 .proforma-print-root,
 .custom-invoice-print-root,
 #custom-invoice-print-portal,
+.statement-print-root,
+#customer-statement-print-mount,
+.statement-print-document,
 .invoice-standalone-root {
   display: block !important;
   position: static !important;
