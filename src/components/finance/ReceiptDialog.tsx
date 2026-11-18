@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Plus, SlidersHorizontal, UserPlus, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Plus, Receipt, SlidersHorizontal, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -185,7 +185,7 @@ export function ReceiptDialog({
     [customers, customerId]
   );
 
-  // ترتيب الفواتير المفتوحة: فواتير العميل المحدد أولاً ثم باقي الفواتير المفتوحة
+  // فواتير العميل المفتوحة فقط — عزل محاسبي صارم يمنع ظهور أو سداد فواتير أي عميل آخر نهائياً
   const customerOpenInvoices = useMemo(() => {
     if (!customerId) return [];
     const targetName = selectedCustomer?.name.trim().toLowerCase() ?? "";
@@ -196,27 +196,40 @@ export function ReceiptDialog({
     );
   }, [openInvoices, customerId, selectedCustomer]);
 
-  const prioritizedInvoices = useMemo(() => {
-    if (!customerId || customerOpenInvoices.length === 0) return openInvoices;
-    const matchedIds = new Set(customerOpenInvoices.map((i) => i.id));
-    return [...customerOpenInvoices, ...openInvoices.filter((inv) => !matchedIds.has(inv.id))];
-  }, [openInvoices, customerOpenInvoices, customerId]);
-
   const allocatedTotal = useMemo(
     () => rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
     [rows]
   );
   const paymentAmount = Number(amount) || 0;
   const remaining = Math.max(0, paymentAmount - allocatedTotal);
-  const unallocatedInvoices = useMemo(() => {
+
+  // الفواتير المتبقية للعميل الحالي التي لم تدرج بعد في السند
+  const unallocatedCustomerInvoices = useMemo(() => {
     const usedIds = new Set(rows.map((r) => r.invoiceId));
-    return prioritizedInvoices.filter((inv) => !usedIds.has(inv.id));
-  }, [prioritizedInvoices, rows]);
+    return customerOpenInvoices.filter((inv) => !usedIds.has(inv.id));
+  }, [customerOpenInvoices, rows]);
 
   const handleSelectCustomer = (nextId: string) => {
     setCustomerId(nextId);
     setDuplicateWarning(null);
     setUnmatchedInvoiceCustomer(null);
+    // تفريغ أي فواتير محددة لا تخص العميل الجديد لمنع أي خطأ محاسبي
+    if (!nextId) {
+      setRows([]);
+    } else {
+      const nextCust = customers.find((c) => c.id === nextId);
+      const nextName = nextCust?.name.trim().toLowerCase() ?? "";
+      setRows((current) =>
+        current.filter((row) => {
+          const inv = openInvoices.find((i) => i.id === row.invoiceId);
+          if (!inv) return false;
+          return (
+            inv.customerId === nextId ||
+            (Boolean(nextName) && inv.customerName.trim().toLowerCase() === nextName)
+          );
+        })
+      );
+    }
   };
 
   const handleQuickAddCustomer = async () => {
@@ -247,8 +260,9 @@ export function ReceiptDialog({
     }
   };
 
+  // إضافة الفاتورة التالية غير المخصصة الخاصة بالعميل
   const addRow = () => {
-    const candidate = unallocatedInvoices[0] ?? prioritizedInvoices[0];
+    const candidate = unallocatedCustomerInvoices[0];
     if (!candidate) return;
     const suggested =
       paymentAmount > 0
@@ -257,29 +271,65 @@ export function ReceiptDialog({
 
     setRows((current) => [
       ...current,
-      { invoiceId: candidate.id, amount: suggested > 0 ? String(suggested) : "" },
+      { invoiceId: candidate.id, amount: suggested > 0 ? String(suggested) : String(candidate.settlement.outstanding) },
     ]);
 
     if (!(paymentAmount > 0)) {
       setAmount(String(candidate.settlement.outstanding));
-    }
-    if (!customerId) {
-      const matched = resolveCustomerIdForInvoice(candidate, customers);
-      if (matched) setCustomerId(matched);
     }
     if (!projectId && candidate.projectId) {
       setProjectId(candidate.projectId);
     }
   };
 
+  // اختيار فاتورة تابعة للعميل لإدراجها في السداد
+  const handlePickInvoiceToPay = (invId: string) => {
+    const candidate = customerOpenInvoices.find((inv) => inv.id === invId);
+    if (!candidate) return;
+    if (rows.some((r) => r.invoiceId === invId)) return;
+
+    const suggested =
+      paymentAmount > 0
+        ? Math.min(Math.max(remaining, 0), candidate.settlement.outstanding)
+        : candidate.settlement.outstanding;
+
+    setRows((current) => [
+      ...current,
+      { invoiceId: candidate.id, amount: suggested > 0 ? String(suggested) : String(candidate.settlement.outstanding) },
+    ]);
+
+    if (!(paymentAmount > 0)) {
+      setAmount(String(candidate.settlement.outstanding));
+    }
+    if (!projectId && candidate.projectId) {
+      setProjectId(candidate.projectId);
+    }
+  };
+
+  // سداد كامل قيمة فاتورة معينة
+  const handlePayFullInvoice = (index: number) => {
+    setRows((current) => {
+      const row = current[index];
+      if (!row) return current;
+      const inv = customerOpenInvoices.find((i) => i.id === row.invoiceId);
+      if (!inv) return current;
+      const fullAmount = inv.settlement.outstanding;
+      const updated = current.map((r, i) => (i === index ? { ...r, amount: String(fullAmount) } : r));
+      const newTotal = updated.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+      if (newTotal > (Number(amount) || 0)) {
+        setAmount(String(newTotal));
+      }
+      return updated;
+    });
+  };
+
   const autoAllocateCustomerInvoices = () => {
-    const targetList = customerOpenInvoices.length > 0 ? customerOpenInvoices : openInvoices;
-    if (targetList.length === 0) return;
+    if (customerOpenInvoices.length === 0) return;
 
     if (paymentAmount > 0) {
       let budget = paymentAmount;
       const nextRows: AllocationRow[] = [];
-      for (const inv of targetList) {
+      for (const inv of customerOpenInvoices) {
         if (budget <= 0) break;
         const share = Math.min(budget, inv.settlement.outstanding);
         if (share > 0) {
@@ -291,11 +341,11 @@ export function ReceiptDialog({
       return;
     }
 
-    const totalOutstanding = targetList.reduce((sum, inv) => sum + inv.settlement.outstanding, 0);
-    setRows(targetList.map((inv) => ({ invoiceId: inv.id, amount: String(inv.settlement.outstanding) })));
+    const totalOutstanding = customerOpenInvoices.reduce((sum, inv) => sum + inv.settlement.outstanding, 0);
+    setRows(customerOpenInvoices.map((inv) => ({ invoiceId: inv.id, amount: String(inv.settlement.outstanding) })));
     setAmount(String(totalOutstanding));
     if (!projectId) {
-      const firstProject = targetList.find((inv) => inv.projectId)?.projectId ?? null;
+      const firstProject = customerOpenInvoices.find((inv) => inv.projectId)?.projectId ?? null;
       if (firstProject) setProjectId(firstProject);
     }
   };
@@ -518,136 +568,234 @@ export function ReceiptDialog({
               </Field>
             </div>
 
-            {/* التخصيص الصريح للفواتير */}
-            <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                <p className="text-[11px] font-black text-foreground">تخصيص الدفعة للفواتير</p>
-                <div className="flex items-center gap-1">
-                  {openInvoices.length > 0 && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={autoAllocateCustomerInvoices}
-                      className="h-7 rounded-lg gap-1 text-[10px] font-black text-primary px-2"
-                    >
-                      <SlidersHorizontal className="h-3 w-3" />
-                      توزيع تلقائي
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={addRow}
-                    disabled={openInvoices.length === 0}
-                    className="h-7 rounded-lg gap-1 text-[10px] font-bold"
-                  >
-                    <Plus className="h-3 w-3" />
-                    إضافة فاتورة
-                  </Button>
+            {/* ربط وسداد فواتير العميل — عزل محاسبي كامل وواجهة بديهية */}
+            <div className="rounded-2xl border border-border/70 bg-card p-3.5 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <Receipt className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-foreground">سداد فواتير العميل</h4>
+                    <p className="text-[10px] text-muted-foreground">اختر الفاتورة التي يريد العميل سدادها من هذه الدفعة</p>
+                  </div>
                 </div>
+
+                {customerOpenInvoices.length > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-[10.5px] font-black">
+                    {customerOpenInvoices.length} فواتير مستحقة
+                  </span>
+                )}
               </div>
 
-              {openInvoices.length === 0 ? (
-                <p className="text-[10px] leading-relaxed text-muted-foreground">
-                  لا توجد فواتير مبيعات بمبالغ متبقية. يمكنك تسجيل الدفعة كمقدّمة غير مخصَّصة.
-                </p>
-              ) : rows.length === 0 ? (
-                <p className="text-[10px] leading-relaxed text-muted-foreground">
-                  لا تخصيصات: ستُسجَّل الدفعة كمقدّمة (مال مستلم دون تسوية فاتورة)
-                  {customerOpenInvoices.length > 0
-                    ? ` — يوجد ${customerOpenInvoices.length} فاتورة مفتوحة لهذا العميل.`
-                    : "."}
-                </p>
+              {!customerId ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-center">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    يرجى اختيار العميل أولاً لعرض قائمة فواتيره المستحقة واختيار ما يريد سداده.
+                  </p>
+                </div>
+              ) : customerOpenInvoices.length === 0 ? (
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-3 flex items-start gap-2.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-bold text-foreground">لا توجد فواتير مستحقة على هذا العميل</p>
+                    <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+                      لا توجد فواتير مبيعات معلقة لهذا العميل حالياً. سيتم قيد هذا المبلغ كدفعة مقدمة (رصيد دائن) في حسابه تلقائياً.
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {rows.map((row, index) => {
-                    const invoice = openInvoices.find((inv) => inv.id === row.invoiceId);
-                    return (
-                      <div key={index} className="flex items-center gap-1.5">
+                <div className="space-y-2.5">
+                  {/* شريط الإجراءات: إضافة فاتورة أو توزيع تلقائي */}
+                  <div className="flex items-center justify-between gap-2">
+                    {unallocatedCustomerInvoices.length > 0 ? (
+                      <div className="flex-1">
                         <Select
-                          value={row.invoiceId}
-                          onValueChange={(v) => {
-                            const nextInv = openInvoices.find((inv) => inv.id === v);
-                            setRows((current) =>
-                              current.map((r, i) =>
-                                i === index
-                                  ? {
-                                      invoiceId: v,
-                                      amount: r.amount || (nextInv ? String(nextInv.settlement.outstanding) : ""),
-                                    }
-                                  : r
-                              )
-                            );
-                            if (nextInv && !customerId) {
-                              const matched = resolveCustomerIdForInvoice(nextInv, customers);
-                              if (matched) setCustomerId(matched);
-                            }
-                            if (nextInv?.projectId && !projectId) {
-                              setProjectId(nextInv.projectId);
+                          value="__none__"
+                          onValueChange={(val) => {
+                            if (val && val !== "__none__") {
+                              handlePickInvoiceToPay(val);
                             }
                           }}
                         >
-                          <SelectTrigger className="h-9 flex-1 min-w-0 rounded-lg text-[11px] font-bold bg-background text-right">
-                            <SelectValue />
+                          <SelectTrigger className="h-9 rounded-xl text-xs font-bold bg-background border-primary/40 hover:border-primary text-right">
+                            <SelectValue placeholder="➕ اختر الفاتورة المراد سدادها..." />
                           </SelectTrigger>
-                          <SelectContent dir="rtl">
-                            {prioritizedInvoices.map((inv) => (
-                              <SelectItem key={inv.id} value={inv.id}>
-                                <span className="font-mono text-[10px]" dir="ltr">
-                                  {inv.reference}
-                                </span>
-                                <span className="mx-1.5 text-muted-foreground">·</span>
-                                {inv.customerName}
+                          <SelectContent dir="rtl" className="max-h-60">
+                            <SelectItem value="__none__" disabled className="text-xs font-bold text-muted-foreground">
+                              — اضغط لاختيار الفاتورة المراد سدادها —
+                            </SelectItem>
+                            {unallocatedCustomerInvoices.map((inv) => (
+                              <SelectItem key={inv.id} value={inv.id} className="py-2">
+                                <div className="flex items-center justify-between gap-3 text-xs w-full">
+                                  <div className="flex items-center gap-1.5 font-mono font-black text-primary" dir="ltr">
+                                    <span>{inv.reference}</span>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground">{inv.date}</span>
+                                  <span className="font-bold text-foreground">
+                                    المتبقي: {formatNumber(inv.settlement.outstanding)} ج.س
+                                  </span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <Input
-                          inputMode="decimal"
-                          value={row.amount}
-                          onChange={(e) =>
-                            setRows((current) =>
-                              current.map((r, i) =>
-                                i === index ? { ...r, amount: e.target.value.replace(/[^\d.]/g, "") } : r
-                              )
-                            )
-                          }
-                          placeholder="0"
-                          className="h-9 w-24 shrink-0 rounded-lg text-[11px] font-bold bg-background text-center tabular-nums"
-                        />
+                      </div>
+                    ) : (
+                      <p className="text-[10.5px] font-bold text-muted-foreground">
+                        تم إدراج جميع فواتير العميل المستحقة
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={addRow}
+                        disabled={unallocatedCustomerInvoices.length === 0}
+                        className="h-9 rounded-xl gap-1 text-[10.5px] font-bold border-border/80"
+                      >
+                        <Plus className="h-3 w-3" />
+                        إضافة فاتورة
+                      </Button>
+                      {customerOpenInvoices.length > 1 && (
                         <Button
                           type="button"
                           size="sm"
-                          variant="ghost"
-                          aria-label="حذف التخصيص"
-                          onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
-                          className="h-9 w-8 shrink-0 rounded-lg p-0 text-muted-foreground"
+                          variant="outline"
+                          onClick={autoAllocateCustomerInvoices}
+                          className="h-9 shrink-0 rounded-xl gap-1 text-[10.5px] font-bold border-border/80"
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <SlidersHorizontal className="h-3 w-3 text-primary" />
+                          توزيع تلقائي
                         </Button>
-                        {invoice && (
-                          <span className="hidden sm:inline-block w-20 shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                            متبقي {formatNumber(invoice.settlement.outstanding)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      )}
+                    </div>
+                  </div>
 
-              {paymentAmount > 0 && (
-                <p className="text-[10px] font-bold text-muted-foreground">
-                  المخصَّص: {formatNumber(allocatedTotal)} · غير مخصَّص: {formatNumber(remaining)}
-                </p>
-              )}
-              {allocatedTotal > paymentAmount + 0.009 && (
-                <p className="flex items-center gap-1 text-[10px] font-bold text-destructive">
-                  <AlertTriangle className="h-3 w-3" />
-                  مجموع التخصيصات يتجاوز قيمة الدفعة
-                </p>
+                  {/* قائمة الفواتير المختارة للسداد */}
+                  {rows.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 text-center">
+                      <p className="text-[11px] font-bold text-muted-foreground">
+                        لم يتم اختيار أي فاتورة للسداد حتى الآن. اختر الفاتورة من القائمة أعلاه أو سجّل المبلغ كدفعة مقدّمة.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {rows.map((row, index) => {
+                        const invoice = customerOpenInvoices.find((inv) => inv.id === row.invoiceId);
+                        const rowAmount = Number(row.amount) || 0;
+                        const outstanding = invoice?.settlement.outstanding ?? 0;
+                        const isFull = rowAmount >= outstanding && outstanding > 0;
+
+                        return (
+                          <div
+                            key={row.invoiceId}
+                            className="rounded-xl border border-border/80 bg-background p-2.5 space-y-2 transition-all"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-xs font-black text-primary" dir="ltr">
+                                  {invoice?.reference ?? row.invoiceId}
+                                </span>
+                                {invoice?.date && (
+                                  <span className="text-[10px] text-muted-foreground">({invoice.date})</span>
+                                )}
+                                {isFull ? (
+                                  <span className="rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 text-[9.5px] font-black">
+                                    سداد كامل
+                                  </span>
+                                ) : rowAmount > 0 ? (
+                                  <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 text-[9.5px] font-black">
+                                    سداد جزئي
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                aria-label="إلغاء اختيار هذه الفاتورة"
+                                onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
+                                className="h-7 w-7 rounded-lg p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
+                              <div className="text-[10.5px]">
+                                <span className="text-muted-foreground">المتبقي على الفاتورة: </span>
+                                <span className="font-black text-foreground tabular-nums">
+                                  {formatNumber(outstanding)} ج.س
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {!isFull && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handlePayFullInvoice(index)}
+                                    className="h-8 rounded-lg text-[10px] font-black text-primary border-primary/30 hover:bg-primary/5 px-2"
+                                  >
+                                    سداد كامل الفاتورة
+                                  </Button>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] font-bold text-muted-foreground">المسدد:</span>
+                                  <Input
+                                    inputMode="decimal"
+                                    value={row.amount}
+                                    onChange={(e) =>
+                                      setRows((current) =>
+                                        current.map((r, i) =>
+                                          i === index ? { ...r, amount: e.target.value.replace(/[^\d.]/g, "") } : r
+                                        )
+                                      )
+                                    }
+                                    placeholder="0"
+                                    className="h-8 w-24 rounded-lg text-xs font-bold text-center tabular-nums bg-background"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ملخص المبالغ والتوزيع */}
+                  {paymentAmount > 0 && (
+                    <div className="rounded-xl bg-muted/40 p-2.5 flex items-center justify-between gap-2 text-[10.5px] font-bold">
+                      <span>
+                        المسدد للفواتير:{" "}
+                        <strong className="text-foreground">{formatNumber(allocatedTotal)} ج.س</strong>
+                      </span>
+                      {remaining > 0 ? (
+                        <span className="text-muted-foreground">
+                          متبقي كدفعة مقدمة:{" "}
+                          <strong className="text-primary">{formatNumber(remaining)} ج.س</strong>
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                          ✓ تمت تسوية كامل المبلغ
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {allocatedTotal > paymentAmount + 0.009 && (
+                    <p className="flex items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/10 p-2 text-[10.5px] font-black text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      مجموع المبالغ المسددة للفواتير ({formatNumber(allocatedTotal)}) يتجاوز إجمالي سند القبض ({formatNumber(paymentAmount)}).
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 

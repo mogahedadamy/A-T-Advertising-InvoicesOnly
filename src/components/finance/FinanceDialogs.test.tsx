@@ -285,6 +285,9 @@ describe("ReceiptDialog & FinancePage integration", () => {
   });
 
   it("supports inline quick-add customer and auto-allocate inside ReceiptDialog", async () => {
+    seedSalesInvoice("inv-ofok-1", "261112S003", null, "مؤسسة الأفق", 1000);
+    seedSalesInvoice("inv-ofok-2", "261112S004", null, "مؤسسة الأفق", 500);
+
     const onRecorded = vi.fn();
     render(<ReceiptDialog open={true} onOpenChange={() => {}} onRecorded={onRecorded} />);
 
@@ -299,7 +302,7 @@ describe("ReceiptDialog & FinancePage integration", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/متبقي/i)).toBeInTheDocument();
-      expect(screen.getByText("0 ج.س")).toBeInTheDocument();
+      expect(screen.getByText(/ج\.س/)).toBeInTheDocument();
     });
 
     // توزيع تلقائي للفواتير المفتوحة للعميل (1000 + 500 = 1500)

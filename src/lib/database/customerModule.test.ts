@@ -389,4 +389,92 @@ describe("Customer Management & Financial Account Module (PRD Acceptance & Integ
 
     expect(stmt.outstanding).toBe(200000);
   });
+
+  it("7) Accounting Isolation Enforcement: Strictly blocks recording receipt for an invoice belonging to a different customer", async () => {
+    // 1. Create Customer A
+    await upsertCustomer({
+      id: "cust-iso-a",
+      name: "شركة الأمل للمقاولات",
+      phone: "0911111111",
+      type: "company" as const,
+      address: "الخرطوم",
+      totalOrders: 0,
+      totalSpent: 0,
+      balance: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    // 2. Create Customer B
+    await upsertCustomer({
+      id: "cust-iso-b",
+      name: "مؤسسة الرواد التجارية",
+      phone: "0922222222",
+      type: "company" as const,
+      address: "بورتسودان",
+      totalOrders: 0,
+      totalSpent: 0,
+      balance: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    // 3. Issue sales invoice to Customer B
+    await upsertCustomInvoice({
+      id: "inv-for-customer-b",
+      meta: {
+        serial: "002",
+        type: "sales",
+        date: "2026-01-10",
+        partyName: "مؤسسة الرواد التجارية",
+        language: "ar",
+        currency: "SDG",
+      },
+      items: [{ id: "it-b", description: "لوحة مضيئة", qty: 1, unitPrice: 350000, total: 350000 }],
+      totalAmount: 350000,
+      currency: "SDG",
+      customerId: "cust-iso-b",
+      createdAt: "2026-01-10T00:00:00.000Z",
+      updatedAt: "2026-01-10T00:00:00.000Z",
+    });
+
+    // 4. Attempt to allocate Customer A's receipt to Customer B's invoice -> MUST THROW
+    await expect(
+      recordCustomerReceipt({
+        customerId: "cust-iso-a",
+        amount: 350000,
+        paidAt: "2026-01-11",
+        accountId: DEFAULT_CASH_ACCOUNT.id,
+        allocations: [{ invoiceId: "inv-for-customer-b", amount: 350000 }],
+      })
+    ).rejects.toThrow(/انتهاك محاسبي/);
+
+    // 5. Issue invoice to Customer A and verify Customer A CAN pay their own invoice
+    await upsertCustomInvoice({
+      id: "inv-for-customer-a",
+      meta: {
+        serial: "003",
+        type: "sales",
+        date: "2026-01-10",
+        partyName: "شركة الأمل للمقاولات",
+        language: "ar",
+        currency: "SDG",
+      },
+      items: [{ id: "it-a", description: "مطبوعات ورقية", qty: 1, unitPrice: 200000, total: 200000 }],
+      totalAmount: 200000,
+      currency: "SDG",
+      customerId: "cust-iso-a",
+      createdAt: "2026-01-10T00:00:00.000Z",
+      updatedAt: "2026-01-10T00:00:00.000Z",
+    });
+
+    const receiptResult = await recordCustomerReceipt({
+      customerId: "cust-iso-a",
+      amount: 200000,
+      paidAt: "2026-01-11",
+      accountId: DEFAULT_CASH_ACCOUNT.id,
+      allocations: [{ invoiceId: "inv-for-customer-a", amount: 200000 }],
+    });
+
+    expect(receiptResult.payment).toBeDefined();
+    expect(receiptResult.payment.amount).toBe(200000);
+  });
 });

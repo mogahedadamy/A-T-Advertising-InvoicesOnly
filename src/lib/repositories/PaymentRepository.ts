@@ -60,18 +60,59 @@ function newId(prefix: string, nowIso: string): string {
   return `${prefix}-${nowIso.replace(/[^0-9]/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** Outstanding per invoice, used to validate allocations (invoices only). */
-async function loadInvoiceAllocationState(invoiceIds: string[]): Promise<AllocationInvoice[]> {
+/** Outstanding per invoice, used to validate allocations (invoices only). Strict customer isolation enforcement. */
+async function loadInvoiceAllocationState(
+  invoiceIds: string[],
+  expectedCustomerId?: string
+): Promise<AllocationInvoice[]> {
   if (invoiceIds.length === 0) return [];
   const db = await getDb();
   const result: AllocationInvoice[] = [];
+
+  let expectedCustomerName = "";
+  if (expectedCustomerId) {
+    const custRes = await db.query("SELECT name FROM customers WHERE id = ? LIMIT 1", [expectedCustomerId]);
+    expectedCustomerName = (custRes.values?.[0]?.name ?? "").trim().toLowerCase();
+  }
+
   for (const id of invoiceIds) {
     const invoiceRes = await db.query(
-      "SELECT id, total_amount FROM custom_invoices WHERE id = ? AND cancelled_at IS NULL LIMIT 1",
+      "SELECT id, reference, total_amount, customer_id, party_name FROM custom_invoices WHERE id = ? AND cancelled_at IS NULL LIMIT 1",
       [id]
     );
     const row = invoiceRes.values?.[0];
-    if (!row) continue;
+    if (!row) {
+      throw new Error(`الفاتورة المحددة (${id}) غير موجودة أو تم إلغاؤها.`);
+    }
+
+    if (expectedCustomerId) {
+      const invoiceCustId = row.customer_id ? String(row.customer_id).trim() : "";
+      const invoicePartyName = row.party_name ? String(row.party_name).trim().toLowerCase() : "";
+
+      // 1. إذا كانت الفاتورة مرتبطة صراحة بمعرف عميل آخر -> انتهاك محاسبي صريح وممنوع
+      if (invoiceCustId && invoiceCustId !== expectedCustomerId) {
+        const invRef = row.reference ? `«${row.reference}»` : id;
+        const ownerName = row.party_name ? `«${row.party_name}»` : "عميل آخر";
+        throw new Error(
+          `انتهاك محاسبي: لا يمكن سداد الفاتورة ${invRef} لأنها تخص ${ownerName}، بينما السند صادر للعميل الحالي. الفواتير المسموح بربطها يجب أن تخص العميل المحدد فقط.`
+        );
+      }
+
+      // 2. إذا كانت الفاتورة بدون customer_id، التحقق مما إذا كان اسمها يتبع لعميل مسجل آخر في النظام
+      if (!invoiceCustId && invoicePartyName) {
+        const otherCustRes = await db.query(
+          "SELECT id, name FROM customers WHERE LOWER(TRIM(name)) = ? AND id != ? LIMIT 1",
+          [invoicePartyName, expectedCustomerId]
+        );
+        if (otherCustRes.values?.length) {
+          const invRef = row.reference ? `«${row.reference}»` : id;
+          throw new Error(
+            `انتهاك محاسبي: لا يمكن سداد الفاتورة ${invRef} لأنها تخص العميل «${row.party_name}»، بينما السند صادر للعميل الحالي. الفواتير المسموح بربطها يجب أن تخص العميل المحدد فقط.`
+          );
+        }
+      }
+    }
+
     const paidRes = await db.query(
       `SELECT COALESCE(SUM(a.amount), 0) AS paid
          FROM customer_payment_allocations a
@@ -88,17 +129,58 @@ async function loadInvoiceAllocationState(invoiceIds: string[]): Promise<Allocat
   return result;
 }
 
-async function loadSupplierInvoiceAllocationState(invoiceIds: string[]): Promise<AllocationInvoice[]> {
+async function loadSupplierInvoiceAllocationState(
+  invoiceIds: string[],
+  expectedSupplierId?: string
+): Promise<AllocationInvoice[]> {
   if (invoiceIds.length === 0) return [];
   const db = await getDb();
   const result: AllocationInvoice[] = [];
+
+  let expectedSupplierName = "";
+  if (expectedSupplierId) {
+    const suppRes = await db.query("SELECT name FROM suppliers WHERE id = ? LIMIT 1", [expectedSupplierId]);
+    expectedSupplierName = (suppRes.values?.[0]?.name ?? "").trim().toLowerCase();
+  }
+
   for (const id of invoiceIds) {
     const invoiceRes = await db.query(
-      "SELECT id, total_amount FROM custom_invoices WHERE id = ? AND cancelled_at IS NULL LIMIT 1",
+      "SELECT id, reference, total_amount, supplier_id, party_name FROM custom_invoices WHERE id = ? AND cancelled_at IS NULL LIMIT 1",
       [id]
     );
     const row = invoiceRes.values?.[0];
-    if (!row) continue;
+    if (!row) {
+      throw new Error(`فاتورة المشتريات المحددة (${id}) غير موجودة أو تم إلغاؤها.`);
+    }
+
+    if (expectedSupplierId) {
+      const invoiceSuppId = row.supplier_id ? String(row.supplier_id).trim() : "";
+      const invoicePartyName = row.party_name ? String(row.party_name).trim().toLowerCase() : "";
+
+      // 1. إذا كانت فاتورة المشتريات مرتبطة صراحة بمعرف مورد آخر -> انتهاك محاسبي صريح وممنوع
+      if (invoiceSuppId && invoiceSuppId !== expectedSupplierId) {
+        const invRef = row.reference ? `«${row.reference}»` : id;
+        const ownerName = row.party_name ? `«${row.party_name}»` : "مورد آخر";
+        throw new Error(
+          `انتهاك محاسبي: لا يمكن سداد الفاتورة ${invRef} لأنها تخص ${ownerName}، بينما السند صادر للمورد الحالي.`
+        );
+      }
+
+      // 2. إذا كانت الفاتورة بدون supplier_id، التحقق مما إذا كان اسمها يتبع لمورد مسجل آخر
+      if (!invoiceSuppId && invoicePartyName) {
+        const otherSuppRes = await db.query(
+          "SELECT id, name FROM suppliers WHERE LOWER(TRIM(name)) = ? AND id != ? LIMIT 1",
+          [invoicePartyName, expectedSupplierId]
+        );
+        if (otherSuppRes.values?.length) {
+          const invRef = row.reference ? `«${row.reference}»` : id;
+          throw new Error(
+            `انتهاك محاسبي: لا يمكن سداد الفاتورة ${invRef} لأنها تخص المورد «${row.party_name}»، بينما السند صادر للمورد الحالي.`
+          );
+        }
+      }
+    }
+
     const paidRes = await db.query(
       `SELECT COALESCE(SUM(a.amount), 0) AS paid
          FROM supplier_payment_allocations a
@@ -184,7 +266,7 @@ export async function recordCustomerReceipt(
   if (!input.paidAt) throw new Error("تاريخ الدفعة مطلوب");
 
   const allocations = input.allocations ?? [];
-  const invoices = await loadInvoiceAllocationState(allocations.map((a) => a.invoiceId));
+  const invoices = await loadInvoiceAllocationState(allocations.map((a) => a.invoiceId), input.customerId);
   const validation = validateAllocations(amount, allocations, invoices);
   if (!validation.ok) throw new Error(validation.errors.join("، "));
 
@@ -333,7 +415,7 @@ export async function recordSupplierPayment(
   if (!input.paidAt) throw new Error("تاريخ الدفعة مطلوب");
 
   const allocations = input.allocations ?? [];
-  const invoices = await loadSupplierInvoiceAllocationState(allocations.map((a) => a.invoiceId));
+  const invoices = await loadSupplierInvoiceAllocationState(allocations.map((a) => a.invoiceId), input.supplierId);
   const validation = validateAllocations(amount, allocations, invoices);
   if (!validation.ok) throw new Error(validation.errors.join("، "));
 
