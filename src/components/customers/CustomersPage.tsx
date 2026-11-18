@@ -41,7 +41,7 @@ import {
 } from "@/lib/customersStore";
 import { formatNumber } from "@/lib/printCalculator";
 import { CustomerDialog } from "./CustomerDialog";
-import { CustomerProfileModal } from "./CustomerProfileModal";
+import { CustomerDetailPage } from "./CustomerDetailPage";
 import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
 import { playTapSound, playDeleteSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
@@ -73,9 +73,32 @@ export function CustomersPage() {
     Record<string, { outstanding: number; invoiced: number; collected: number; overdueCount: number }>
   >({});
 
-  // Profile modal state
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  // Dedicated customer profile full-page view state
   const [selectedProfileCustomer, setSelectedProfileCustomer] = useState<CustomerRecord | null>(null);
+
+  // Sync selected customer from URL search/hash for deep-linking & Android Back Button support
+  useEffect(() => {
+    const syncFromUrl = () => {
+      if (typeof window === "undefined") return;
+      const hash = window.location.hash || "";
+      const search = window.location.search || "";
+      const queryString = hash.includes("?") ? hash.split("?")[1] : search.replace("?", "");
+      const params = new URLSearchParams(queryString);
+      const custId = params.get("id");
+      if (custId) {
+        const found = customers.find((c) => c.id === custId);
+        if (found) {
+          setSelectedProfileCustomer(found);
+          return;
+        }
+      }
+      setSelectedProfileCustomer(null);
+    };
+
+    window.addEventListener("popstate", syncFromUrl);
+    syncFromUrl();
+    return () => window.removeEventListener("popstate", syncFromUrl);
+  }, [customers]);
 
   // Invoice creation modal from customer row
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
@@ -256,7 +279,20 @@ export function CustomersPage() {
   const handleOpenProfile = (c: CustomerRecord) => {
     playTapSound();
     setSelectedProfileCustomer(c);
-    setProfileModalOpen(true);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ customerId: c.id }, "", "#/customers?id=" + c.id);
+    }
+  };
+
+  const handleBackToDirectory = () => {
+    playTapSound();
+    setSelectedProfileCustomer(null);
+    if (typeof window !== "undefined") {
+      if (window.location.hash.includes("?id=")) {
+        window.history.pushState(null, "", "#/customers");
+      }
+    }
+    void loadLiveBalances();
   };
 
   const handleOpenInvoiceCreation = (c: CustomerRecord) => {
@@ -265,6 +301,37 @@ export function CustomersPage() {
     setInvoiceDialogOpen(true);
   };
 
+  // ── 1. العرض المستقل الكامل لملف العميل (Dedicated Customer Master Workspace) ──
+  if (selectedProfileCustomer) {
+    return (
+      <>
+        <CustomerDetailPage
+          customer={selectedProfileCustomer}
+          onBack={handleBackToDirectory}
+          onCustomerUpdated={() => void loadLiveBalances()}
+          onCreateInvoice={(c) => handleOpenInvoiceCreation(c)}
+        />
+
+        {/* Custom Invoice Dialog opened directly with selected customer */}
+        <CustomInvoiceDialog
+          open={invoiceDialogOpen}
+          onOpenChange={(open) => {
+            setInvoiceDialogOpen(open);
+            if (!open) {
+              setInvoiceTargetCustomer(null);
+              void loadLiveBalances();
+            }
+          }}
+          initialType="sales"
+          onSaved={() => {
+            void loadLiveBalances();
+          }}
+        />
+      </>
+    );
+  }
+
+  // ── 2. العرض الرئيسي لدليل العملاء (Master Directory View) ──
   return (
     <PageShell>
       <main
@@ -766,20 +833,6 @@ export function CustomersPage() {
         onSave={handleSave}
         initialData={editingCustomer}
       />
-
-      {/* Customer Profile Modal for full financial/commercial view */}
-      {selectedProfileCustomer && (
-        <CustomerProfileModal
-          open={profileModalOpen}
-          onOpenChange={(open) => {
-            setProfileModalOpen(open);
-            if (!open) void loadLiveBalances();
-          }}
-          customer={selectedProfileCustomer}
-          onCustomerUpdated={() => void loadLiveBalances()}
-          onCreateInvoice={(c) => handleOpenInvoiceCreation(c)}
-        />
-      )}
 
       {/* Custom Invoice Dialog opened directly with selected customer */}
       <CustomInvoiceDialog
