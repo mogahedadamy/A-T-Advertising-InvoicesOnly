@@ -184,6 +184,24 @@ html, body {
   justify-content: space-between !important;
 }
 
+/* 3. الورقة الرسمية المروّسة للخطابات A4 بهوامش أمان دبلوماسية ومسنترة */
+.official-letter-sheet {
+  width: 210mm !important;
+  min-height: 297mm !important;
+  height: 297mm !important;
+  max-height: 297mm !important;
+  margin: 0 auto !important;
+  padding: 18mm 20mm 16mm 20mm !important;
+  box-sizing: border-box !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
 /* ورقة الفاتورة المعتمدة A5 (210mm x 148mm Landscape) */
 .invoice-paper {
   width: 210mm !important;

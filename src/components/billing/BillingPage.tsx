@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { BillingCards } from "./BillingCards";
 import { BillingArchiveTable } from "./BillingArchiveTable";
@@ -10,14 +10,17 @@ import type { ProformaInvoice } from "@/lib/proforma/types";
 import type { InvoiceRecord } from "@/lib/invoicesStore";
 import { InvoicesModalsManager } from "@/components/invoices/InvoicesModalsManager";
 import { useUnifiedInvoices } from "@/components/invoices/useUnifiedInvoices";
-import { Receipt, Plus } from "lucide-react";
+import { Receipt, Plus, FileSignature } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const LetterIssuerDialog = lazy(() => import("@/components/letters/LetterIssuerDialog"));
 
 export function BillingPage() {
   const invoices = useCustomInvoices();
   const { stats } = useUnifiedInvoices();
 
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [letterDialogOpen, setLetterDialogOpen] = useState(false);
   const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
   const [dialogType, setDialogType] = useState<CustomInvoiceType>("sales");
   const [editingCustomInvoice, setEditingCustomInvoice] = useState<CustomInvoice | null>(null);
@@ -65,10 +68,19 @@ export function BillingPage() {
               </p>
             </div>
 
-            <div className="hidden md:flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLetterDialogOpen(true)}
+                className="h-9 px-3 sm:px-3.5 rounded-xl font-black text-xs gap-1.5 border-[#C5A059]/60 bg-card hover:bg-primary/5 text-primary active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <FileSignature className="h-4 w-4 text-[#C5A059]" />
+                <span>إصدار خطاب</span>
+              </Button>
               <Button
                 onClick={() => handleOpenCreate("sales")}
-                className="h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.98] transition-all cursor-pointer"
+                className="hidden md:inline-flex h-9 px-4 rounded-xl font-black text-xs gap-1.5 bg-primary hover:bg-primary/90 text-white shadow-xs shadow-primary/30 active:scale-[0.98] transition-all cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 <span>إصدار فاتورة بيع جديدة</span>
@@ -127,6 +139,15 @@ export function BillingPage() {
             editingProformaInvoice={editingProformaInvoice}
             setEditingProformaInvoice={setEditingProformaInvoice}
           />
+
+          {letterDialogOpen && (
+            <Suspense fallback={null}>
+              <LetterIssuerDialog
+                open={letterDialogOpen}
+                onOpenChange={setLetterDialogOpen}
+              />
+            </Suspense>
+          )}
         </div>
       </main>
     </PageShell>

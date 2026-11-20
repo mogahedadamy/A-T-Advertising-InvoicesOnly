@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { Suspense, lazy, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Building2,
   Calendar,
+  FileSignature,
   Plus,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
@@ -10,6 +11,8 @@ import { ModuleGrid } from "@/components/dashboard/ModuleGrid";
 import { useUserProfile } from "@/lib/userProfileStore";
 import { UserProfileDialog } from "@/components/common/UserProfileDialog";
 import { AppTourLauncherBanner } from "@/components/common/AppTourAssistant";
+
+const LetterIssuerDialog = lazy(() => import("@/components/letters/LetterIssuerDialog"));
 
 function getGreeting(name?: string) {
   const h = new Date().getHours();
@@ -28,6 +31,7 @@ function getGreeting(name?: string) {
 export function HomePage() {
   const { userName } = useUserProfile();
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [letterDialogOpen, setLetterDialogOpen] = useState(false);
 
   const greeting = useMemo(() => getGreeting(userName), [userName]);
 
@@ -86,7 +90,7 @@ export function HomePage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <Link
                   to="/billing"
                   className="inline-flex h-9.5 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-black text-white shadow-xs shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
@@ -94,6 +98,14 @@ export function HomePage() {
                   <Plus className="h-4 w-4" />
                   <span>إصدار فاتورة</span>
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setLetterDialogOpen(true)}
+                  className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-[#C5A059]/60 bg-card px-3.5 text-xs font-black text-primary hover:bg-primary/5 hover:border-primary/50 active:scale-[0.98] transition-all cursor-pointer shadow-2xs"
+                >
+                  <FileSignature className="h-4 w-4 text-[#C5A059]" />
+                  <span>إصدار خطاب</span>
+                </button>
               </div>
             </div>
           </section>
@@ -118,6 +130,15 @@ export function HomePage() {
         isOpen={showProfileEdit}
         onClose={() => setShowProfileEdit(false)}
       />
+
+      {letterDialogOpen && (
+        <Suspense fallback={null}>
+          <LetterIssuerDialog
+            open={letterDialogOpen}
+            onOpenChange={setLetterDialogOpen}
+          />
+        </Suspense>
+      )}
     </PageShell>
   );
 }

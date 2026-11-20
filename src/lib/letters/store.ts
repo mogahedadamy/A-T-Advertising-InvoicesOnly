@@ -1,0 +1,168 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * Official Letters Archive Store (SQLite Settings + Web Storage)
+ * ═══════════════════════════════════════════════════════════════
+ * Stores issued official letters cleanly in the existing SQLite
+ * settings table (automatically backed up and restored) without
+ * altering financial/invoice database tables.
+ */
+
+import { useSyncExternalStore } from "react";
+import { Capacitor } from "@capacitor/core";
+import { getSetting, setSetting } from "@/lib/repositories/SettingsRepository";
+import { getStoredSync, setMemoryCacheString } from "@/lib/sqliteStorage";
+import { getLocalIsoDate } from "@/lib/dateUtils";
+import type { OfficialLetter } from "./types";
+
+const LETTERS_STORAGE_KEY = "ta_official_letters_v1";
+const MAX_STORED_LETTERS = 150;
+
+function parseLettersJson(raw: string): OfficialLetter[] {
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is OfficialLetter =>
+        Boolean(item && typeof item === "object" && typeof item.id === "string" && typeof item.subject === "string")
+    );
+  } catch {
+    return [];
+  }
+}
+
+function readRawSync(): string {
+  if (Capacitor.isNativePlatform()) {
+    return getStoredSync(LETTERS_STORAGE_KEY, "[]") || "[]";
+  }
+  try {
+    if (typeof localStorage !== "undefined" && typeof localStorage.getItem === "function") {
+      return localStorage.getItem(LETTERS_STORAGE_KEY) || "[]";
+    }
+  } catch {}
+  return "[]";
+}
+
+function writeRawSync(serialized: string): void {
+  if (Capacitor.isNativePlatform()) {
+    setMemoryCacheString(LETTERS_STORAGE_KEY, serialized);
+    return;
+  }
+  try {
+    if (typeof localStorage !== "undefined" && typeof localStorage.setItem === "function") {
+      localStorage.setItem(LETTERS_STORAGE_KEY, serialized);
+    }
+  } catch {}
+}
+
+let cachedLetters: OfficialLetter[] = parseLettersJson(readRawSync());
+const listeners = new Set<() => void>();
+
+function notify() {
+  listeners.forEach((fn) => fn());
+}
+
+async function hydrateLettersFromDb(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) {
+    const fresh = parseLettersJson(readRawSync());
+    cachedLetters = fresh;
+    notify();
+    return;
+  }
+  try {
+    const raw = await getSetting(LETTERS_STORAGE_KEY, "[]");
+    cachedLetters = parseLettersJson(raw);
+    setMemoryCacheString(LETTERS_STORAGE_KEY, raw);
+    notify();
+  } catch (err) {
+    console.warn("[LettersStore] Failed to hydrate from SQLite:", err);
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("native-storage-ready", () => {
+    void hydrateLettersFromDb();
+  });
+}
+
+async function persistLetters(next: OfficialLetter[]): Promise<void> {
+  const trimmed = next.slice(0, MAX_STORED_LETTERS);
+  cachedLetters = trimmed;
+  const serialized = JSON.stringify(trimmed);
+  writeRawSync(serialized);
+  notify();
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await setSetting(LETTERS_STORAGE_KEY, serialized);
+    } catch (err) {
+      console.error("[LettersStore] Failed to persist letters to SQLite:", err);
+    }
+  }
+}
+
+export function getOfficialLettersSnapshot(): OfficialLetter[] {
+  return cachedLetters;
+}
+
+export function useOfficialLetters(): OfficialLetter[] {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => {
+        listeners.delete(cb);
+      };
+    },
+    () => cachedLetters,
+    () => []
+  );
+}
+
+/**
+ * Generates next sequential official letter reference (e.g. TA-26-001).
+ */
+export function getNextLetterReference(dateStr = getLocalIsoDate()): string {
+  const yearMatch = /^(\d{4})/.exec(dateStr || "");
+  const yy = (yearMatch ? yearMatch[1] : String(new Date().getFullYear())).slice(-2);
+  const prefix = `TA-${yy}-`;
+
+  let maxSeq = 0;
+  for (const letter of cachedLetters) {
+    if (letter.reference?.startsWith(prefix)) {
+      const num = Number.parseInt(letter.reference.slice(prefix.length), 10);
+      if (Number.isFinite(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
+}
+
+export async function saveOfficialLetter(letter: OfficialLetter): Promise<OfficialLetter> {
+  const nowIso = new Date().toISOString();
+  const normalized: OfficialLetter = {
+    ...letter,
+    reference: letter.reference.trim() || getNextLetterReference(letter.date),
+    recipientName: letter.recipientName.trim(),
+    recipientTitle: letter.recipientTitle?.trim() || undefined,
+    letterTitle: letter.letterTitle.trim() || "خطاب رسمي",
+    subject: letter.subject.trim(),
+    body: letter.body.trim(),
+    updatedAt: nowIso,
+    createdAt: letter.createdAt || nowIso,
+  };
+
+  const existingIdx = cachedLetters.findIndex((item) => item.id === normalized.id);
+  const next =
+    existingIdx >= 0
+      ? [normalized, ...cachedLetters.filter((item) => item.id !== normalized.id)]
+      : [normalized, ...cachedLetters];
+
+  await persistLetters(next);
+  return normalized;
+}
+
+export async function deleteOfficialLetter(id: string): Promise<void> {
+  const next = cachedLetters.filter((item) => item.id !== id);
+  await persistLetters(next);
+}

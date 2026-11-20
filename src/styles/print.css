@@ -478,7 +478,7 @@
     print-color-adjust: exact !important;
   }
 
-  body.printing-custom-invoice > *:not(.custom-invoice-print-root):not(#custom-invoice-print-portal):not(.statement-print-root):not(#customer-statement-print-mount):not(.statement-print-document) {
+  body.printing-custom-invoice > *:not(.custom-invoice-print-root):not(#custom-invoice-print-portal):not(.statement-print-root):not(#customer-statement-print-mount):not(.statement-print-document):not(.official-letter-print-root) {
     display: none !important;
   }
 
@@ -518,6 +518,30 @@
     padding: 16mm 18mm 14mm 18mm !important;
     box-sizing: border-box !important;
     overflow: visible !important;
+    page: custom-invoice-page;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .official-letter-print-root,
+  .official-letter-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 18mm 20mm 16mm 20mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
     page: custom-invoice-page;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

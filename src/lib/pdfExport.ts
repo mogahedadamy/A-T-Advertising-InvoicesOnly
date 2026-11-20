@@ -40,6 +40,7 @@ export function buildStandaloneInvoiceHtml(
     title.includes("a5");
 
   const targetSheet =
+    element.classList.contains("official-letter-sheet") ||
     element.classList.contains("standard-invoice-sheet") ||
     element.classList.contains("proforma-sheet") ||
     element.classList.contains("invoice-paper") ||
@@ -47,7 +48,7 @@ export function buildStandaloneInvoiceHtml(
     element.classList.contains("statement-print-document")
       ? element
       : element.querySelector<HTMLElement>(
-          ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .statement-print-root, .statement-print-document"
+          ".official-letter-sheet, .standard-invoice-sheet, .proforma-sheet, .invoice-paper, .statement-print-root, .statement-print-document"
         ) || element;
 
   const rawDir =
@@ -206,7 +207,7 @@ export async function generateInvoicePdf(
   const stageHeightPx = isA5 ? 536 : 1123;
 
   const printPages = Array.from(element.querySelectorAll<HTMLElement>(".invoice-print-page"));
-  const sheets = Array.from(element.querySelectorAll<HTMLElement>(".proforma-sheet, .standard-invoice-sheet, .invoice-paper"));
+  const sheets = Array.from(element.querySelectorAll<HTMLElement>(".official-letter-sheet, .proforma-sheet, .standard-invoice-sheet, .invoice-paper"));
   const targets = printPages.length > 0 ? printPages : (sheets.length > 0 ? sheets : [element]);
 
   const [{ default: html2canvas }, { default: JsPdfCtor }, { TA_QR_CODE_BASE64 }] = await Promise.all([
@@ -277,7 +278,7 @@ export async function generateInvoicePdf(
       ));
 
       const sheetEl = iframeDoc.querySelector<HTMLElement>(
-        ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .invoice-standalone-root"
+        ".official-letter-sheet, .standard-invoice-sheet, .proforma-sheet, .invoice-paper, .invoice-standalone-root"
       ) || iframeDoc.body;
 
       // Render the invoice body at a measured 300 DPI. The QR asset is
@@ -646,9 +647,11 @@ export async function shareInvoiceViaWhatsApp(
   const typeLabel = options.invoiceTypeLabel || "فاتورة";
   const amountStr = options.totalAmount !== undefined ? options.totalAmount.toLocaleString("en-US") : "";
   const currencyStr = options.currency || "SDG";
+  const amountLineAr = options.totalAmount !== undefined ? `\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}` : "";
+  const amountLineEn = options.totalAmount !== undefined ? `\nTotal: ${amountStr} ${currencyStr}` : "";
   const messageText = options.isRtl !== false
-    ? `السلام عليكم ورحمة الله،\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amountStr} ${currencyStr}\nوكالة T.A Advertising Solution`
-    : `Dear ${clientName},\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}\nTotal: ${amountStr} ${currencyStr}\nT.A Advertising Solution`;
+    ? `السلام عليكم ورحمة الله،\nمرفق لكم ${typeLabel} ${ref ? `رقم ${ref}` : ""}\nالجهة: ${clientName}${amountLineAr}\nوكالة T.A Advertising Solution`
+    : `Dear ${clientName},\nPlease find attached ${typeLabel} ${ref ? `No. ${ref}` : ""}${amountLineEn}\nT.A Advertising Solution`;
 
   const actualFormat = options.format || "a4";
   const filename = options.filename || `فاتورة-TA-${ref || Date.now()}`;
