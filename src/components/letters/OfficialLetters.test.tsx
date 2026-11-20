@@ -3,7 +3,6 @@ import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createOfficialLetter } from "@/lib/letters/templates";
-import { translateLetterArToEnOffline } from "@/lib/letters/offlineTranslator";
 import {
   deleteOfficialLetter,
   getNextLetterReference,
@@ -33,13 +32,11 @@ describe("Official Corporate Letters — Unified Bilingual Letterhead", () => {
     expect(sheet!.style.paddingBottom).toBe("16mm");
     expect(sheet!.style.paddingLeft).toBe("20mm");
 
-    // Must NOT render fallback "خطاب رسمي" or "OFFICIAL CORRESPONDENCE"
     expect(sheet!.textContent).not.toContain("خطاب رسمي");
     expect(sheet!.textContent).not.toContain("OFFICIAL CORRESPONDENCE");
     expect(sheet!.textContent).not.toContain("عن وكالة T.A Advertising Solution");
     expect(sheet!.textContent).not.toContain("التوقيع المعتمد");
 
-    // Core clean signatory, bigger stamp & high-res QR
     expect(sheet!.textContent).toContain("شركة زادنا للمواد الغذائية");
     expect(sheet!.textContent).toContain("الموضوع:");
     expect(sheet!.textContent).toContain("طارق عثمان علي");
@@ -69,28 +66,23 @@ describe("Official Corporate Letters — Unified Bilingual Letterhead", () => {
     expect(container.textContent).not.toContain("OFFICIAL CORRESPONDENCE");
   });
 
-  it("switches to full LTR English mode and translates standard Arabic corporate clauses offline", () => {
-    const arLetter = createOfficialLetter("TA-26-009", "ar", {
+  it("renders user-authored English LTR letters cleanly without automatic translation", () => {
+    const enLetter = createOfficialLetter("TA-26-009", "en", {
       showLetterTitle: true,
-      letterTitle: "خطاب مطالبة مالية رسمية",
-      recipientName: "شركة النور — الخرطوم",
-      subject: "المطالبة بسداد المستحقات المالية للفواتير الصادرة",
+      letterTitle: "Official Financial Claim",
+      recipientName: "Al-Noor Trading Co.",
+      subject: "Settlement of Outstanding Balance",
+      body: "Please arrange settlement of the outstanding invoice at your earliest convenience.",
     });
 
-    const { translated } = translateLetterArToEnOffline(arLetter);
-    expect(translated.language).toBe("en");
-    expect(translated.recipientHonorific).toBe("Messrs.");
-    expect(translated.letterTitle).toBe("Official Financial Claim Letter");
-    expect(translated.subject).toBe("Formal Claim for Settlement of Outstanding Invoices");
-    expect(translated.signatoryName).toBe("Tarig Osman Ali");
-    expect(translated.signatoryTitle).toBe("General Manager — T.A Advertising Solution");
-
-    const { container } = render(<OfficialLetterDocument letter={translated} />);
+    const { container } = render(<OfficialLetterDocument letter={enLetter} />);
     const sheet = container.querySelector<HTMLElement>(".official-letter-sheet");
     expect(sheet!.getAttribute("dir")).toBe("ltr");
     expect(sheet!.textContent).toContain("Date:");
     expect(sheet!.textContent).toContain("Ref.:");
     expect(sheet!.textContent).toContain("Subject:");
+    expect(sheet!.textContent).toContain("Official Financial Claim");
+    expect(sheet!.textContent).toContain("Al-Noor Trading Co.");
     expect(sheet!.textContent).toContain("Tarig Osman Ali");
   });
 

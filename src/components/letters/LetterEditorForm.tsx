@@ -4,20 +4,20 @@ import {
   Check,
   FileText,
   Globe,
-  Languages,
   PenTool,
   QrCode,
   Stamp,
   User,
   Users,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CustomerPickerModal } from "@/components/customers/CustomerPickerModal";
 import {
+  DEFAULT_BODY_AR,
+  DEFAULT_BODY_EN,
   DEFAULT_CLOSING_AR,
   DEFAULT_CLOSING_EN,
   DEFAULT_SALUTATION_AR,
@@ -26,10 +26,11 @@ import {
   DEFAULT_SIGNATORY_NAME_EN,
   DEFAULT_SIGNATORY_TITLE_AR,
   DEFAULT_SIGNATORY_TITLE_EN,
+  DEFAULT_SUBJECT_AR,
+  DEFAULT_SUBJECT_EN,
   RECIPIENT_HONORIFIC_OPTIONS_AR,
   RECIPIENT_HONORIFIC_OPTIONS_EN,
 } from "@/lib/letters/templates";
-import { translateLetterArToEnOffline } from "@/lib/letters/offlineTranslator";
 import type { LetterLanguage, OfficialLetter } from "@/lib/letters/types";
 import { getLocalIsoDate } from "@/lib/dateUtils";
 import { playTapSound } from "@/lib/soundEffects";
@@ -37,10 +38,9 @@ import { playTapSound } from "@/lib/soundEffects";
 interface Props {
   letter: OfficialLetter;
   onChange: (patch: Partial<OfficialLetter>) => void;
-  onReplaceLetter: (next: OfficialLetter) => void;
 }
 
-export function LetterEditorForm({ letter, onChange, onReplaceLetter }: Props) {
+export function LetterEditorForm({ letter, onChange }: Props) {
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const isEn = letter.language === "en";
   const honorificOptions = isEn ? RECIPIENT_HONORIFIC_OPTIONS_EN : RECIPIENT_HONORIFIC_OPTIONS_AR;
@@ -50,12 +50,24 @@ export function LetterEditorForm({ letter, onChange, onReplaceLetter }: Props) {
     if (targetLang === letter.language) return;
 
     if (targetLang === "en") {
-      const { translated, hasRemainingArabic } = translateLetterArToEnOffline(letter);
-      onReplaceLetter(translated);
-      toast.success("تم تحويل الخطاب إلى الإنجليزية (LTR)", {
-        description: hasRemainingArabic
-          ? "تمت ترجمة القالب والعبارات التجارية أوفلاين — يرجى مراجعة الأسماء أو الكلمات الحرة المتبقية."
-          : "تم تحويل كامل تفاصيل الخطاب للإنجليزية الاحترافية بنجاح.",
+      onChange({
+        language: "en",
+        recipientHonorific:
+          letter.recipientHonorific === "إلى من يهمه الأمر" ? "To Whom It May Concern" : "Messrs.",
+        salutation:
+          letter.salutation === DEFAULT_SALUTATION_AR ? DEFAULT_SALUTATION_EN : letter.salutation,
+        closingPhrase:
+          letter.closingPhrase === DEFAULT_CLOSING_AR ? DEFAULT_CLOSING_EN : letter.closingPhrase,
+        signatoryName:
+          letter.signatoryName === DEFAULT_SIGNATORY_NAME_AR
+            ? DEFAULT_SIGNATORY_NAME_EN
+            : letter.signatoryName,
+        signatoryTitle:
+          letter.signatoryTitle === DEFAULT_SIGNATORY_TITLE_AR
+            ? DEFAULT_SIGNATORY_TITLE_EN
+            : letter.signatoryTitle,
+        subject: letter.subject === DEFAULT_SUBJECT_AR ? DEFAULT_SUBJECT_EN : letter.subject,
+        body: letter.body === DEFAULT_BODY_AR ? DEFAULT_BODY_EN : letter.body,
       });
       return;
     }
@@ -76,60 +88,41 @@ export function LetterEditorForm({ letter, onChange, onReplaceLetter }: Props) {
         letter.signatoryTitle === DEFAULT_SIGNATORY_TITLE_EN
           ? DEFAULT_SIGNATORY_TITLE_AR
           : letter.signatoryTitle,
-    });
-  };
-
-  const handleSmartTranslateToEnglish = () => {
-    playTapSound();
-    const { translated, hasRemainingArabic } = translateLetterArToEnOffline(letter);
-    onReplaceLetter(translated);
-    toast.success("تم تشغيل المترجم التجاري الذكي (أوفلاين)", {
-      description: hasRemainingArabic
-        ? "تمت ترجمة العبارات التجارية والرسمية — بقيت كلمات حرة يفضّل مراجعتها يدوياً."
-        : "النص الإنجليزي جاهز تماماً للمعاينة والطباعة.",
+      subject: letter.subject === DEFAULT_SUBJECT_EN ? DEFAULT_SUBJECT_AR : letter.subject,
+      body: letter.body === DEFAULT_BODY_EN ? DEFAULT_BODY_AR : letter.body,
     });
   };
 
   return (
     <div className="space-y-3.5" dir="rtl">
-      {/* 1. شريط اللغة والترجمة الذكية أوفلاين */}
+      {/* 1. محدد لغة واتجاه الورقة (يدوي حسب مدخلات المستخدم) */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/80 bg-card p-3 shadow-2xs">
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-primary shrink-0" />
           <span className="text-xs font-black text-foreground">لغة الخطاب واتجاه الورقة:</span>
-          <div className="inline-flex rounded-xl border border-border/80 bg-secondary/60 p-0.5">
-            {(
-              [
-                { id: "ar" as const, label: "العربية (RTL)" },
-                { id: "en" as const, label: "English (LTR)" },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleSwitchLanguage(opt.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
-                  letter.language === opt.id
-                    ? "bg-primary text-white shadow-2xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleSmartTranslateToEnglish}
-          className="h-8 px-3 rounded-xl border-[#C5A059]/60 bg-[#C5A059]/10 hover:bg-[#C5A059]/20 text-foreground text-[11px] font-black gap-1.5 cursor-pointer"
-        >
-          <Languages className="h-3.5 w-3.5 text-[#0D4A39]" />
-          <span>ترجمة ذكية للإنجليزية (أوفلاين)</span>
-        </Button>
+        <div className="inline-flex rounded-xl border border-border/80 bg-secondary/60 p-0.5">
+          {(
+            [
+              { id: "ar" as const, label: "العربية (RTL)" },
+              { id: "en" as const, label: "English (LTR)" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => handleSwitchLanguage(opt.id)}
+              className={`px-3 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                letter.language === opt.id
+                  ? "bg-primary text-white shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 2. بيانات الجهة أو الشخص الموجَّه إليه الخطاب */}
@@ -259,7 +252,7 @@ export function LetterEditorForm({ letter, onChange, onReplaceLetter }: Props) {
           </div>
         </div>
 
-        {/* مفتاح إظهار أو إخفاء عنوان الترويسة (عند الإخفاء يتوسّط الشعار الصفحة تلقائياً) */}
+        {/* مفتاح إظهار أو إخفاء عنوان الترويسة */}
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-secondary/30 px-3 py-2">
           <div className="min-w-0">
             <div className="text-[11px] font-black text-foreground">
@@ -278,9 +271,12 @@ export function LetterEditorForm({ letter, onChange, onReplaceLetter }: Props) {
               playTapSound();
               onChange({
                 showLetterTitle: checked,
-                letterTitle: checked && !letter.letterTitle.trim()
-                  ? (isEn ? "Official Letter" : "خطاب مطالبة مالية")
-                  : letter.letterTitle,
+                letterTitle:
+                  checked && !letter.letterTitle.trim()
+                    ? isEn
+                      ? "Official Letter"
+                      : "خطاب مطالبة مالية"
+                    : letter.letterTitle,
               });
             }}
             aria-label="إظهار عنوان للخطاب أعلى الترويسة"

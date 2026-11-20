@@ -34,13 +34,16 @@ export const RECIPIENT_HONORIFIC_OPTIONS_EN = [
   "To Whom It May Concern",
 ] as const;
 
-const DEFAULT_BODY_AR = [
+export const DEFAULT_SUBJECT_AR = "تعاون ومراسلة رسمية — وكالة T.A Advertising Solution";
+export const DEFAULT_SUBJECT_EN = "Official Corporate Correspondence — T.A Advertising Solution";
+
+export const DEFAULT_BODY_AR = [
   "تهديكم وكالة T.A Advertising Solution أطيب التحيات وأصدق الأمنيات بدوام التوفيق والنجاح في أعمالكم.",
   "بالإشارة إلى الموضوع أعلاه، نود إفادتكم بالتفاصيل التالية: [اكتب التفاصيل المهمة هنا، مثل رقم الفاتورة أو نطاق العمل أو الطلب المطلوب]، وذلك وفقاً للاتفاق المعتمد بين الطرفين وبأعلى معايير الجودة والالتزام.",
   "نثمن عالياً ثقتكم وتعاونكم الدائم معنا، ونتطلع إلى استمرار الشراكة المثمرة بين مؤسستينا.",
 ].join("\n\n");
 
-const DEFAULT_BODY_EN = [
+export const DEFAULT_BODY_EN = [
   "T.A Advertising Solution extends its warmest greetings and sincere wishes for your continued success and prosperity.",
   "With reference to the subject mentioned above, we would like to inform you of the following details: [Enter the key details here, such as invoice number, scope of work, or formal request], in accordance with our agreed terms and highest quality standards.",
   "We highly value your continued trust and cooperation, and we look forward to a fruitful ongoing partnership between our organizations.",
@@ -64,9 +67,7 @@ export function createOfficialLetter(
     recipientName: "",
     recipientTitle: "",
     salutation: isEn ? DEFAULT_SALUTATION_EN : DEFAULT_SALUTATION_AR,
-    subject: isEn
-      ? "Official Corporate Correspondence — T.A Advertising Solution"
-      : "تعاون ومراسلة رسمية — وكالة T.A Advertising Solution",
+    subject: isEn ? DEFAULT_SUBJECT_EN : DEFAULT_SUBJECT_AR,
     body: isEn ? DEFAULT_BODY_EN : DEFAULT_BODY_AR,
     closingPhrase: isEn ? DEFAULT_CLOSING_EN : DEFAULT_CLOSING_AR,
     signatoryName: isEn ? DEFAULT_SIGNATORY_NAME_EN : DEFAULT_SIGNATORY_NAME_AR,

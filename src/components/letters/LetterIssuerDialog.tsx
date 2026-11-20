@@ -222,7 +222,6 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
             <LetterEditorForm
               letter={letter}
               onChange={handlePatch}
-              onReplaceLetter={setLetter}
             />
           </div>
         )}
