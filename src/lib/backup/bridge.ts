@@ -64,6 +64,39 @@ export function isBackupEngineAvailable(): boolean {
   return Boolean(core.Plugins?.[BACKUP_PLUGIN_NAME]);
 }
 
+/** Defensively normalizes legacy Java StorageState enum values into canonical TS states (DB-07). */
+export function normalizeStorageState(state: unknown): StorageInfo["state"] {
+  const raw = String(state ?? "").trim();
+  switch (raw) {
+    case "ok":
+    case "OK":
+      return "ok";
+    case "folder-not-selected":
+    case "NO_FOLDER":
+      return "folder-not-selected";
+    case "permission-lost":
+    case "PERMISSION_LOST":
+      return "permission-lost";
+    case "unsupported":
+    case "UNSUPPORTED":
+      return "unsupported";
+    case "browser":
+    case "BROWSER":
+      return "browser";
+    case "unavailable":
+    case "UNAVAILABLE":
+    default:
+      return "unavailable";
+  }
+}
+
+function normalizeStorageInfo(storage: StorageInfo): StorageInfo {
+  return {
+    ...storage,
+    state: normalizeStorageState(storage?.state),
+  };
+}
+
 /** Normalises a native file record into the domain type. */
 export function toBackupFileInfo(raw: any): BackupFileInfo {
   const manifest = raw?.manifest && raw.manifest !== null && typeof raw.manifest === "object" ? raw.manifest : null;
@@ -141,7 +174,7 @@ export const backupBridge = {
     return {
       ok: true,
       status: {
-        storage: raw.storage,
+        storage: normalizeStorageInfo(raw.storage),
         database: raw.database,
         settings: null as unknown as EngineStatus["settings"],
         backups,
@@ -210,11 +243,17 @@ export const backupBridge = {
 
   async discover(): Promise<{ ok: boolean; currentInvoiceCount: number; pendingSchemaUpgrade: boolean; status?: NativeStatus }> {
     const raw = await callNative<{ ok: boolean; currentInvoiceCount?: number; pendingSchemaUpgrade?: boolean; status?: NativeStatus }>("discoverBackups");
+    const normalizedStatus = raw?.status
+      ? {
+          ...raw.status,
+          storage: raw.status.storage ? normalizeStorageInfo(raw.status.storage) : undefined,
+        }
+      : undefined;
     return {
       ok: Boolean(raw?.ok),
       currentInvoiceCount: Number(raw?.currentInvoiceCount ?? 0),
       pendingSchemaUpgrade: Boolean(raw?.pendingSchemaUpgrade),
-      status: raw?.status,
+      status: normalizedStatus,
     };
   },
 

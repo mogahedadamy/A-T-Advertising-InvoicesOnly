@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, FileSpreadsheet, Eye, Pencil, CheckCircle2, ArrowRightLeft } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProformaForm } from "./ProformaForm";
-import { ProjectPicker } from "@/components/projects/ProjectPicker";
 import { ProformaDocument } from "./ProformaDocument";
 import { ProformaViewer } from "./ProformaViewer";
-import { ProformaPrintButton } from "./ProformaPrintButton";
+import { ProformaDialogHeader, ProformaDialogFooter } from "./ProformaDialogChrome";
 import { peekNextProformaSerial } from "@/lib/proforma/serial";
-import { saveProformaInvoice, convertProformaToOperatingInvoice } from "@/lib/proforma/store";
+import {
+  saveProformaInvoice,
+  convertProformaToOperatingInvoice,
+  calculateProformaTotals,
+} from "@/lib/proforma/store";
 import type { ProformaInvoice, ProformaLine, ProformaMeta } from "@/lib/proforma/types";
-import { calculateProformaTotals } from "@/lib/proforma/store";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import { registerBackHandler } from "@/lib/backButtonHandler";
 import { playTapSound, playSuccessSound, playErrorSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
@@ -21,27 +24,23 @@ interface Props {
   initialLines?: ProformaLine[];
   existingInvoice?: ProformaInvoice;
   onConverted?: () => void;
-  /** ربط مسبق بمشروع عند الإنشاء من داخل مساحة عمل المشروع */
-  initialProjectId?: string | null;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const EMPTY_PROFORMA_LINES: ProformaLine[] = [];
+const today = () => getLocalIsoDate();
 
 export function ProformaDialog({
   open,
   onClose,
-  initialLines = [],
+  initialLines = EMPTY_PROFORMA_LINES,
   existingInvoice,
   onConverted,
-  initialProjectId,
 }: Props) {
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const draftIdRef = useRef<string>("");
   const saveLockRef = useRef(false);
-  /** المشروع المرتبط بعرض السعر (PRD §4.2) */
-  const [projectId, setProjectId] = useState<string | null>(existingInvoice?.projectId ?? initialProjectId ?? null);
   const [currentId, setCurrentId] = useState<string | undefined>(existingInvoice?.id);
   const [meta, setMeta] = useState<ProformaMeta>({
     serial: "0001",
@@ -53,7 +52,6 @@ export function ProformaDialog({
   });
   const [lines, setLines] = useState<ProformaLine[]>([]);
 
-  // دعم زر الرجوع الهاردوير
   useEffect(() => {
     if (!open) return;
     const unregister = registerBackHandler(() => {
@@ -70,7 +68,6 @@ export function ProformaDialog({
       if (existingInvoice) {
         draftIdRef.current = existingInvoice.id;
         setCurrentId(existingInvoice.id);
-        setProjectId(existingInvoice.projectId ?? initialProjectId ?? null);
         setMeta({
           ...existingInvoice.meta,
           currency: existingInvoice.currency || existingInvoice.meta.currency || "SDG",
@@ -82,7 +79,6 @@ export function ProformaDialog({
         const nextSerial = peekNextProformaSerial();
         draftIdRef.current = `proforma-${nextSerial}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setCurrentId(undefined);
-        setProjectId(initialProjectId ?? null);
         setMeta({
           serial: nextSerial,
           date: today(),
@@ -98,7 +94,7 @@ export function ProformaDialog({
         setTab(initialLines.length > 0 ? "preview" : "edit");
       }
     }
-  }, [open, existingInvoice, initialLines, initialProjectId]);
+  }, [open, existingInvoice, initialLines]);
 
   const activeInvoice: ProformaInvoice = useMemo(() => {
     const currency = meta.currency || "SDG";
@@ -111,25 +107,29 @@ export function ProformaDialog({
       ...totals,
       currency,
       status: existingInvoice?.status || "draft",
-      projectId: projectId ?? undefined,
       createdAt: existingInvoice?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  }, [meta, lines, existingInvoice, currentId, projectId]);
+  }, [meta, lines, existingInvoice, currentId]);
 
-  const handleSave = async () => {
-    if (saveLockRef.current || isSaving) return;
+  const validateRequiredFields = (): boolean => {
     const hasCustomer = Boolean(meta.customerName?.trim() || meta.customerEnName?.trim());
     if (!hasCustomer) {
       playErrorSound();
       toast.error("يرجى إدخال اسم العميل (بالعربية أو بالإنجليزية)");
-      return;
+      return false;
     }
     if (lines.length === 0) {
       playErrorSound();
       toast.error("يرجى إضافة بند واحد على الأقل في الفاتورة");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleSave = async () => {
+    if (saveLockRef.current || isSaving) return;
+    if (!validateRequiredFields()) return;
 
     const effectiveMeta: ProformaMeta = {
       ...meta,
@@ -146,7 +146,7 @@ export function ProformaDialog({
     saveLockRef.current = true;
     setIsSaving(true);
     try {
-      const savedRecord = await saveProformaInvoice(effectiveMeta, lines, stableId, projectId);
+      const savedRecord = await saveProformaInvoice(effectiveMeta, lines, stableId);
       draftIdRef.current = savedRecord.id;
       setCurrentId(savedRecord.id);
       setSaved(true);
@@ -163,17 +163,23 @@ export function ProformaDialog({
 
   const handleConvert = async () => {
     if (saveLockRef.current || isSaving) return;
+    if (!validateRequiredFields()) return;
+
     saveLockRef.current = true;
     setIsSaving(true);
     try {
-      let targetId = currentId || existingInvoice?.id || draftIdRef.current;
+      let targetId =
+        currentId ||
+        existingInvoice?.id ||
+        draftIdRef.current ||
+        (draftIdRef.current = `proforma-${meta.serial}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
       if (!saved) {
         const effectiveMeta: ProformaMeta = {
           ...meta,
           customerName: meta.customerName?.trim() || "",
           customerEnName: meta.customerEnName?.trim() || undefined,
         };
-        const created = await saveProformaInvoice(effectiveMeta, lines, targetId, projectId);
+        const created = await saveProformaInvoice(effectiveMeta, lines, targetId);
         targetId = created.id;
         draftIdRef.current = created.id;
         setCurrentId(created.id);
@@ -209,57 +215,16 @@ export function ProformaDialog({
       dir="rtl"
     >
       <div className="flex h-full w-full flex-col bg-card md:h-[94vh] md:max-h-[920px] md:max-w-6xl lg:max-w-7xl md:rounded-3xl md:border md:border-border/80 md:shadow-2xl overflow-hidden">
-        {/* Header */}
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/80 px-3.5 py-2.5 bg-card">
-          <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
-              <FileSpreadsheet className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-sm font-black text-foreground truncate">
-                فاتورة مبدئية #{meta.serial}
-              </h2>
-              <p className="text-[10px] text-muted-foreground hidden sm:block">
-                عرض أسعار رسمي للعميل مع الختم والتفقيط
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {/* Save Button */}
-            <Button
-              type="button"
-              variant={saved ? "secondary" : "default"}
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="h-8 gap-1 text-xs font-bold px-2.5 rounded-lg"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>{isSaving ? "جاري الحفظ..." : saved ? "محفوظة" : "حفظ"}</span>
-            </Button>
-
-            {/* Print & Share Buttons */}
-            <ProformaPrintButton
-              serial={meta.serial}
-              onBeforePrint={handleSave}
-              partyName={meta.customerName || meta.customerEnName}
-              totalAmount={calculateProformaTotals(lines).totalAmount}
-              currency={meta.currency || "SDG"}
-            />
-
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                playTapSound();
-                onClose();
-              }}
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mr-1"
-            >
-              <X className="h-4.5 w-4.5" />
-            </button>
-          </div>
-        </header>
+        <ProformaDialogHeader
+          serial={meta.serial}
+          saved={saved}
+          isSaving={isSaving}
+          partyName={meta.customerName || meta.customerEnName}
+          totalAmount={activeInvoice.totalAmount}
+          currency={meta.currency || "SDG"}
+          onSave={handleSave}
+          onClose={onClose}
+        />
 
         {/* Mobile Tabs Switcher */}
         <div className="mx-3 my-2 grid shrink-0 grid-cols-2 rounded-xl bg-secondary p-1 md:hidden">
@@ -270,8 +235,9 @@ export function ProformaDialog({
               playTapSound();
               setTab("edit");
             }}
-            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${tab === "edit" ? "bg-card text-blue-600 dark:text-blue-400 shadow-xs font-black" : "text-muted-foreground"
-              }`}
+            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${
+              tab === "edit" ? "bg-card text-blue-600 dark:text-blue-400 shadow-xs font-black" : "text-muted-foreground"
+            }`}
           >
             <Pencil className="h-3.5 w-3.5" />
             <span>البيانات والبنود</span>
@@ -284,8 +250,9 @@ export function ProformaDialog({
               playTapSound();
               setTab("preview");
             }}
-            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${tab === "preview" ? "bg-card text-blue-600 dark:text-blue-400 shadow-xs font-black" : "text-muted-foreground"
-              }`}
+            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${
+              tab === "preview" ? "bg-card text-blue-600 dark:text-blue-400 shadow-xs font-black" : "text-muted-foreground"
+            }`}
           >
             <Eye className="h-3.5 w-3.5" />
             <span>معاينة الفاتورة</span>
@@ -294,23 +261,11 @@ export function ProformaDialog({
 
         {/* Modal Body */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Form Side */}
           <div
-            className={`w-full md:w-[480px] lg:w-[530px] shrink-0 border-l border-border/70 bg-card overflow-hidden flex flex-col ${tab === "edit" ? "flex" : "hidden md:flex"
-              }`}
+            className={`w-full md:w-[480px] lg:w-[530px] shrink-0 border-l border-border/70 bg-card overflow-hidden flex flex-col ${
+              tab === "edit" ? "flex" : "hidden md:flex"
+            }`}
           >
-            <div className="mb-3">
-              <ProjectPicker
-                value={projectId}
-                onChange={(next) => {
-                  setProjectId(next);
-                  setSaved(false);
-                }}
-                label="المشروع المرتبط"
-                hint="ربط عرض السعر بالمشروع يجعله يظهر في مساحة عمل المشروع."
-              />
-            </div>
-
             <ProformaForm
               meta={meta}
               lines={lines}
@@ -325,40 +280,23 @@ export function ProformaDialog({
             />
           </div>
 
-          {/* Live Document Preview Side */}
           <div
-            className={`flex-1 min-w-0 bg-slate-950 overflow-hidden p-1 md:p-3 flex items-center justify-center ${tab === "preview" ? "flex" : "hidden md:flex"
-              }`}
+            className={`flex-1 min-w-0 bg-slate-950 overflow-hidden p-1 md:p-3 flex items-center justify-center ${
+              tab === "preview" ? "flex" : "hidden md:flex"
+            }`}
           >
             <ProformaViewer invoice={activeInvoice} isVisible={tab === "preview"} />
           </div>
         </div>
 
-        {/* Mobile footer for convert option */}
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/80 p-2.5 bg-card">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleConvert}
-            disabled={isSaving}
-            className="h-8.5 gap-1.5 text-xs font-bold border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-xl flex-1"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            <span>تحويل إلى أمر تشغيل بالمطبعة</span>
-          </Button>
-
-          <Button
-            variant="secondary"
-            onClick={() => setTab(tab === "edit" ? "preview" : "edit")}
-            className="h-8.5 px-3 rounded-xl text-xs font-bold md:hidden"
-          >
-            {tab === "edit" ? "عرض المعاينة" : "تعديل البيانات"}
-          </Button>
-        </footer>
+        <ProformaDialogFooter
+          tab={tab}
+          isSaving={isSaving}
+          onConvert={handleConvert}
+          onToggleTab={() => setTab(tab === "edit" ? "preview" : "edit")}
+        />
       </div>
 
-      {/* Hidden container for printing */}
       {typeof document !== "undefined" &&
         createPortal(
           <div className="proforma-print-root">

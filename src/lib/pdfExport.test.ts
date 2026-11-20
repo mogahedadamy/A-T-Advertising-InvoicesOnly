@@ -128,6 +128,24 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     expect(html).toContain("size: 210mm 148mm");
   });
 
+  it("escapes XSS payloads in title and sanitizes dir attribute in standalone HTML (SEC-03)", () => {
+    const dummyEl = {
+      outerHTML: `<div class="standard-invoice-sheet"><p>فاتورة</p></div>`,
+      getAttribute: (name: string) => (name === "dir" ? 'rtl" onmouseover="alert(1)' : null),
+      classList: {
+        contains: (cls: string) => cls === "standard-invoice-sheet",
+      },
+      querySelector: () => null,
+    } as unknown as HTMLElement;
+
+    const maliciousTitle = '</title><img src=x onerror=alert(1)>';
+    const html = buildStandaloneInvoiceHtml(dummyEl, maliciousTitle, "a4");
+    expect(html).toContain('dir="rtl"');
+    expect(html).not.toContain('onmouseover="alert(1)"');
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).toContain("&lt;/title&gt;&lt;img src=x onerror=alert(1)&gt;");
+  });
+
   it("converts ArrayBuffer to valid base64 string accurately", () => {
     const text = "T.A Advertising Solution - Official Invoice";
     const encoder = new TextEncoder();
@@ -141,37 +159,59 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
 describe("Direct WhatsApp Sharing & System Export (Problem G)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.getElementById("share-invoice-hud-overlay")?.remove();
   });
 
   afterEach(() => {
-    delete (window as any).AndroidPrint;
+    delete window.AndroidPrint;
+    document.getElementById("share-invoice-hud-overlay")?.remove();
   });
 
-  it("formats structured Arabic and English WhatsApp invoice summary text", async () => {
-    const shareToWhatsAppMock = vi.fn();
-    (window as any).AndroidPrint = {
-      shareToWhatsApp: shareToWhatsAppMock,
-    };
+  it("invokes shareInvoiceViaWhatsApp, escapes XSS in HUD, sets noopener noreferrer, and avoids inline onclick", async () => {
+    const dummyEl = document.createElement("div");
+    dummyEl.className = "standard-invoice-sheet";
+    dummyEl.innerHTML = "<p>محتوى الفاتورة</p>";
 
-    const dummyEl = {
-      outerHTML: `<div class="standard-invoice-sheet"><p>محتوى الفاتورة</p></div>`,
-      classList: { contains: () => true },
-      querySelector: () => null,
-      querySelectorAll: () => [],
-    } as unknown as HTMLElement;
+    const xssParty = 'شركة الرواد <img src=x onerror=alert(1)>';
+    const xssRef = '26-0012"><script>alert(1)</script>';
 
-    // محاكاة استدعاء مشاركة واتساب
-    const clientName = "شركة الرواد للحلول الرقمية";
-    const ref = "26-0012";
-    const amount = 250000;
-    const currency = "SDG";
+    const result = await shareInvoiceViaWhatsApp(dummyEl, {
+      filename: "فاتورة-26-0012",
+      format: "a4",
+      partyName: xssParty,
+      invoiceRef: xssRef,
+      totalAmount: 250000,
+      currency: "SDG",
+      invoiceTypeLabel: "فاتورة مبيعات",
+      isRtl: true,
+    });
 
-    // التحقق من بناء رسالة الواتساب المهنية
-    const messageAr = `السلام عليكم ورحمة الله،\nمرفق لكم فاتورة مبيعات رقم ${ref}\nالعميل: ${clientName}\nالمبلغ الإجمالي: ${amount.toLocaleString("en-US")} ${currency}\nوكالة T.A Advertising Solution`;
-    expect(messageAr).toContain(clientName);
-    expect(messageAr).toContain(ref);
-    expect(messageAr).toContain("250,000");
-    expect(messageAr).toContain("SDG");
-    expect(messageAr).toContain("T.A Advertising Solution");
+    // In jsdom without document.fonts, PDF export fails cleanly and renders the error HUD with WhatsApp Web fallback
+    expect(result).toBe(false);
+
+    const hud = document.getElementById("share-invoice-hud-overlay");
+    expect(hud).not.toBeNull();
+
+    // No raw XSS elements injected into HUD DOM
+    expect(hud!.querySelectorAll("img").length).toBe(0);
+    expect(hud!.querySelectorAll("script").length).toBe(0);
+    expect(hud!.textContent).toContain("شركة الرواد");
+
+    // Fallback link carries structured Arabic summary text and rel="noopener noreferrer"
+    const fallbackLink = hud!.querySelector<HTMLAnchorElement>("a[target='_blank']");
+    expect(fallbackLink).not.toBeNull();
+    expect(fallbackLink!.getAttribute("rel")).toBe("noopener noreferrer");
+    const decodedHref = decodeURIComponent(fallbackLink!.getAttribute("href") || "");
+    expect(decodedHref).toContain("https://wa.me/?text=");
+    expect(decodedHref).toContain("250,000");
+    expect(decodedHref).toContain("SDG");
+    expect(decodedHref).toContain("T.A Advertising Solution");
+
+    // Close button must NOT use inline onclick and must remove overlay when clicked
+    const closeBtn = hud!.querySelector<HTMLButtonElement>("#hud-close-btn");
+    expect(closeBtn).not.toBeNull();
+    expect(closeBtn!.getAttribute("onclick")).toBeNull();
+    closeBtn!.click();
+    expect(document.getElementById("share-invoice-hud-overlay")).toBeNull();
   });
 });

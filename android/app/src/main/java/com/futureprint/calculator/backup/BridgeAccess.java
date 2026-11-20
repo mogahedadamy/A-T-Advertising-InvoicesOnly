@@ -15,6 +15,10 @@ public final class BridgeAccess {
         bridge = value;
     }
 
+    public static void clear() {
+        bridge = null;
+    }
+
     public static com.getcapacitor.Bridge getBridge() {
         return bridge;
     }

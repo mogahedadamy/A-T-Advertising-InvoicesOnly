@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
 import { getStoredSync, setStoredItem } from "./sqliteStorage";
 
 const STORAGE_KEY_NAME = "future_print_user_name";
@@ -34,7 +35,7 @@ export function getStoredUserName(): string {
 
 /** التحقق هل اكتملت التهيئة الأولى */
 export function isUserOnboarded(): boolean {
-  if (typeof window !== "undefined") {
+  if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
     try {
       const lsFlag = localStorage.getItem(STORAGE_KEY_ONBOARDED);
       if (lsFlag === "true") return true;
@@ -52,24 +53,25 @@ export function isUserOnboarded(): boolean {
 export async function saveUserProfile(name: string): Promise<void> {
   const cleanName = (name || "").trim();
 
-  // تحديث فوري محلياً وفي المتصفح لإطلاق الأحداث دون أي تأخير
-  if (typeof window !== "undefined") {
+  // على المتصفح فقط نحدّث localStorage؛ على أندرويد يُعتمد SQLite وحده منعاً لعودة بيانات قديمة بعد الاستعادة
+  if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
     try {
       localStorage.setItem(STORAGE_KEY_NAME, cleanName);
       localStorage.setItem(STORAGE_KEY_ONBOARDED, "true");
     } catch {}
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { name: cleanName } }));
-    window.dispatchEvent(new Event("storage"));
   }
 
-  // الحفظ الفعلي في SQLite وتفضيلات أندرويد الأصلية
+  // الحفظ المتسلسل في SQLite وتفضيلات أندرويد لمنع تصادم المعاملات على الاتصال الوحيد
   try {
-    await Promise.all([
-      setStoredItem(STORAGE_KEY_NAME, cleanName),
-      setStoredItem(STORAGE_KEY_ONBOARDED, "true"),
-    ]);
+    await setStoredItem(STORAGE_KEY_NAME, cleanName);
+    await setStoredItem(STORAGE_KEY_ONBOARDED, "true");
   } catch (err) {
     console.warn("[UserProfile] SQLite persistence warning:", err);
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { name: cleanName } }));
+    window.dispatchEvent(new Event("storage"));
   }
 }
 

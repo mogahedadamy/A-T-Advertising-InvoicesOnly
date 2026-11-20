@@ -19,21 +19,95 @@ import android.os.ParcelFileDescriptor;
 import android.print.PageRange;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 import androidx.core.content.FileProvider;
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.futureprint.calculator.backup.BackupPlugin;
 import com.futureprint.calculator.backup.BridgeAccess;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "MainActivity";
+    private static final Set<String> ALLOWED_EXTENSIONS = Collections.unmodifiableSet(
+        new HashSet<>(Arrays.asList(".pdf", ".json", ".tabk"))
+    );
     private WebView printWebView;
+
+    private static String jsQuote(String value) {
+        String quoted = JSONObject.quote(value == null ? "" : value);
+        return quoted.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029");
+    }
+
+    private static String sanitizeFileName(String rawName, String defaultName, String forcedExt) {
+        String candidate = (rawName == null || rawName.trim().isEmpty()) ? defaultName : rawName.trim();
+        if (candidate.contains("..") || candidate.contains("/") || candidate.contains("\\")) {
+            throw new SecurityException("Unsafe path characters in filename");
+        }
+        for (int i = 0; i < candidate.length(); i++) {
+            if (Character.isISOControl(candidate.charAt(i))) {
+                throw new SecurityException("Control characters not allowed in filename");
+            }
+        }
+        // Defense-in-depth: strip any path components and enforce safe character allowlist.
+        candidate = new File(candidate).getName();
+        candidate = candidate.replaceAll("[^\\p{L}\\p{N}._\\- ]", "_").trim();
+        while (candidate.startsWith(".")) {
+            candidate = candidate.substring(1);
+        }
+        while (candidate.contains("..")) {
+            candidate = candidate.replace("..", ".");
+        }
+        if (candidate.isEmpty()) {
+            candidate = defaultName;
+        }
+        if (forcedExt != null) {
+            String lower = candidate.toLowerCase(Locale.ROOT);
+            if (!lower.endsWith(forcedExt.toLowerCase(Locale.ROOT))) {
+                candidate = candidate + forcedExt;
+            }
+        }
+        if (candidate.length() > 120) {
+            int dotIdx = candidate.lastIndexOf('.');
+            String ext = dotIdx > 0 ? candidate.substring(dotIdx) : "";
+            String base = dotIdx > 0 ? candidate.substring(0, dotIdx) : candidate;
+            int maxBase = Math.max(1, 120 - ext.length());
+            candidate = base.substring(0, Math.min(base.length(), maxBase)) + ext;
+        }
+        int dot = candidate.lastIndexOf('.');
+        String ext = dot > 0 ? candidate.substring(dot).toLowerCase(Locale.ROOT) : "";
+        if (!ALLOWED_EXTENSIONS.contains(ext) || dot <= 0) {
+            throw new SecurityException("Disallowed file extension");
+        }
+        return candidate;
+    }
+
+    private static File resolveSafeTargetFile(File targetDir, String safeName) throws IOException {
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            throw new IOException("Failed to create target directory");
+        }
+        File canonicalDir = targetDir.getCanonicalFile();
+        File targetFile = new File(canonicalDir, safeName).getCanonicalFile();
+        String dirPrefix = canonicalDir.getPath() + File.separator;
+        if (!targetFile.getPath().startsWith(dirPrefix)) {
+            throw new SecurityException("Target file escapes destination directory");
+        }
+        return targetFile;
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -41,11 +115,12 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BackupPlugin.class);
         super.onCreate(savedInstanceState);
 
-        if (getBridge() != null) {
-            BridgeAccess.set(getBridge());
+        Bridge bridge = getBridge();
+        if (bridge != null) {
+            BridgeAccess.set(bridge);
         }
 
-        WebView webView = getBridge().getWebView();
+        WebView webView = bridge != null ? bridge.getWebView() : null;
         if (webView != null) {
             WebSettings settings = webView.getSettings();
             settings.setDomStorageEnabled(true);
@@ -104,8 +179,10 @@ public class MainActivity extends BridgeActivity {
                             decor.addView(printWebView, new android.view.ViewGroup.LayoutParams(1080, 1920));
 
                             WebSettings pSettings = printWebView.getSettings();
-                            pSettings.setJavaScriptEnabled(true);
-                            pSettings.setDomStorageEnabled(true);
+                            pSettings.setJavaScriptEnabled(false);
+                            pSettings.setDomStorageEnabled(false);
+                            pSettings.setAllowFileAccess(false);
+                            pSettings.setAllowContentAccess(false);
                             pSettings.setDefaultTextEncodingName("utf-8");
                             pSettings.setLoadsImagesAutomatically(true);
                             pSettings.setTextZoom(100);
@@ -137,8 +214,8 @@ public class MainActivity extends BridgeActivity {
                                         printManager.print(jobName, printAdapter, builder.build());
                                     }
                                 } catch (Exception ex) {
-                                    ex.printStackTrace();
-                                    Toast.makeText(MainActivity.this, "خطأ في تشغيل الطابعة: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                                    Log.e(TAG, "print trigger failed", ex);
+                                    Toast.makeText(MainActivity.this, "تعذر تشغيل الطابعة", Toast.LENGTH_SHORT).show();
                                 }
                             };
 
@@ -152,32 +229,40 @@ public class MainActivity extends BridgeActivity {
                             // صمام أمان زمني لضمان استدعاء الطابعة حتى في حال تأخر أحداث الصفحة
                             printWebView.postDelayed(triggerPrint, 1000);
 
+                            // JS, DOM storage, and file/content access are strictly disabled above;
+                            // base URL allows local bundled fonts to render during printing.
                             printWebView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null);
                         } catch (Exception e) {
-                            e.printStackTrace();
-                            Toast.makeText(MainActivity.this, "تعذر تشغيل أمر الطباعة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Log.e(TAG, "printHtml failed", e);
+                            Toast.makeText(MainActivity.this, "تعذر تشغيل أمر الطباعة", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
 
                 @JavascriptInterface
                 public void savePdf(String base64Data, String filename) {
-                    String safeName = (filename != null && !filename.trim().isEmpty())
-                        ? (filename.endsWith(".pdf") ? filename : filename + ".pdf")
-                        : "فاتورة-TA.pdf";
-                    saveFileInternal(base64Data, safeName, "application/pdf", true);
+                    try {
+                        String safeName = sanitizeFileName(filename, "فاتورة-TA.pdf", ".pdf");
+                        saveFileInternal(base64Data, safeName, "application/pdf", true);
+                    } catch (SecurityException se) {
+                        Log.w(TAG, "Rejected unsafe PDF filename", se);
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "اسم الملف غير صالح", Toast.LENGTH_SHORT).show());
+                    }
                 }
 
                 @JavascriptInterface
                 public void saveFile(String base64Data, String filename, String mimeType) {
-                    String resolvedMime = (mimeType != null && !mimeType.trim().isEmpty())
-                        ? mimeType
-                        : "application/octet-stream";
-                    String safeName = (filename != null && !filename.trim().isEmpty())
-                        ? filename.trim()
-                        : "backup.json";
-                    boolean openViewer = "application/pdf".equalsIgnoreCase(resolvedMime);
-                    saveFileInternal(base64Data, safeName, resolvedMime, openViewer);
+                    try {
+                        String resolvedMime = (mimeType != null && !mimeType.trim().isEmpty())
+                            ? mimeType
+                            : "application/octet-stream";
+                        String safeName = sanitizeFileName(filename, "backup.json", null);
+                        boolean openViewer = "application/pdf".equalsIgnoreCase(resolvedMime);
+                        saveFileInternal(base64Data, safeName, resolvedMime, openViewer);
+                    } catch (SecurityException se) {
+                        Log.w(TAG, "Rejected unsafe filename in saveFile", se);
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "اسم أو امتداد الملف غير مسموح", Toast.LENGTH_SHORT).show());
+                    }
                 }
 
                 private void saveFileInternal(String base64Data, String safeName, String mimeType, boolean openViewer) {
@@ -190,8 +275,7 @@ public class MainActivity extends BridgeActivity {
 
                             // 1. كتابة الملف في مجلد cache الداخلي لضمان الفتح المؤكد بنسبة 100% عبر FileProvider دون حظر /Android/data/
                             File targetDir = new File(getCacheDir(), "saved_invoices");
-                            if (!targetDir.exists()) targetDir.mkdirs();
-                            File targetFile = new File(targetDir, safeName);
+                            File targetFile = resolveSafeTargetFile(targetDir, safeName);
                             try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                                 fos.write(fileBytes);
                                 fos.flush();
@@ -219,13 +303,13 @@ public class MainActivity extends BridgeActivity {
                                         getContentResolver().update(mediaUri, values, null, null);
                                     }
                                 } catch (Exception exMedia) {
-                                    exMedia.printStackTrace();
+                                    Log.w(TAG, "MediaStore download copy failed", exMedia);
                                 }
                             }
 
                             Toast.makeText(MainActivity.this, successMsg, Toast.LENGTH_LONG).show();
 
-                            // 3. فتح المستند في قارئ PDF عبر FileProvider الحصري لمنع الشاشات البيضاء نهائياً
+                            // 3. فتح المستند في قارئ PDF عبر FileProvider باستخدام FLAG_GRANT_READ_URI_PERMISSION + ClipData فقط
                             if (openViewer && targetFile.exists() && targetFile.length() > 0) {
                                 try {
                                     Uri viewUri = FileProvider.getUriForFile(
@@ -245,23 +329,14 @@ public class MainActivity extends BridgeActivity {
                                     chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                     chooser.setClipData(ClipData.newRawUri("PDF", viewUri));
 
-                                    android.content.pm.PackageManager pm = getPackageManager();
-                                    java.util.List<android.content.pm.ResolveInfo> handlers =
-                                        pm.queryIntentActivities(intent, 0);
-                                    for (android.content.pm.ResolveInfo info : handlers) {
-                                        if (info.activityInfo != null && info.activityInfo.packageName != null) {
-                                            grantUriPermission(info.activityInfo.packageName, viewUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                        }
-                                    }
-
                                     startActivity(chooser);
                                 } catch (Exception exView) {
-                                    exView.printStackTrace();
+                                    Log.w(TAG, "PDF viewer launch failed", exView);
                                 }
                             }
                         } catch (Exception e) {
-                            e.printStackTrace();
-                            Toast.makeText(MainActivity.this, "خطأ في حفظ الملف: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Log.e(TAG, "saveFileInternal failed", e);
+                            Toast.makeText(MainActivity.this, "تعذر حفظ الملف", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
@@ -288,6 +363,7 @@ public class MainActivity extends BridgeActivity {
                             sendIntent.putExtra(Intent.EXTRA_TEXT, messageText);
                         }
                         sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        sendIntent.setClipData(ClipData.newRawUri("PDF", fileUri));
 
                         if (targetWhatsApp) {
                             sendIntent.setPackage("com.whatsapp");
@@ -307,11 +383,13 @@ public class MainActivity extends BridgeActivity {
                         }
 
                         Intent chooser = Intent.createChooser(sendIntent, "مشاركة الفاتورة");
+                        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        chooser.setClipData(ClipData.newRawUri("PDF", fileUri));
                         startActivity(chooser);
                     } catch (Exception e) {
-                        e.printStackTrace();
-                        Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        Log.e(TAG, "sharePdfFileDirectly failed", e);
+                        Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة", Toast.LENGTH_SHORT).show();
                     }
                 }
 
@@ -324,11 +402,10 @@ public class MainActivity extends BridgeActivity {
                 private void notifyPrintShareResult(String requestId, boolean success, String message) {
                     try {
                         String safeId = requestId == null ? "" : requestId.replaceAll("[^a-zA-Z0-9_-]", "");
-                        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("'", "\\'");
                         WebView bridgeWebView = getBridge() != null ? getBridge().getWebView() : null;
                         if (bridgeWebView != null) {
                             bridgeWebView.evaluateJavascript(
-                                "window.__invoicePrintShareResult && window.__invoicePrintShareResult('" + safeId + "'," + success + ",'" + safeMessage + "')",
+                                "window.__invoicePrintShareResult && window.__invoicePrintShareResult(" + jsQuote(safeId) + "," + success + "," + jsQuote(message) + ")",
                                 null
                             );
                         }
@@ -354,15 +431,10 @@ public class MainActivity extends BridgeActivity {
                             }
 
                             byte[] fileBytes = Base64.decode(base64Data, Base64.DEFAULT);
-                            String safeName = (filename != null && !filename.trim().isEmpty())
-                                ? (filename.toLowerCase().endsWith(".pdf") ? filename.trim() : filename.trim() + ".pdf")
-                                : "فاتورة-TA.pdf";
+                            String safeName = sanitizeFileName(filename, "فاتورة-TA.pdf", ".pdf");
 
                             File shareDir = new File(getCacheDir(), "shared_invoices");
-                            if (!shareDir.exists()) {
-                                shareDir.mkdirs();
-                            }
-                            File targetFile = new File(shareDir, safeName);
+                            File targetFile = resolveSafeTargetFile(shareDir, safeName);
                             try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                                 fos.write(fileBytes);
                                 fos.flush();
@@ -383,15 +455,6 @@ public class MainActivity extends BridgeActivity {
                             sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                             sendIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             sendIntent.setClipData(ClipData.newRawUri("PDF", fileUri));
-
-                            // منح الصلاحيات صراحة لكافة التطبيقات المعالجة
-                            android.content.pm.PackageManager pm = getPackageManager();
-                            java.util.List<android.content.pm.ResolveInfo> handlers = pm.queryIntentActivities(sendIntent, 0);
-                            for (android.content.pm.ResolveInfo info : handlers) {
-                                if (info.activityInfo != null && info.activityInfo.packageName != null) {
-                                    grantUriPermission(info.activityInfo.packageName, fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                }
-                            }
 
                             if (targetWhatsApp) {
                                 // محاولة الإرسال لتطبيق واتساب الرسمي أولاً
@@ -415,24 +478,29 @@ public class MainActivity extends BridgeActivity {
                             }
 
                             Intent chooser = Intent.createChooser(sendIntent, "مشاركة الفاتورة");
+                            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            chooser.setClipData(ClipData.newRawUri("PDF", fileUri));
                             startActivity(chooser);
                             notifyShareStatus(true, "تم فتح قائمة المشاركة");
+                        } catch (SecurityException se) {
+                            Log.w(TAG, "Rejected unsafe share filename", se);
+                            notifyShareStatus(false, "اسم الملف غير صالح");
+                            Toast.makeText(MainActivity.this, "اسم الملف غير صالح", Toast.LENGTH_SHORT).show();
                         } catch (Exception e) {
-                            e.printStackTrace();
-                            notifyShareStatus(false, e.getMessage());
-                            Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Log.e(TAG, "sharePdfInternal failed", e);
+                            notifyShareStatus(false, "تعذر مشاركة الفاتورة");
+                            Toast.makeText(MainActivity.this, "تعذر مشاركة الفاتورة", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
 
                 private void notifyShareStatus(boolean success, String message) {
                     try {
-                        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("'", "\\'");
                         WebView bridgeWebView = getBridge() != null ? getBridge().getWebView() : null;
                         if (bridgeWebView != null) {
                             bridgeWebView.evaluateJavascript(
-                                "window.__onInvoiceShared && window.__onInvoiceShared(" + success + ",'" + safeMessage + "')",
+                                "window.__onInvoiceShared && window.__onInvoiceShared(" + success + "," + jsQuote(message) + ")",
                                 null
                             );
                         }
@@ -440,6 +508,23 @@ public class MainActivity extends BridgeActivity {
                 }
             }, "AndroidPrint");
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (printWebView != null) {
+            try {
+                android.view.ViewGroup parent = (android.view.ViewGroup) printWebView.getParent();
+                if (parent != null) {
+                    parent.removeView(printWebView);
+                }
+                printWebView.stopLoading();
+                printWebView.destroy();
+            } catch (Exception ignored) {}
+            printWebView = null;
+        }
+        BridgeAccess.clear();
+        super.onDestroy();
     }
 }
 

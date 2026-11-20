@@ -91,6 +91,7 @@ let customersSnapshot: CustomerRecord[] = loadCustomersFromStorage();
 const subscribers = new Set<() => void>();
 
 export async function refreshCustomersFromDb(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
   try {
     const list = await repoGetAllCustomers({ includeArchived: true });
     customersSnapshot = list;
@@ -143,10 +144,8 @@ export async function addCustomer(
     createdAt: new Date().toISOString(),
     isArchived: false,
   };
-  try {
+  if (Capacitor.isNativePlatform()) {
     await repoUpsertCustomer(customer);
-  } catch (err) {
-    console.warn("[customersStore] repoUpsertCustomer warning:", err);
   }
   customersSnapshot = [customer, ...customersSnapshot];
   notify();
@@ -157,10 +156,8 @@ export async function updateCustomer(id: string, updates: Partial<CustomerRecord
   const existing = customersSnapshot.find((c) => c.id === id);
   if (!existing) return;
   const updatedRecord: CustomerRecord = { ...existing, ...updates };
-  try {
+  if (Capacitor.isNativePlatform()) {
     await repoUpsertCustomer(updatedRecord);
-  } catch (err) {
-    console.warn("[customersStore] repoUpsertCustomer warning:", err);
   }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? updatedRecord : c));
   notify();
@@ -170,10 +167,13 @@ export async function updateCustomer(id: string, updates: Partial<CustomerRecord
  * Checks whether customer deletion is permitted
  */
 export async function checkCanDeleteCustomer(id: string) {
+  if (!Capacitor.isNativePlatform()) {
+    return { allowed: true, invoiceCount: 0, paymentCount: 0 };
+  }
   try {
     return await repoCanDeleteCustomer(id);
   } catch {
-    return { allowed: true, invoiceCount: 0, paymentCount: 0, projectCount: 0 };
+    return { allowed: true, invoiceCount: 0, paymentCount: 0 };
   }
 }
 
@@ -182,23 +182,29 @@ export async function checkCanDeleteCustomer(id: string) {
  * Rejects with a descriptive error if historical transactions exist.
  */
 export async function deleteCustomer(id: string): Promise<void> {
-  const check = await repoCanDeleteCustomer(id);
-  if (!check.allowed) {
-    throw new Error(check.reason);
+  if (Capacitor.isNativePlatform()) {
+    const check = await repoCanDeleteCustomer(id);
+    if (!check.allowed) {
+      throw new Error(check.reason);
+    }
+    await repoDeleteCustomer(id);
   }
-  await repoDeleteCustomer(id);
   customersSnapshot = customersSnapshot.filter((c) => c.id !== id);
   notify();
 }
 
 export async function archiveCustomer(id: string): Promise<void> {
-  await repoArchiveCustomer(id);
+  if (Capacitor.isNativePlatform()) {
+    await repoArchiveCustomer(id);
+  }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: true } : c));
   notify();
 }
 
 export async function unarchiveCustomer(id: string): Promise<void> {
-  await repoUnarchiveCustomer(id);
+  if (Capacitor.isNativePlatform()) {
+    await repoUnarchiveCustomer(id);
+  }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: false } : c));
   notify();
 }

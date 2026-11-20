@@ -1,11 +1,11 @@
 /**
  * trialGuard.ts — محرك حماية ومراقبة صلاحية النسخة التجريبية (7 أيام)
- * 
+ *
  * الميزات:
  * 1. حساب دقيق لـ 7 أيام (168 ساعة) من لحظة أول تشغيل
  * 2. كشف محاولات تأخير ساعة الجهاز (Anti-Clock Tampering)
  * 3. حماية تامة لشاشة السبلاش من أي انهيار برمجياً
- * 4. تعطيل فوري وتام للمهلة إذا كانت ENABLE_TRIAL_LOCK = false
+ * 4. تعطيل فوري وتام للمهلة والمؤقتات إذا كانت ENABLE_TRIAL_LOCK = false
  */
 
 import { useState, useEffect } from "react";
@@ -52,18 +52,24 @@ async function safeSetStorage(key: string, value: string): Promise<void> {
   if (typeof window !== "undefined" && window.localStorage) {
     try {
       localStorage.setItem(key, value);
-    } catch {}
+    } catch {
+      // ignore localStorage write errors
+    }
   }
   try {
     await Preferences.set({ key, value });
-  } catch {}
+  } catch {
+    // ignore Preferences write errors
+  }
 
   // إرساء متوازي في قاعدة بيانات SQLite كطبقة حماية ثالثة
   try {
     const { getDb } = await import("@/lib/database");
     const db = await getDb();
     await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, value]);
-  } catch {}
+  } catch {
+    // ignore SQLite fallback errors on web
+  }
 }
 
 /**
@@ -76,57 +82,74 @@ let cachedHwm: number = 0;
 let lastHwmPersistTime = 0;
 let isStorageInitialized = false;
 
+export function resetTrialCacheForTests(): void {
+  cachedPermanentlyLocked = null;
+  cachedInstalledAt = null;
+  cachedHwm = 0;
+  lastHwmPersistTime = 0;
+  isStorageInitialized = false;
+}
+
 async function initTrialStorage(): Promise<void> {
   if (isStorageInitialized) return;
   const { STORAGE_KEYS } = TRIAL_CONFIG;
+  const now = Date.now();
+
+  const lockedStr = await safeGetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED);
+  let locked = lockedStr === "true";
+
+  const installedStr = await safeGetStorage(STORAGE_KEYS.INSTALLED_AT);
+  let inst = installedStr ? parseInt(installedStr, 10) : 0;
+  if (!Number.isFinite(inst) || inst <= 0) inst = 0;
+
+  const hwmStr = await safeGetStorage(STORAGE_KEYS.HIGH_WATER_MARK);
+  let hwm = hwmStr ? parseInt(hwmStr, 10) : 0;
+  if (!Number.isFinite(hwm) || hwm <= 0) hwm = 0;
+
+  // Read-before-write reconciliation: read SQLite BEFORE ever initializing a fresh timestamp
+  // so clearing Preferences/localStorage cannot overwrite an earlier SQLite trial record.
   try {
-    const lockedStr = await safeGetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED);
-    cachedPermanentlyLocked = lockedStr === "true";
-
-    const installedStr = await safeGetStorage(STORAGE_KEYS.INSTALLED_AT);
-    let inst = installedStr ? parseInt(installedStr, 10) : 0;
-    const now = Date.now();
-    if (!inst || isNaN(inst) || inst <= 0) {
-      inst = now;
-      safeSetStorage(STORAGE_KEYS.INSTALLED_AT, String(inst)).catch(() => {});
-      safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now)).catch(() => {});
-    }
-    cachedInstalledAt = inst;
-
-    const hwmStr = await safeGetStorage(STORAGE_KEYS.HIGH_WATER_MARK);
-    cachedHwm = hwmStr ? parseInt(hwmStr, 10) : inst;
-
-    // توفيق أمان ثلاثي: استرجاع البيانات من SQLite إن وُجدت لمنع التحايل بمسح التخزين المؤقت
-    try {
-      const { getDb } = await import("@/lib/database");
-      const db = await getDb();
-      const res = await db.query(
-        "SELECT key, value FROM settings WHERE key IN (?, ?, ?)",
-        [STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.HIGH_WATER_MARK, STORAGE_KEYS.PERMANENTLY_LOCKED]
-      );
-      for (const row of res.values || []) {
-        if (row?.key === STORAGE_KEYS.INSTALLED_AT) {
-          const dbInst = parseInt(String(row.value), 10);
-          if (dbInst > 0 && (inst === 0 || dbInst < inst)) {
-            inst = dbInst;
-            cachedInstalledAt = inst;
-          }
-        }
-        if (row?.key === STORAGE_KEYS.HIGH_WATER_MARK) {
-          const dbHwm = parseInt(String(row.value), 10);
-          if (dbHwm > cachedHwm) cachedHwm = dbHwm;
-        }
-        if (row?.key === STORAGE_KEYS.PERMANENTLY_LOCKED && String(row.value) === "true") {
-          cachedPermanentlyLocked = true;
+    const { getDb } = await import("@/lib/database");
+    const db = await getDb();
+    const res = await db.query(
+      "SELECT key, value FROM settings WHERE key IN (?, ?, ?)",
+      [STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.HIGH_WATER_MARK, STORAGE_KEYS.PERMANENTLY_LOCKED]
+    );
+    for (const row of res.values || []) {
+      if (row?.key === STORAGE_KEYS.INSTALLED_AT) {
+        const dbInst = parseInt(String(row.value), 10);
+        if (Number.isFinite(dbInst) && dbInst > 0 && (inst === 0 || dbInst < inst)) {
+          inst = dbInst;
         }
       }
-    } catch {}
-
-    isStorageInitialized = true;
+      if (row?.key === STORAGE_KEYS.HIGH_WATER_MARK) {
+        const dbHwm = parseInt(String(row.value), 10);
+        if (Number.isFinite(dbHwm) && dbHwm > hwm) {
+          hwm = dbHwm;
+        }
+      }
+      if (row?.key === STORAGE_KEYS.PERMANENTLY_LOCKED && String(row.value) === "true") {
+        locked = true;
+      }
+    }
   } catch (err) {
-    cachedInstalledAt = Date.now();
-    isStorageInitialized = true;
+    console.warn("[TrialGuard] SQLite reconciliation skipped:", err);
   }
+
+  // Only persist a brand-new install timestamp after verifying neither Preferences nor SQLite had one
+  if (inst <= 0) {
+    inst = now;
+    if (hwm <= 0) hwm = now;
+    void safeSetStorage(STORAGE_KEYS.INSTALLED_AT, String(inst));
+    void safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(hwm));
+  } else {
+    if (hwm <= 0) hwm = inst;
+  }
+
+  cachedPermanentlyLocked = locked;
+  cachedInstalledAt = inst;
+  cachedHwm = hwm;
+  isStorageInitialized = true;
 }
 
 /**
@@ -176,7 +199,7 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
     // 2. فحص التلاعب بساعة الهاتف (High-Water Mark)
     if (now < cachedHwm - 5 * 60 * 1000) {
       cachedPermanentlyLocked = true;
-      safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true").catch(() => {});
+      void safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true");
       return {
         isEnabled: true,
         isExpired: true,
@@ -195,7 +218,7 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
       cachedHwm = now;
       if (now - lastHwmPersistTime > 60 * 1000) {
         lastHwmPersistTime = now;
-        safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now)).catch(() => {});
+        void safeSetStorage(STORAGE_KEYS.HIGH_WATER_MARK, String(now));
       }
     }
 
@@ -206,7 +229,7 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
 
     if (isExpired) {
       cachedPermanentlyLocked = true;
-      safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true").catch(() => {});
+      void safeSetStorage(STORAGE_KEYS.PERMANENTLY_LOCKED, "true");
     }
 
     const totalSeconds = Math.floor(remainingMs / 1000);
@@ -226,16 +249,17 @@ export async function evaluateTrialStatus(): Promise<TrialStatus> {
       isReady: true,
     };
   } catch (err) {
-    console.warn("Trial evaluation fallback:", err);
+    // Fail-closed: never grant a fresh trial window if evaluation fails while trial lock is enabled
+    console.warn("Trial evaluation failed (failing closed):", err);
     return {
       isEnabled: true,
-      isExpired: false,
-      remainingMs: DURATION_MS,
-      hoursLeft: TRIAL_CONFIG.DURATION_HOURS,
+      isExpired: true,
+      remainingMs: 0,
+      hoursLeft: 0,
       minutesLeft: 0,
       secondsLeft: 0,
-      installedAt: now,
-      isTampered: false,
+      installedAt: cachedInstalledAt || 0,
+      isTampered: true,
       isReady: true,
     };
   }
@@ -255,10 +279,11 @@ export function useTrialExpiry(): {
     isEnabled: TRIAL_CONFIG.ENABLE_TRIAL_LOCK,
     isExpired: false,
     isTampered: false,
-    isReady: false,
+    isReady: !TRIAL_CONFIG.ENABLE_TRIAL_LOCK,
   });
 
   useEffect(() => {
+    if (!TRIAL_CONFIG.ENABLE_TRIAL_LOCK) return;
     let isMounted = true;
 
     const checkExpiry = async () => {
@@ -287,14 +312,14 @@ export function useTrialExpiry(): {
       }
     };
 
-    checkExpiry();
+    void checkExpiry();
 
     // فحص دوري خفيف كل 30 ثانية لتوفير موارد المعالج
-    const interval = setInterval(checkExpiry, 30000);
+    const interval = setInterval(() => void checkExpiry(), 30000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        checkExpiry();
+        void checkExpiry();
       }
     };
 
@@ -312,22 +337,22 @@ export function useTrialExpiry(): {
 
 /**
  * خطاف تفاعلي لمراقبة عداد الوقت المتبقي (يُستخدم داخل شارات وعناصر العداد فقط)
- * يتم تحديثه كل 10 ثوانٍ لضمان الدقة مع توفير فائق للأداء والبطارية
  */
 export function useTrialGuard(): TrialStatus {
-  const [status, setStatus] = useState<TrialStatus>({
+  const [status, setStatus] = useState<TrialStatus>(() => ({
     isEnabled: TRIAL_CONFIG.ENABLE_TRIAL_LOCK,
     isExpired: false,
-    remainingMs: TRIAL_CONFIG.DURATION_MS,
-    hoursLeft: TRIAL_CONFIG.DURATION_HOURS,
+    remainingMs: TRIAL_CONFIG.ENABLE_TRIAL_LOCK ? TRIAL_CONFIG.DURATION_MS : Infinity,
+    hoursLeft: TRIAL_CONFIG.ENABLE_TRIAL_LOCK ? TRIAL_CONFIG.DURATION_HOURS : 999,
     minutesLeft: 0,
     secondsLeft: 0,
     installedAt: Date.now(),
     isTampered: false,
-    isReady: false,
-  });
+    isReady: !TRIAL_CONFIG.ENABLE_TRIAL_LOCK,
+  }));
 
   useEffect(() => {
+    if (!TRIAL_CONFIG.ENABLE_TRIAL_LOCK) return;
     let isMounted = true;
 
     const runCheck = async () => {
@@ -341,14 +366,14 @@ export function useTrialGuard(): TrialStatus {
       }
     };
 
-    runCheck();
+    void runCheck();
 
     // تحديث كل ثانية لعرض الساعات والدقائق والثواني بدقة لحظية
-    const interval = setInterval(runCheck, 1000);
+    const interval = setInterval(() => void runCheck(), 1000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        runCheck();
+        void runCheck();
       }
     };
 
@@ -363,4 +388,3 @@ export function useTrialGuard(): TrialStatus {
 
   return status;
 }
-

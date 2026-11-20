@@ -22,10 +22,11 @@ import {
   type BackfillReport,
 } from "./v2BusinessModel";
 import { V3_VERSION, applyV3 } from "./v3Finance";
-import { applyV4 } from "./v4Currency";
-import { applyV5 } from "./v5CustomerModule";
+import { V4_VERSION, applyV4 } from "./v4Currency";
+import { V5_VERSION, applyV5 } from "./v5CustomerModule";
+import { V6_VERSION, applyV6MultiCurrency } from "./v6MultiCurrency";
 
-export const SCHEMA_VERSION = V3_VERSION;
+export const SCHEMA_VERSION = V6_VERSION;
 
 export interface MigrationOutcome {
   from: number;
@@ -88,20 +89,24 @@ export async function runPendingMigrations(
     warnings: [],
   };
 
-  // v2 objects are created idempotently on every launch (self-healing), then the
-  // versioned work runs once per version bump.
-  try {
-    await ensureSchemaV2(db);
-    // Column-dependent indexes run immediately when v2 columns already exist;
-    // on a v1 -> v2 upgrade they run right after addMissingColumns(db) below.
-    if (outcome.from >= V2_VERSION) {
-      await ensureColumnIndexes(db);
+  let haltUpgrade = false;
+
+  // Idempotent self-heal runs only when upgrading from an older schema version,
+  // avoiding unnecessary table scans and customer rewrites on every cold launch.
+  if (outcome.from < SCHEMA_VERSION) {
+    try {
+      await ensureSchemaV2(db);
+      // Column-dependent indexes run immediately when v2 columns already exist;
+      // on a v1 -> v2 upgrade they run right after addMissingColumns(db) below.
+      if (outcome.from >= V2_VERSION) {
+        await ensureColumnIndexes(db);
+      }
+    } catch (err) {
+      outcome.warnings.push(`ensureSchemaV2: ${String(err)}`);
     }
-  } catch (err) {
-    outcome.warnings.push(`ensureSchemaV2: ${String(err)}`);
   }
 
-  if (outcome.from < V2_VERSION) {
+  if (!haltUpgrade && outcome.from < V2_VERSION) {
     try {
       const addedColumns = await addMissingColumns(db);
       const indexes = await ensureColumnIndexes(db);
@@ -112,12 +117,13 @@ export async function runPendingMigrations(
         `v2 (columns: ${addedColumns.length}, indexes: ${indexes.length}, references: ${outcome.backfill.assigned}, counters: ${counters})`
       );
     } catch (err) {
+      haltUpgrade = true;
       outcome.warnings.push(`v2: ${String(err)}`);
       console.error("[Migration] v2 failed; version left unchanged for a retry:", err);
     }
   }
 
-  if (outcome.from < V3_VERSION) {
+  if (!haltUpgrade && outcome.from < V3_VERSION) {
     try {
       const v3 = await applyV3(db, nowIso);
       await setStoredSchemaVersion(db, V3_VERSION, nowIso);
@@ -125,35 +131,53 @@ export async function runPendingMigrations(
         `v3 (expense settlements, default account ${v3.accountSeeded ? "created" : "present"})`
       );
     } catch (err) {
+      haltUpgrade = true;
       outcome.warnings.push(`v3: ${String(err)}`);
       console.error("[Migration] v3 failed; version left unchanged for a retry:", err);
     }
   }
 
-  // Multi-currency self-heal: keeps currency columns and indexes ready on all invoice tables.
-  try {
-    await applyV4(db);
-  } catch (err) {
-    outcome.warnings.push(`currency self-heal: ${String(err)}`);
+  if (!haltUpgrade && outcome.from < V4_VERSION) {
+    try {
+      const v4 = await applyV4(db);
+      await setStoredSchemaVersion(db, V4_VERSION, nowIso);
+      outcome.applied.push(`v4 (currency columns: ${v4.columnsAdded.length})`);
+    } catch (err) {
+      haltUpgrade = true;
+      outcome.warnings.push(`v4: ${String(err)}`);
+      console.error("[Migration] v4 failed; version left unchanged for a retry:", err);
+    }
   }
 
-  // Customer module self-heal: archiving, opening balances, and safe invoice linking
-  try {
-    const v5 = await applyV5(db);
-    if (v5.columnsAdded.length > 0 || v5.reconciledInvoices > 0) {
+  if (!haltUpgrade && outcome.from < V5_VERSION) {
+    try {
+      const v5 = await applyV5(db);
+      await setStoredSchemaVersion(db, V5_VERSION, nowIso);
       outcome.applied.push(
         `v5 (customer module: columns=${v5.columnsAdded.length}, reconciled=${v5.reconciledInvoices})`
       );
+    } catch (err) {
+      haltUpgrade = true;
+      outcome.warnings.push(`v5: ${String(err)}`);
+      console.error("[Migration] v5 failed; version left unchanged for a retry:", err);
     }
-  } catch (err) {
-    outcome.warnings.push(`customer module self-heal: ${String(err)}`);
   }
 
-  // Always safe to re-run: keeps a usable account available for money operations.
-  try {
-    await applyV3(db, nowIso);
-  } catch (err) {
-    outcome.warnings.push(`v3 self-heal: ${String(err)}`);
+  if (!haltUpgrade && outcome.from < V6_VERSION) {
+    try {
+      // Ensure v3 default account & tables exist before adding v6 currency columns.
+      if (outcome.from >= V3_VERSION) {
+        await applyV3(db, nowIso);
+      }
+      const v6 = await applyV6MultiCurrency(db);
+      await setStoredSchemaVersion(db, SCHEMA_VERSION, nowIso);
+      outcome.applied.push(
+        `v6 (multi-currency: columns=${v6.columnsAdded.length}, indexes=${v6.indexesCreated}, backfilled=${v6.backfilledRows})`
+      );
+    } catch (err) {
+      outcome.warnings.push(`v6: ${String(err)}`);
+      console.error("[Migration] v6 failed; version left unchanged for a retry:", err);
+    }
   }
 
   outcome.to = await getStoredSchemaVersion(db);
@@ -172,5 +196,5 @@ export async function backfillReferencesOnly(
   return report;
 }
 
-export { V2_VERSION, V3_VERSION };
+export { V2_VERSION, V3_VERSION, V4_VERSION, V5_VERSION, V6_VERSION };
 export type { MigrationDatabase };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type {
   CustomInvoice,
   CustomInvoiceItem,
@@ -13,10 +13,14 @@ import {
 } from "@/lib/billing/store";
 import { AppCurrency } from "@/lib/currency/types";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import { getCustomersSnapshot, type CustomerRecord } from "@/lib/customersStore";
-import { getProjectsSnapshot, refreshProjectsFromDb } from "@/lib/projectsStore";
-import { printCustomInvoiceDocument, saveCustomInvoiceAsPdf, shareCustomInvoiceViaWhatsApp } from "../CustomInvoicePrintButton";
-import { useToast } from "@/hooks/use-toast";
+import {
+  printCustomInvoiceDocument,
+  saveCustomInvoiceAsPdf,
+  shareCustomInvoiceViaWhatsApp,
+} from "../CustomInvoicePrintButton";
+import { toast } from "sonner";
 import { playSuccessSound, playErrorSound } from "@/lib/soundEffects";
 
 interface UseCustomInvoiceFormParams {
@@ -26,10 +30,15 @@ interface UseCustomInvoiceFormParams {
   initialItems?: CustomInvoiceItem[];
   invoiceToEdit?: CustomInvoice | null;
   onSaved?: (invoice: CustomInvoice) => void;
-  initialProjectId?: string | null;
   initialCustomerId?: string | null;
   initialCustomer?: CustomerRecord | null;
 }
+
+const DEFAULT_SALUTATION = "بعد التحية والاحترام ،،،،،،،،";
+const DEFAULT_CLOSING_NOTE = "لكم جزيل الشكر والتقدير ،،،،،،،،،،،،،،،،،،،،،،،";
+const DEFAULT_ACCOUNT_NUMBER = "3283046";
+const DEFAULT_ACCOUNT_NAME = "طارق عثمان علي";
+const DEFAULT_SIGNATORY_TITLE = "الإدارة";
 
 export function useCustomInvoiceForm({
   open,
@@ -38,15 +47,12 @@ export function useCustomInvoiceForm({
   initialItems,
   invoiceToEdit,
   onSaved,
-  initialProjectId,
   initialCustomerId,
   initialCustomer,
 }: UseCustomInvoiceFormParams) {
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"edit" | "preview">("edit");
   const [type, setType] = useState<CustomInvoiceType>(initialType);
   const [serial, setSerial] = useState<string>("");
-  const [projectId, setProjectId] = useState<string | null>(initialProjectId ?? null);
   const [customerId, setCustomerId] = useState<string | null>(invoiceToEdit?.customerId ?? null);
   const [supplierId, setSupplierId] = useState<string | null>(invoiceToEdit?.supplierId ?? null);
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(invoiceToEdit?.supplierInvoiceNumber ?? "");
@@ -56,6 +62,15 @@ export function useCustomInvoiceForm({
   const [partyName, setPartyName] = useState<string>("");
   const [partyEnName, setPartyEnName] = useState<string>("");
   const [attn, setAttn] = useState<string>("");
+  const [phone, setPhone] = useState<string | undefined>(undefined);
+  const [notes, setNotes] = useState<string | undefined>(undefined);
+  const [dueDate, setDueDate] = useState<string | undefined>(undefined);
+  const [discount, setDiscount] = useState<number | undefined>(undefined);
+  const [salutation, setSalutation] = useState<string>(DEFAULT_SALUTATION);
+  const [closingNote, setClosingNote] = useState<string>(DEFAULT_CLOSING_NOTE);
+  const [accountNumber, setAccountNumber] = useState<string>(DEFAULT_ACCOUNT_NUMBER);
+  const [accountName, setAccountName] = useState<string>(DEFAULT_ACCOUNT_NAME);
+  const [signatoryTitle, setSignatoryTitle] = useState<string>(DEFAULT_SIGNATORY_TITLE);
   const [language, setLanguage] = useState<"auto" | "ar" | "en">("auto");
   const [currency, setCurrency] = useState<AppCurrency>("SDG");
   const [items, setItems] = useState<CustomInvoiceItem[]>([]);
@@ -67,7 +82,6 @@ export function useCustomInvoiceForm({
     if (!open) return;
     saveLockRef.current = false;
     setIsProcessing(false);
-    void refreshProjectsFromDb();
 
     if (invoiceToEdit) {
       draftIdRef.current = invoiceToEdit.id;
@@ -75,14 +89,22 @@ export function useCustomInvoiceForm({
       setType(invoiceToEdit.meta.type || "sales");
       setSerial(invoiceToEdit.meta.serial || "");
       setSavedReference(invoiceToEdit.reference);
-      setProjectId(invoiceToEdit.projectId ?? initialProjectId ?? null);
       setCustomerId(invoiceToEdit.customerId ?? null);
       setSupplierId(invoiceToEdit.supplierId ?? null);
       setSupplierInvoiceNumber(invoiceToEdit.supplierInvoiceNumber ?? "");
-      setDate(invoiceToEdit.meta.date || new Date().toISOString().split("T")[0]);
+      setDate(invoiceToEdit.meta.date || getLocalIsoDate());
       setPartyName(invoiceToEdit.meta.partyName || "");
       setPartyEnName(invoiceToEdit.meta.partyEnName || "");
       setAttn(invoiceToEdit.meta.attn || "");
+      setPhone(invoiceToEdit.meta.phone);
+      setNotes(invoiceToEdit.meta.notes);
+      setDueDate(invoiceToEdit.meta.dueDate);
+      setDiscount(invoiceToEdit.meta.discount);
+      setSalutation(invoiceToEdit.meta.salutation || DEFAULT_SALUTATION);
+      setClosingNote(invoiceToEdit.meta.closingNote || DEFAULT_CLOSING_NOTE);
+      setAccountNumber(invoiceToEdit.meta.accountNumber || DEFAULT_ACCOUNT_NUMBER);
+      setAccountName(invoiceToEdit.meta.accountName || DEFAULT_ACCOUNT_NAME);
+      setSignatoryTitle(invoiceToEdit.meta.signatoryTitle || DEFAULT_SIGNATORY_TITLE);
       setLanguage(invoiceToEdit.meta.language || "auto");
       setCurrency((invoiceToEdit.currency || invoiceToEdit.meta.currency || "SDG") as AppCurrency);
       setItems(invoiceToEdit.items || []);
@@ -92,25 +114,12 @@ export function useCustomInvoiceForm({
       setType(initialType);
       setSerial("");
       setSavedReference(undefined);
-      const nextProjectId = initialProjectId ?? null;
-      setProjectId(nextProjectId);
       setSupplierId(null);
       setSupplierInvoiceNumber("");
-      setDate(new Date().toISOString().split("T")[0]);
+      setDate(getLocalIsoDate());
 
-      let prefilledCustomerId: string | null = initialCustomerId ?? initialCustomer?.id ?? null;
+      const prefilledCustomerId: string | null = initialCustomerId ?? initialCustomer?.id ?? null;
       let prefilledPartyName = initialCustomer?.name ?? "";
-
-      if (!prefilledCustomerId && nextProjectId && initialType !== "purchase") {
-        const linkedProject = getProjectsSnapshot().find((p) => p.id === nextProjectId);
-        if (linkedProject?.customerId) {
-          const linkedCustomer = getCustomersSnapshot().find((c) => c.id === linkedProject.customerId);
-          if (linkedCustomer) {
-            prefilledCustomerId = linkedCustomer.id;
-            prefilledPartyName = linkedCustomer.name;
-          }
-        }
-      }
 
       if (prefilledCustomerId && !prefilledPartyName) {
         const found = getCustomersSnapshot().find((c) => c.id === prefilledCustomerId);
@@ -123,6 +132,15 @@ export function useCustomInvoiceForm({
       setPartyName(prefilledPartyName);
       setPartyEnName("");
       setAttn("");
+      setPhone(initialCustomer?.phone || undefined);
+      setNotes(undefined);
+      setDueDate(undefined);
+      setDiscount(undefined);
+      setSalutation(DEFAULT_SALUTATION);
+      setClosingNote(DEFAULT_CLOSING_NOTE);
+      setAccountNumber(DEFAULT_ACCOUNT_NUMBER);
+      setAccountName(DEFAULT_ACCOUNT_NAME);
+      setSignatoryTitle(DEFAULT_SIGNATORY_TITLE);
       setLanguage("auto");
       setCurrency("SDG");
 
@@ -141,27 +159,37 @@ export function useCustomInvoiceForm({
       }
     }
     setActiveTab("edit");
-  }, [open, invoiceToEdit, initialType, initialItems, initialProjectId, initialCustomerId, initialCustomer]);
+  }, [open, invoiceToEdit, initialType, initialItems, initialCustomerId, initialCustomer]);
 
-  const effectiveLang = detectInvoiceLanguage(language, partyName, partyEnName, items);
+  const effectiveLang = useMemo(
+    () => detectInvoiceLanguage(language, partyName, partyEnName, items),
+    [language, partyName, partyEnName, items]
+  );
   const isRtl = effectiveLang === "ar";
-  const { totalAmount, totalInWords } = calculateCustomInvoiceTotals(items, currency, isRtl);
+  const { totalAmount, totalInWords, subtotal } = useMemo(
+    () => calculateCustomInvoiceTotals(items, currency, isRtl, discount),
+    [items, currency, isRtl, discount]
+  );
 
   const buildCurrentInvoice = (): CustomInvoice => {
     const meta: CustomInvoiceMeta = {
       serial: serial || "001",
       type,
-      date: date || new Date().toISOString().split("T")[0],
+      date: date || getLocalIsoDate(),
       partyName: (partyName || "").trim(),
       partyEnName: (partyEnName || "").trim() || undefined,
       attn: (attn || "").trim() || undefined,
+      phone,
+      notes,
+      dueDate,
+      discount,
       language,
       currency,
-      salutation: "بعد التحية والاحترام ،،،،،،،،",
-      closingNote: "لكم جزيل الشكر والتقدير ،،،،،،،،،،،،،،،،،،،،،،،",
-      accountNumber: "3283046",
-      accountName: "طارق عثمان علي",
-      signatoryTitle: "الإدارة",
+      salutation: salutation || DEFAULT_SALUTATION,
+      closingNote: closingNote || DEFAULT_CLOSING_NOTE,
+      accountNumber: accountNumber || DEFAULT_ACCOUNT_NUMBER,
+      accountName: accountName || DEFAULT_ACCOUNT_NAME,
+      signatoryTitle: signatoryTitle || DEFAULT_SIGNATORY_TITLE,
     };
 
     const stableId =
@@ -178,9 +206,9 @@ export function useCustomInvoiceForm({
         qty: it.qty || 1,
       })),
       totalAmount,
+      subtotal,
       totalInWords,
       currency,
-      projectId: projectId ?? undefined,
       supplierId: type === "purchase" ? supplierId ?? undefined : undefined,
       supplierInvoiceNumber: type === "purchase" ? supplierInvoiceNumber.trim() || undefined : undefined,
       customerId: type !== "purchase" ? customerId ?? undefined : undefined,
@@ -195,20 +223,16 @@ export function useCustomInvoiceForm({
     const finalParty = (partyName || "").trim() || (partyEnName || "").trim();
     if (!finalParty) {
       playErrorSound();
-      toast({
-        title: "حقل مطلوب",
+      toast.error("حقل مطلوب", {
         description: "يرجى إدخال اسم العميل أو الجهة الاعتبارية",
-        variant: "destructive",
       });
       return null;
     }
     const hasValidItem = items.some((item) => (item?.description || "").trim().length > 0);
     if (!hasValidItem) {
       playErrorSound();
-      toast({
-        title: "حقل مطلوب",
+      toast.error("حقل مطلوب", {
         description: "يرجى كتابة تفاصيل بند واحد على الأقل",
-        variant: "destructive",
       });
       return null;
     }
@@ -231,18 +255,15 @@ export function useCustomInvoiceForm({
       setCurrentInvoiceId(saved.id);
       setSavedReference(saved.reference);
       playSuccessSound();
-      toast({
-        title: "تم حفظ الفاتورة",
+      toast.success("تم حفظ الفاتورة", {
         description: describeSuccess(saved),
       });
       onSaved?.(saved);
       await afterSave(saved);
     } catch (err) {
       playErrorSound();
-      toast({
-        title: "تعذّر حفظ الفاتورة",
+      toast.error("تعذّر حفظ الفاتورة", {
         description: err instanceof Error ? err.message : "خطأ غير متوقع أثناء حفظ الفاتورة.",
-        variant: "destructive",
       });
     } finally {
       saveLockRef.current = false;
@@ -288,22 +309,21 @@ export function useCustomInvoiceForm({
       setSavedReference(savedProforma.reference);
 
       const { salesInvoice, alreadyConverted } = await convertProformaToSalesInvoice(savedProforma, {
-        projectId,
         customerId,
       });
       playSuccessSound();
-      toast({
-        title: alreadyConverted ? "العرض محوَّل مسبقاً" : "تم التحويل إلى فاتورة مبيعات",
-        description: `فاتورة المبيعات بالمرجع ${salesInvoice.reference || "—"} محفوظة في سجل المبيعات والمشروع.`,
-      });
+      toast.success(
+        alreadyConverted ? "العرض محوَّل مسبقاً" : "تم التحويل إلى فاتورة مبيعات",
+        {
+          description: `فاتورة المبيعات بالمرجع ${salesInvoice.reference || "—"} محفوظة في سجل المبيعات.`,
+        }
+      );
       onSaved?.(salesInvoice);
       onOpenChange(false);
     } catch (err) {
       playErrorSound();
-      toast({
-        title: "تعذّر التحويل إلى فاتورة مبيعات",
+      toast.error("تعذّر التحويل إلى فاتورة مبيعات", {
         description: err instanceof Error ? err.message : "خطأ غير متوقع أثناء التحويل.",
-        variant: "destructive",
       });
     } finally {
       saveLockRef.current = false;
@@ -319,8 +339,6 @@ export function useCustomInvoiceForm({
     type,
     setType,
     serial,
-    projectId,
-    setProjectId,
     customerId,
     setCustomerId,
     supplierId,

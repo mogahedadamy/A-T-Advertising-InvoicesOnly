@@ -1,9 +1,8 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import type jsPDF from "jspdf";
 import { toast } from "sonner";
 import { convertOklchToRgb, isCanvasBlank } from "./pdfColorUtils";
 import { INVOICE_STANDALONE_CSS } from "./pdfExportStyles";
-import { TA_QR_CODE_BASE64 } from "@/assets/invoiceImagesBase64";
+import { escapeHtml, isSafeUrl, sanitizeDir } from "./security/htmlEscape";
 
 export { convertOklchToRgb, isCanvasBlank } from "./pdfColorUtils";
 export { INVOICE_STANDALONE_CSS } from "./pdfExportStyles";
@@ -51,19 +50,21 @@ export function buildStandaloneInvoiceHtml(
           ".standard-invoice-sheet, .proforma-sheet, .invoice-paper, .statement-print-root, .statement-print-document"
         ) || element;
 
-  const targetDir =
-    (typeof (targetSheet as any)?.getAttribute === "function" ? targetSheet.getAttribute("dir") : null) ||
+  const rawDir =
+    (typeof targetSheet?.getAttribute === "function" ? targetSheet.getAttribute("dir") : null) ||
     (targetSheet.classList?.contains?.("text-left") ? "ltr" : "rtl");
+  const targetDir = sanitizeDir(rawDir);
   const isRtl = targetDir === "rtl";
   const rawHtml = convertOklchToRgb(targetSheet.outerHTML);
   const viewportWidth = isA5 ? 760 : 794;
+  const safeTitle = escapeHtml(title);
 
   return `<!DOCTYPE html>
 <html dir="${targetDir}" lang="${isRtl ? "ar" : "en"}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=${viewportWidth}, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     ${INVOICE_STANDALONE_CSS}
 
@@ -208,7 +209,13 @@ export async function generateInvoicePdf(
   const sheets = Array.from(element.querySelectorAll<HTMLElement>(".proforma-sheet, .standard-invoice-sheet, .invoice-paper"));
   const targets = printPages.length > 0 ? printPages : (sheets.length > 0 ? sheets : [element]);
 
-  const pdf = new jsPDF({
+  const [{ default: html2canvas }, { default: JsPdfCtor }, { TA_QR_CODE_BASE64 }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+    import("@/assets/invoiceImagesBase64"),
+  ]);
+
+  const pdf = new JsPdfCtor({
     orientation: actualOrientation,
     unit: "mm",
     format: actualFormat,
@@ -229,9 +236,10 @@ export async function generateInvoicePdf(
       '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:system-ui,sans-serif;"><div style="width:38px;height:38px;border:4px solid rgba(255,255,255,0.25);border-top-color:#ffffff;border-radius:50%;animation:spin 0.9s linear infinite;"></div><div style="font-size:14px;font-weight:bold;">جاري تجهيز الفاتورة بدقة 300 DPI مع الحفاظ على QR الأصلي...</div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
     document.body.appendChild(overlay);
 
-    // إنشاء إطار عمل معزول تماماً عن شاشة الهاتف ومحاذاة RTL والوضع الداكن
+    // إنشاء إطار عمل معزول تماماً عن شاشة الهاتف ومحاذاة RTL والوضع الداكن (بدون تشغيل سكربتات)
     const iframe = document.createElement("iframe");
     iframe.id = `pdf-render-frame-${i}`;
+    iframe.setAttribute("sandbox", "allow-same-origin");
     iframe.style.cssText = `position:fixed;top:0;left:0;width:${stageWidthPx}px;height:${stageHeightPx}px;border:none;margin:0;padding:0;opacity:0.01;pointer-events:none;z-index:-9999;background:#ffffff;`;
     document.body.appendChild(iframe);
 
@@ -416,7 +424,7 @@ export async function exportElementToPdf(
     }
 
     const { pdf, base64, filename } = generated;
-    const androidPrint = (window as any).AndroidPrint;
+    const androidPrint = window.AndroidPrint;
     if (androidPrint && typeof androidPrint.savePdf === "function") {
       androidPrint.savePdf(base64, filename);
       toast.success(`تم حفظ ملف الـ PDF بنجاح باسم: ${filename}`, { id: toastId });
@@ -426,9 +434,10 @@ export async function exportElementToPdf(
     pdf.save(filename);
     toast.success(`تم تنزيل ملف الـ PDF بنجاح: ${filename}`, { id: toastId });
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PDF generation failed:", error);
-    const msg = error?.message ? `: ${error.message}` : "";
+    const errMsg = error instanceof Error ? error.message : "";
+    const msg = errMsg ? `: ${errMsg}` : "";
     toast.error(`تعذر توليد ملف PDF${msg}، يرجى المحاولة مرة أخرى`, { id: toastId });
     return false;
   }
@@ -459,8 +468,8 @@ function showShareProgressHud(options: { ref?: string; partyName?: string }) {
     animation: hud-fade-in 0.2s ease-out;
   `;
 
-  const partyDisplay = options.partyName || "العميل الكريم";
-  const refDisplay = options.ref || "معياري";
+  const partyDisplay = escapeHtml(options.partyName || "العميل الكريم");
+  const refDisplay = escapeHtml(options.ref || "معياري");
 
   overlay.innerHTML = `
     <div style="
@@ -598,15 +607,24 @@ function showShareProgressHud(options: { ref?: string; partyName?: string }) {
       clearInterval(timerInterval);
       const msg = document.getElementById("hud-status-msg");
       if (msg) {
+        const safeErrorMsg = escapeHtml(errorMsg);
+        const safeFallbackLink =
+          fallbackUrl && isSafeUrl(fallbackUrl)
+            ? `<a href="${escapeHtml(fallbackUrl)}" target="_blank" rel="noopener noreferrer" style="background: #25D366; color: white; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-weight: bold;">فتح واتساب ويب</a>`
+            : "";
         msg.innerHTML = `
           <div style="color: #ef4444; font-weight: bold; margin-top: 8px;">
-            ⚠️ ${errorMsg}
+            ⚠️ ${safeErrorMsg}
           </div>
           <div style="display: flex; gap: 8px; margin-top: 12px;">
-            ${fallbackUrl ? `<a href="${fallbackUrl}" target="_blank" style="background: #25D366; color: white; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-weight: bold;">فتح واتساب ويب</a>` : ""}
-            <button onclick="document.getElementById('share-invoice-hud-overlay')?.remove()" style="background: #e2e8f0; color: #334155; padding: 6px 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;">إغلاق</button>
+            ${safeFallbackLink}
+            <button id="hud-close-btn" type="button" style="background: #e2e8f0; color: #334155; padding: 6px 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;">إغلاق</button>
           </div>
         `;
+        const closeBtn = msg.querySelector<HTMLButtonElement>("#hud-close-btn");
+        closeBtn?.addEventListener("click", () => {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        });
       }
     },
     close: () => {
@@ -654,13 +672,13 @@ export async function shareInvoiceViaWhatsApp(
     hud.setStagePdfDone();
 
     // 2. إطلاق الفاتورة إلى واتساب مباشرة عبر AndroidPrint
-    const androidPrint = (window as any).AndroidPrint;
+    const androidPrint = window.AndroidPrint;
     if (androidPrint && typeof androidPrint.shareToWhatsApp === "function") {
       let responded = false;
-      const previousHandler = (window as any).__onInvoiceShared;
-      (window as any).__onInvoiceShared = (success: boolean, msg: string) => {
+      const previousHandler = window.__onInvoiceShared;
+      window.__onInvoiceShared = (success: boolean, msg: string) => {
         responded = true;
-        (window as any).__onInvoiceShared = previousHandler;
+        window.__onInvoiceShared = previousHandler;
         if (success) {
           hud.setSuccess(msg);
         } else {
@@ -673,7 +691,7 @@ export async function shareInvoiceViaWhatsApp(
       // في حال فتح تطبيق واتساب مباشرة دون انتظار
       setTimeout(() => {
         if (!responded) {
-          (window as any).__onInvoiceShared = previousHandler;
+          window.__onInvoiceShared = previousHandler;
           hud.setSuccess();
         }
       }, 1500);
@@ -693,14 +711,15 @@ export async function shareInvoiceViaWhatsApp(
 
     // 4. فتح رابط واتساب ويب كخيار بديل
     const waWebUrl = `https://wa.me/?text=${encodeURIComponent(messageText)}`;
-    window.open(waWebUrl, "_blank");
+    window.open(waWebUrl, "_blank", "noopener,noreferrer");
     hud.setSuccess("تم فتح واتساب لمشاركة نص الفاتورة");
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WhatsApp share failed:", error);
+    const errMsg = error instanceof Error ? error.message : "";
     const waWebUrl = `https://wa.me/?text=${encodeURIComponent(messageText)}`;
-    hud.setError(error?.message || "تعذر إكمال عملية المشاركة", waWebUrl);
-    toast.error(`تعذر مشاركة الفاتورة: ${error?.message || "خطأ غير متوقع"}`);
+    hud.setError(errMsg || "تعذر إكمال عملية المشاركة", waWebUrl);
+    toast.error(`تعذر مشاركة الفاتورة: ${errMsg || "خطأ غير متوقع"}`);
     return false;
   }
 }
@@ -745,7 +764,7 @@ export function triggerPrintWithElement(
     return;
   }
 
-  const androidPrint = (window as any).AndroidPrint;
+  const androidPrint = window.AndroidPrint;
   if (androidPrint && typeof androidPrint.printHtml === "function") {
     try {
       const html = buildStandaloneInvoiceHtml(element, documentTitle, actualPageSize);

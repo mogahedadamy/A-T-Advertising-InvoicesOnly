@@ -34,23 +34,22 @@ vi.mock("@/lib/backup/bridge", () => ({
       const result = await state.engine.restore(fileName, mode);
       return { ok: false, mode: "replace", counts: {}, ...result };
     },
-    getDbCounts: async () => ({ ok: true, counts: {}, invoiceCount: 0, schemaVersion: 3 }),
+    getDbCounts: async () => ({ ok: true, counts: {}, invoiceCount: 0, schemaVersion: DB_VERSION }),
   },
 }));
 
-import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
+import { CREATE_SCHEMA_V1, DB_VERSION } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
 import { NodeBackupEngine } from "@/test/backup/nodeEngine";
 import { saveCustomInvoice, resetCustomInvoicesStoreForTests } from "@/lib/billing/store";
 import { deleteCustomInvoice, findCustomInvoiceByReference } from "@/lib/repositories/CustomInvoiceRepository";
-import { createProject, getProjectRelations, getProjectFinancialSummary } from "@/lib/repositories/ProjectRepository";
 import { createSupplier, getSupplierAccount } from "@/lib/repositories/SupplierRepository";
 import { createExpense, payExpense, getExpensesWithSettlement } from "@/lib/repositories/ExpenseRepository";
 import { getDefaultAccountId } from "@/lib/repositories/FinancialAccountRepository";
 import { recordCustomerReceipt, recordSupplierPayment } from "@/lib/repositories/PaymentRepository";
 import { getCashSummary, getInvoicePaidMap } from "@/lib/repositories/LedgerRepository";
-import { getCashMovementReport, getProjectProfitabilityReport } from "@/lib/repositories/ReportsRepository";
+import { getCashMovementReport, getFinancialPerformanceReport } from "@/lib/repositories/ReportsRepository";
 import type { CustomInvoice } from "@/lib/billing/types";
 
 const NOW = "2026-11-11T08:00:00.000Z";
@@ -75,16 +74,16 @@ beforeEach(async () => {
   db.db.prepare("INSERT OR REPLACE INTO db_meta(key, value) VALUES('schema_version','1')").run();
   const outcome = await runPendingMigrations(db, { nowIso: NOW });
   expect(outcome.warnings).toEqual([]);
-  expect(outcome.to).toBe(3);
+  expect(outcome.to).toBe(DB_VERSION);
   state.db = db;
-  state.engine = new NodeBackupEngine({ folderDir, dbDir, currentSchema: 3 });
+  state.engine = new NodeBackupEngine({ folderDir, dbDir, currentSchema: DB_VERSION });
 });
 
 function customer(id: string, name: string) {
   db.db.prepare("INSERT INTO customers (id, name, phone, type, created_at) VALUES (?,?,?,?,?)").run(id, name, "0912", "company", NOW);
 }
 
-function invoice(overrides: { id: string; date: string; total?: number; projectId?: string; type?: CustomInvoice["meta"]["type"] }): CustomInvoice {
+function invoice(overrides: { id: string; date: string; total?: number; type?: CustomInvoice["meta"]["type"] }): CustomInvoice {
   itemSeq += 1;
   return {
     id: overrides.id,
@@ -97,7 +96,6 @@ function invoice(overrides: { id: string; date: string; total?: number; projectI
     },
     items: [{ id: `item-${overrides.id}-${itemSeq}`, description: "بند", qty: 1, unitPrice: overrides.total ?? 100000, total: overrides.total ?? 100000 }],
     totalAmount: overrides.total ?? 100000,
-    projectId: overrides.projectId,
     createdAt: NOW,
     updatedAt: NOW,
   } as CustomInvoice;
@@ -265,7 +263,7 @@ describe("PRD §17 — معايير القبول الإلزامية", () => {
 
   it("14) مصروف مباشر ⇒ يضيف التكلفة دون اعتباره مدفوعاً", async () => {
     const expense = await createExpense(
-      { kind: "direct", projectId: "prj-1", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
+      { kind: "direct", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
       NOW
     );
     const rows = await getExpensesWithSettlement();
@@ -278,48 +276,28 @@ describe("PRD §17 — معايير القبول الإلزامية", () => {
   it("15) سداد المصروف ⇒ يُسجّل حركة النقد الخارجة فعلاً", async () => {
     const accountId = await account();
     const expense = await createExpense(
-      { kind: "direct", projectId: "prj-1", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
+      { kind: "direct", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
       NOW
     );
     const payment = await payExpense({ expenseId: expense.id, amount: 25000, paidAt: TODAY, accountId }, NOW);
 
-    expect(payment.reference).toMatch(/^PAY-11112026-\d{3}$/);
+    expect(payment.reference).toMatch(/^EXP-11112026-\d{3}$/);
     expect((await getCashSummary()).liquidity).toBe(-25000);
     const movements = await getCashMovementReport({});
     expect(movements.lines.some((line) => line.sourceId === payment.id)).toBe(true);
   });
 
-  it("16) فتح المشروع ⇒ يعرض سجلاته المالية والتشغيلية المرتبطة", async () => {
+  it("17) تقرير الأداء المالي ⇒ يستخدم إيرادات وتكاليف السجلات الفعلية", async () => {
     customer("cust-1", "شركة");
-    const project = await createProject({ customerId: "cust-1", title: "حملة القبول" }, NOW);
-    await saveCustomInvoice(invoice({ id: "inv-1", date: TODAY, total: 250000, projectId: project.id }));
+    await saveCustomInvoice(invoice({ id: "inv-1", date: TODAY, total: 250000 }));
     const supplier = await createSupplier({ name: "مطبعة" }, NOW);
-    await saveCustomInvoice(invoice({ id: "pinv-1", date: TODAY, type: "purchase", total: 120000, projectId: project.id }));
+    await saveCustomInvoice(invoice({ id: "pinv-1", date: TODAY, type: "purchase", total: 170000 }));
     db.db.prepare("UPDATE custom_invoices SET supplier_id = ? WHERE id = 'pinv-1'").run(supplier.id);
 
-    const relations = await getProjectRelations(project.id);
-    expect(relations.salesInvoices.length).toBe(1);
-    expect(relations.invoicedAmount).toBe(250000);
-
-    const summary = await getProjectFinancialSummary(project.id);
-    expect(summary.directCosts).toBe(120000);
-    expect(summary.margin).toBe(130000);
-    expect(summary.suggestedFinancialStatus).toBe("unpaid");
-  });
-
-  it("17) تقرير الربحية ⇒ يستخدم إيرادات وتكاليف السجلات الفعلية", async () => {
-    customer("cust-1", "شركة");
-    const project = await createProject({ customerId: "cust-1", title: "حملة" }, NOW);
-    await saveCustomInvoice(invoice({ id: "inv-1", date: TODAY, total: 250000, projectId: project.id }));
-    const supplier = await createSupplier({ name: "مطبعة" }, NOW);
-    await saveCustomInvoice(invoice({ id: "pinv-1", date: TODAY, type: "purchase", total: 170000, projectId: project.id }));
-    db.db.prepare("UPDATE custom_invoices SET supplier_id = ? WHERE id = 'pinv-1'").run(supplier.id);
-
-    const rows = await getProjectProfitabilityReport({});
-    const row = rows.find((r) => r.projectId === project.id)!;
-    expect(row.revenue).toBe(250000);
-    expect(row.directCosts).toBe(170000);
-    expect(row.margin).toBe(80000);
+    const report = await getFinancialPerformanceReport({});
+    expect(report.revenue).toBe(250000);
+    expect(report.directCosts).toBe(170000);
+    expect(report.grossMargin).toBe(80000);
   });
 
   it("18) تقرير النقد ⇒ يستخدم المقبوضات والمدفوعات الفعلية", async () => {

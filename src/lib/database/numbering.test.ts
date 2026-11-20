@@ -7,9 +7,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
-import { allocateDocumentNumber, reserveReference, seedSequenceCounter } from "@/lib/database/sequences";
+import {
+  EXPENSE_PAYMENT_TARGET,
+  allocateDocumentNumber,
+  reserveReference,
+  seedSequenceCounter,
+} from "@/lib/database/sequences";
 import { backfillInvoiceReferences, ensureSchemaV2, verifySequenceConsistency } from "@/lib/database/migrations/v2BusinessModel";
-import { runPendingMigrations } from "@/lib/database/migrations";
+import { SCHEMA_VERSION, runPendingMigrations } from "@/lib/database/migrations";
+import { reconcileOrphanInvoicesToCustomers } from "@/lib/database/migrations/v5CustomerModule";
 import { FixtureDatabase } from "@/test/backup/fixtureDb";
 
 const NOW = "2026-11-11T10:00:00.000Z";
@@ -28,7 +34,8 @@ beforeEach(async () => {
   // they do on a device after the upgrade.
   const outcome = await runPendingMigrations(db, { nowIso: NOW });
   expect(outcome.warnings).toEqual([]);
-  expect(outcome.to).toBe(3);
+  expect(outcome.to).toBe(SCHEMA_VERSION);
+  expect(outcome.to).toBe(6);
 });
 
 function insertInvoice(id: string, type: string, date: string, reference: string | null, createdAt: string) {
@@ -89,15 +96,33 @@ describe("Atomic allocation (PRD §5.3.2)", () => {
     expect(allocated.reference).toBe("INV-11112026-003");
   });
 
-  it("uses an annual sequence for project references", async () => {
-    const first = await allocateDocumentNumber(db, "project", "2026", NOW, { table: "projects" });
-    const second = await allocateDocumentNumber(db, "project", "2026", NOW, { table: "projects" });
-    const nextYear = await allocateDocumentNumber(db, "project", "2027", NOW, { table: "projects" });
-    expect([first.reference, second.reference, nextYear.reference]).toEqual([
-      "PRJ-2026-001",
-      "PRJ-2026-002",
-      "PRJ-2027-001",
-    ]);
+  it("allocates a purchase invoice cleanly after 70 sales invoices in the same year (FIN-05)", async () => {
+    const seen = new Set<string>();
+    for (let i = 1; i <= 70; i++) {
+      const salesRef = await allocateDocumentNumber(db, "sales", "2026", NOW);
+      expect(seen.has(salesRef.reference)).toBe(false);
+      seen.add(salesRef.reference);
+      insertInvoice(`sale-${i}`, "sales", "2026-11-11", salesRef.reference, NOW);
+    }
+
+    const purchaseRef = await allocateDocumentNumber(db, "purchase", "2026", NOW);
+    expect(purchaseRef.reference).toBe("26-0071");
+    expect(seen.has(purchaseRef.reference)).toBe(false);
+    insertInvoice("purchase-1", "purchase", "2026-11-11", purchaseRef.reference, NOW);
+
+    // Even if document_sequences is wiped (backup restore), purchase still recovers cleanly past 71.
+    db.db.exec("DELETE FROM document_sequences");
+    const purchaseAfterWipe = await allocateDocumentNumber(db, "purchase", "2026", NOW);
+    expect(purchaseAfterWipe.reference).toBe("26-0072");
+  });
+
+  it("allocates expense_payment references in their own EXP namespace without colliding with supplier_payments (FIN-09)", async () => {
+    const payRef = await allocateDocumentNumber(db, "supplier_payment", "11112026", NOW, {
+      table: "supplier_payments",
+    });
+    const expRef = await allocateDocumentNumber(db, "expense_payment", "11112026", NOW, EXPENSE_PAYMENT_TARGET);
+    expect(payRef.reference).toBe("PAY-11112026-001");
+    expect(expRef.reference).toBe("EXP-11112026-001");
   });
 });
 
@@ -210,13 +235,57 @@ describe("Soft cancellation keeps references (PRD §5.3.7, §12.13)", () => {
 });
 
 describe("Migration safety", () => {
-  it("ensureSchemaV2 is idempotent", async () => {
+  it("ensureSchemaV2 is idempotent and v6 multi-currency columns + v5 sales-only reconciliation hold", async () => {
     await ensureSchemaV2(db);
     await ensureSchemaV2(db);
     const tables = (db.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as any[]).map((r) => r.name);
     for (const expected of ["projects", "suppliers", "document_sequences", "audit_log", "financial_transactions"]) {
       expect(tables).toContain(expected);
     }
+
+    // Verify v6 multi-currency columns exist across all 6 upgraded tables.
+    for (const table of [
+      "financial_accounts",
+      "financial_transactions",
+      "supplier_payments",
+      "expenses",
+      "expense_payments",
+      "orders",
+    ]) {
+      const cols = (db.db.prepare(`PRAGMA table_info(${table})`).all() as any[]).map((c) => c.name);
+      expect(cols).toContain("currency");
+    }
+
+    // Verify v5 reconciliation never links purchase invoices or ambiguous duplicate customer names.
+    db.db.prepare("INSERT INTO customers (id, name, created_at) VALUES (?,?,?)").run("c-uniq", "شركة النور", NOW);
+    db.db.prepare("INSERT INTO customers (id, name, created_at) VALUES (?,?,?)").run("c-dup-1", "عميل مكرر", NOW);
+    db.db.prepare("INSERT INTO customers (id, name, created_at) VALUES (?,?,?)").run("c-dup-2", "عميل مكرر", NOW);
+    db.db
+      .prepare(
+        `INSERT INTO custom_invoices (id, serial, type, date, party_name, total_amount, created_at, updated_at, reference)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      )
+      .run("inv-purchase-same", "001", "purchase", "2026-11-11", "شركة النور", 500, NOW, NOW, "26-0901");
+    db.db
+      .prepare(
+        `INSERT INTO custom_invoices (id, serial, type, date, party_name, total_amount, created_at, updated_at, reference)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      )
+      .run("inv-sales-uniq", "002", "sales", "2026-11-11", "شركة النور", 500, NOW, NOW, "26-0902");
+    db.db
+      .prepare(
+        `INSERT INTO custom_invoices (id, serial, type, date, party_name, total_amount, created_at, updated_at, reference)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      )
+      .run("inv-sales-dup", "003", "sales", "2026-11-11", "عميل مكرر", 500, NOW, NOW, "26-0903");
+
+    const reconciled = await reconcileOrphanInvoicesToCustomers(db);
+    expect(reconciled).toBe(1);
+    const getCustId = (id: string) =>
+      (db.db.prepare("SELECT customer_id FROM custom_invoices WHERE id = ?").get(id) as any)?.customer_id;
+    expect(getCustId("inv-purchase-same")).toBeNull();
+    expect(getCustId("inv-sales-uniq")).toBe("c-uniq");
+    expect(getCustId("inv-sales-dup")).toBeNull();
   });
 
   it("cleans up the temporary fixture", () => {

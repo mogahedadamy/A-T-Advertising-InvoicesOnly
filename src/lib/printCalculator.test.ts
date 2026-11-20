@@ -172,4 +172,25 @@ describe("printCalculator algorithms and materials", () => {
       expect(res.error).toContain("المقاس يتجاوز عرض أكبر رولة متاحة");
     }
   });
+
+  it("rejects negative or non-finite inputs and rounds monetary cost to 2 decimals", () => {
+    expect(calculate({ width: -10, height: 100, qty: 1, unitPrice: 100, material: "flex" }).ok).toBe(false);
+    expect(calculate({ width: Infinity, height: 100, qty: 1, unitPrice: 100, material: "flex" }).ok).toBe(false);
+    expect(calculate({ width: 100, height: 100, qty: NaN, unitPrice: 100, material: "flex" }).ok).toBe(false);
+    expect(calculate({ width: 100, height: 100, qty: 1, unitPrice: -5, material: "flex" }).ok).toBe(false);
+    expect(calculate({ width: 100, height: 100, qty: 1, unitPrice: Infinity, material: "flex" }).ok).toBe(false);
+
+    // Floating-point multiplication 0.33 * 0.33 * 100.33 = 10.925937 -> rounded to 10.93
+    const rounded = calculate({
+      width: 33,
+      height: 33,
+      qty: 1,
+      unitPrice: 100.33,
+      material: "indoor_sticker",
+    });
+    expect(rounded.ok).toBe(true);
+    if (rounded.ok) {
+      expect(rounded.result.cost).toBe(10.93);
+    }
+  });
 });

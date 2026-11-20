@@ -63,6 +63,15 @@ export function CustomInvoiceItemsTable({
     onItemsChange(items.filter((_, i) => i !== idx));
   };
 
+  const sanitizeDecimalInput = (rawVal: string): number => {
+    const cleaned = rawVal.replace(/[^0-9.]/g, "");
+    const [intPart = "", ...decParts] = cleaned.split(".");
+    const normalized = decParts.length > 0 ? `${intPart}.${decParts.join("")}` : intPart;
+    if (!normalized || normalized === ".") return 0;
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const handleFieldChange = (
     idx: number,
     field: "description" | "qty" | "unitPrice" | "total",
@@ -82,14 +91,12 @@ export function CustomInvoiceItemsTable({
       const effectiveQty = qty > 0 ? qty : 1;
       target.total = unitPrice > 0 ? Number((effectiveQty * unitPrice).toFixed(2)) : target.total;
     } else if (field === "unitPrice") {
-      const cleaned = val.replace(/[^0-9.]/g, "");
-      const unitPrice = cleaned === "" || cleaned === "." ? 0 : parseFloat(cleaned);
+      const unitPrice = sanitizeDecimalInput(val);
       const effectiveQty = target.qty > 0 ? target.qty : 1;
       target.unitPrice = unitPrice;
       target.total = Number((effectiveQty * unitPrice).toFixed(2));
     } else if (field === "total") {
-      const cleaned = val.replace(/[^0-9.]/g, "");
-      const total = cleaned === "" || cleaned === "." ? 0 : parseFloat(cleaned);
+      const total = sanitizeDecimalInput(val);
       const effectiveQty = target.qty > 0 ? target.qty : 1;
       target.total = total;
       target.unitPrice = effectiveQty > 0 ? Number((total / effectiveQty).toFixed(2)) : total;

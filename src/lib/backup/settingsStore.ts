@@ -70,6 +70,16 @@ function autoDailyTouched(patch: Partial<BackupSettings>): boolean {
   return Object.prototype.hasOwnProperty.call(patch, "autoDaily");
 }
 
+function nativeSettingsTouched(patch: Partial<BackupSettings>): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(patch, "encryptionEnabled") ||
+    Object.prototype.hasOwnProperty.call(patch, "autoDaily") ||
+    Object.prototype.hasOwnProperty.call(patch, "retention") ||
+    Object.prototype.hasOwnProperty.call(patch, "staleAfterHours") ||
+    Object.prototype.hasOwnProperty.call(patch, "transactionThrottleMinutes")
+  );
+}
+
 export async function loadBackupSettings(force = false): Promise<BackupSettings> {
   if (loaded && !force) return snapshot;
   if (force) {
@@ -112,13 +122,28 @@ export async function loadBackupSettings(force = false): Promise<BackupSettings>
 export async function saveBackupSettings(patch: Partial<BackupSettings>): Promise<BackupSettings> {
   snapshot = sanitize({ ...snapshot, ...patch, encryptionKey: "" });
   notify();
-  if (autoDailyTouched(patch) && Capacitor.isNativePlatform()) {
-    // The native scheduler is the source of truth for the daily cadence.
+  if (Capacitor.isNativePlatform() && (autoDailyTouched(patch) || nativeSettingsTouched(patch))) {
     try {
       const { backupBridge } = await import("./bridge");
-      await backupBridge.setScheduledBackupEnabled(snapshot.autoDaily);
+      if (autoDailyTouched(patch)) {
+        // The native scheduler is the source of truth for the daily cadence.
+        await backupBridge.setScheduledBackupEnabled(snapshot.autoDaily);
+      }
+      if (nativeSettingsTouched(patch)) {
+        // Sync native-consumed settings immediately so encryption/retention toggles take effect without restart (SEC-02).
+        await backupBridge.saveSettings({
+          encryptionEnabled: snapshot.encryptionEnabled,
+          autoDaily: snapshot.autoDaily,
+          retentionDaily: snapshot.retention.daily,
+          retentionWeekly: snapshot.retention.weekly,
+          retentionMonthly: snapshot.retention.monthly,
+          retentionMinimum: snapshot.retention.keepMinimum,
+          staleAfterHours: snapshot.staleAfterHours,
+          transactionThrottleMinutes: snapshot.transactionThrottleMinutes,
+        });
+      }
     } catch (err) {
-      console.warn("[BackupSettings] scheduler update failed:", err);
+      console.warn("[BackupSettings] native settings sync failed:", err);
     }
   }
   if (Capacitor.isNativePlatform()) {

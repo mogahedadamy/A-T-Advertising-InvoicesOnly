@@ -1,9 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { HomePage } from "@/components/dashboard/HomePage";
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router";
 
-/**
- * الصفحة الرئيسية للتطبيق — وكالة T.A Advertising Solution
- */
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -11,7 +7,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "نظام إدارة وتوثيق الفواتير، المشاريع، والعمليات المالية لوكالة T.A Advertising Solution",
+          "نظام إدارة وتوثيق الفواتير والعمليات المالية لوكالة T.A Advertising Solution",
       },
       {
         property: "og:title",
@@ -20,9 +16,9 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "نظام إدارة وتوثيق الفواتير، المشاريع، والعمليات المالية لوكالة T.A Advertising Solution",
+          "نظام إدارة وتوثيق الفواتير والعمليات المالية لوكالة T.A Advertising Solution",
       },
     ],
   }),
-  component: HomePage,
+  component: lazyRouteComponent(() => import("@/components/dashboard/HomePage"), "HomePage"),
 });

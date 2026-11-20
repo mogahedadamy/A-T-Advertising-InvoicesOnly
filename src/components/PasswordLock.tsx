@@ -7,13 +7,26 @@ import {
   isPlatformAuthenticatorAvailable,
   registerBiometric,
   verifyBiometric,
-  disableBiometric,
 } from "@/lib/biometricAuth";
-import { verifyPassword, PASSWORD_DIGITS } from "@/lib/passwordStore";
+import {
+  getPinLockoutState,
+  resetPinAttempts,
+  verifyPassword,
+  PASSWORD_DIGITS,
+} from "@/lib/passwordStore";
 import { playTapSound, playSuccessSound, playErrorSound } from "@/lib/soundEffects";
 
 const LENGTH = PASSWORD_DIGITS;
 const BIOMETRIC_PROMPT_DISMISSED = "future_calc_biometric_prompt_dismissed";
+
+function formatLockoutCountdown(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  if (mins > 0) {
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${secs} ثانية`;
+}
 
 interface PasswordLockProps {
   onUnlock: () => void;
@@ -31,8 +44,42 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
   const [bioEnrolled, setBioEnrolled] = useState(false);
   const [bioError, setBioError] = useState<string>("");
   const [bioLoading, setBioLoading] = useState(false);
+  const [lockoutRemainingSec, setLockoutRemainingSec] = useState<number>(() =>
+    Math.ceil(getPinLockoutState().remainingMs / 1000)
+  );
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
   const autoTriedRef = useRef(false);
+  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const scheduleTimeout = (fn: () => void, delayMs: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id);
+      fn();
+    }, delayMs);
+    timeoutsRef.current.add(id);
+  };
+
+  useEffect(() => {
+    const activeTimeouts = timeoutsRef.current;
+    return () => {
+      activeTimeouts.forEach((id) => clearTimeout(id));
+      activeTimeouts.clear();
+    };
+  }, []);
+
+  // عدّاد تنازلي لحالة قفل المحاولات المتكررة
+  useEffect(() => {
+    if (lockoutRemainingSec <= 0) return;
+    const interval = setInterval(() => {
+      const nextSec = Math.ceil(getPinLockoutState().remainingMs / 1000);
+      setLockoutRemainingSec(nextSec);
+      if (nextSec <= 0) {
+        clearInterval(interval);
+        inputs.current[0]?.focus();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutRemainingSec]);
 
   // فحص دعم البصمة + المحاولة التلقائية إن كانت مفعّلة
   useEffect(() => {
@@ -63,30 +110,40 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
     try {
       const ok = await verifyBiometric();
       if (ok) {
+        await resetPinAttempts();
+        setLockoutRemainingSec(0);
         playSuccessSound();
         onUnlock();
       } else {
         playErrorSound();
         setBioError("تعذّر التحقق بالبصمة، استخدم كلمة المرور");
-        setTimeout(() => inputs.current[0]?.focus(), 100);
+        scheduleTimeout(() => inputs.current[0]?.focus(), 100);
       }
     } catch (err) {
       console.warn("Biometric verify failed", err);
       playErrorSound();
       setBioError("تعذّر التحقق بالبصمة، استخدم كلمة المرور");
-      setTimeout(() => inputs.current[0]?.focus(), 100);
+      scheduleTimeout(() => inputs.current[0]?.focus(), 100);
     } finally {
       setBioLoading(false);
     }
   };
 
   const trySubmit = async (vals: string[]) => {
+    const lockState = getPinLockoutState();
+    if (lockState.isLocked) {
+      setLockoutRemainingSec(Math.ceil(lockState.remainingMs / 1000));
+      setError(true);
+      return;
+    }
+
     const code = vals.join("");
     if (code.length < LENGTH) return;
     const ok = await verifyPassword(code);
     if (ok) {
+      setLockoutRemainingSec(0);
       playSuccessSound();
-      // إن كانت البصمة متاحة وغير مفعّلة وقفز المستخدم لم يرفض الاقتراح، اعرضه
+      // إن كانت البصمة متاحة وغير مفعّلة ولم يرفض المستخدم الاقتراح، اعرضه
       const dismissed = localStorage.getItem(BIOMETRIC_PROMPT_DISMISSED) === "1";
       if (bioAvailable && !bioEnrolled && !dismissed) {
         setView("enroll-prompt");
@@ -95,12 +152,18 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
       }
     } else {
       playErrorSound();
+      const updatedLock = getPinLockoutState();
+      if (updatedLock.isLocked) {
+        setLockoutRemainingSec(Math.ceil(updatedLock.remainingMs / 1000));
+      }
       setError(true);
       setShake(true);
-      setTimeout(() => setShake(false), 500);
-      setTimeout(() => {
+      scheduleTimeout(() => setShake(false), 500);
+      scheduleTimeout(() => {
         setDigits(Array(LENGTH).fill(""));
-        inputs.current[0]?.focus();
+        if (!getPinLockoutState().isLocked) {
+          inputs.current[0]?.focus();
+        }
       }, 600);
     }
   };
@@ -134,6 +197,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
   };
 
   const handleChange = (i: number, v: string) => {
+    if (lockoutRemainingSec > 0) return;
     const ch = v.replace(/\D/g, "").slice(-1);
     const next = [...digits];
     next[i] = ch;
@@ -159,6 +223,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
+    if (lockoutRemainingSec > 0) return;
     const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, LENGTH);
     if (!text) return;
     const next = Array(LENGTH).fill("");
@@ -191,7 +256,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
           <div className="p-7">
             <div className="flex flex-col items-center text-center mb-6">
               <div className="relative mb-3 flex items-center justify-center">
-                <div className="rounded-2xl bg-white p-2 shadow-sm border border-border/60">
+                <div className="rounded-2xl bg-white dark:bg-[#0C251E] p-2 shadow-sm border border-border/60">
                   <img
                     src={theme === "dark" ? "/ta-logo-white.png" : "/ta-logo.png"}
                     alt="T.A Advertising Solution"
@@ -221,11 +286,12 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
                   autoComplete="one-time-code"
                   maxLength={1}
                   value={d}
+                  disabled={lockoutRemainingSec > 0}
                   onChange={(e) => handleChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
                   onPaste={handlePaste}
                   onFocus={(e) => e.currentTarget.select()}
-                  className={`h-14 w-12 text-center text-2xl font-black rounded-xl border-2 bg-background text-foreground tabular-nums transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 ${
+                  className={`h-14 w-12 text-center text-2xl font-black rounded-xl border-2 bg-background text-foreground tabular-nums transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-50 ${
                     error
                       ? "border-destructive"
                       : d
@@ -236,13 +302,17 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
               ))}
             </div>
 
-            {error && (
+            {lockoutRemainingSec > 0 ? (
+              <p className="text-center text-sm font-semibold text-destructive mt-2" role="alert">
+                محاولات خاطئة متكررة — يرجى الانتظار {formatLockoutCountdown(lockoutRemainingSec)}
+              </p>
+            ) : error ? (
               <p className="text-center text-sm font-semibold text-destructive mt-2">
                 كلمة المرور غير صحيحة
               </p>
-            )}
+            ) : null}
 
-            {bioError && !error && (
+            {bioError && !error && lockoutRemainingSec <= 0 && (
               <p className="text-center text-xs text-muted-foreground mt-2">{bioError}</p>
             )}
 
@@ -250,7 +320,7 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
               type="button"
               onClick={() => trySubmit(digits)}
               className="w-full mt-5 h-11 font-bold"
-              disabled={digits.some((d) => !d)}
+              disabled={lockoutRemainingSec > 0 || digits.some((d) => !d)}
             >
               فتح التطبيق
             </Button>
@@ -266,19 +336,6 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
                 <span className="text-sm font-bold">
                   {bioLoading ? "جاري التحقق…" : "فتح بالبصمة"}
                 </span>
-              </button>
-            )}
-
-            {bioEnrolled && (
-              <button
-                type="button"
-                onClick={() => {
-                  disableBiometric();
-                  setBioEnrolled(false);
-                }}
-                className="mt-3 w-full text-xs text-muted-foreground hover:text-destructive transition-colors"
-              >
-                إلغاء تفعيل البصمة
               </button>
             )}
           </div>

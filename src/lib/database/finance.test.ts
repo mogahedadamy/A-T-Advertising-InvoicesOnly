@@ -22,11 +22,12 @@ vi.mock("@/lib/database", () => ({
 
 vi.mock("@/lib/backup/notify", () => ({ notifyDataChanged: () => {} }));
 
-import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
+import { CREATE_SCHEMA_V1, DB_VERSION } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
 import { createSupplier, getSupplierAccount } from "@/lib/repositories/SupplierRepository";
-import { createExpense, payExpense } from "@/lib/repositories/ExpenseRepository";
+import { cancelExpense, createExpense, payExpense } from "@/lib/repositories/ExpenseRepository";
+import { cancelCustomInvoice, upsertCustomInvoice } from "@/lib/repositories/CustomInvoiceRepository";
 import {
   cancelPayment,
   recordCustomerReceipt,
@@ -57,7 +58,7 @@ beforeEach(async () => {
   db.db.prepare("INSERT OR REPLACE INTO db_meta(key, value) VALUES('schema_version','1')").run();
   const outcome = await runPendingMigrations(db, { nowIso: NOW });
   expect(outcome.warnings).toEqual([]);
-  expect(outcome.to).toBe(3);
+  expect(outcome.to).toBe(DB_VERSION);
   state.db = db;
 });
 
@@ -67,24 +68,24 @@ function addCustomer(id: string, name: string) {
     .run(id, name, "0912", "company", NOW);
 }
 
-function addSalesInvoice(id: string, reference: string, total: number, customerId: string, projectId?: string) {
+function addSalesInvoice(id: string, reference: string, total: number, customerId: string) {
   db.db
     .prepare(
       `INSERT INTO custom_invoices
-        (id, serial, type, date, party_name, customer_id, language, total_amount, created_at, updated_at, reference, project_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        (id, serial, type, date, party_name, customer_id, language, total_amount, created_at, updated_at, reference)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
     )
-    .run(id, "001", "sales", TODAY, "عميل", customerId, "ar", total, NOW, NOW, reference, projectId ?? null);
+    .run(id, "001", "sales", TODAY, "عميل", customerId, "ar", total, NOW, NOW, reference);
 }
 
-function addPurchaseInvoice(id: string, reference: string, total: number, supplierId: string, projectId?: string) {
+function addPurchaseInvoice(id: string, reference: string, total: number, supplierId: string) {
   db.db
     .prepare(
       `INSERT INTO custom_invoices
-        (id, serial, type, date, party_name, supplier_id, language, total_amount, created_at, updated_at, reference, project_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        (id, serial, type, date, party_name, supplier_id, language, total_amount, created_at, updated_at, reference)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
     )
-    .run(id, "001", "purchase", TODAY, "مورد", supplierId, "ar", total, NOW, NOW, reference, projectId ?? null);
+    .run(id, "001", "purchase", TODAY, "مورد", supplierId, "ar", total, NOW, NOW, reference);
 }
 
 async function defaultAccount(): Promise<string> {
@@ -330,7 +331,7 @@ describe("Expenses: recorded is not paid (PRD §7.5, §17)", () => {
   it("adds a direct cost without marking it paid and without moving cash", async () => {
     const accountId = await defaultAccount();
     const expense = await createExpense(
-      { kind: "direct", projectId: "prj-1", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
+      { kind: "direct", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
       NOW
     );
 
@@ -347,7 +348,7 @@ describe("Expenses: recorded is not paid (PRD §7.5, §17)", () => {
   it("records the outgoing movement when the expense is settled", async () => {
     const accountId = await defaultAccount();
     const expense = await createExpense(
-      { kind: "direct", projectId: "prj-1", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
+      { kind: "direct", beneficiary: "فريق التركيب", amount: 25000, expenseDate: TODAY },
       NOW
     );
 
@@ -355,7 +356,7 @@ describe("Expenses: recorded is not paid (PRD §7.5, §17)", () => {
       { expenseId: expense.id, amount: 25000, paidAt: TODAY, accountId, method: "cash" },
       NOW
     );
-    expect(payment.reference).toMatch(/^PAY-11112026-\d{3}$/);
+    expect(payment.reference).toMatch(/^EXP-11112026-\d{3}$/);
     expect((await getCashSummary()).liquidity).toBe(-25000);
     expect((await getCashSummary()).payments).toBe(25000);
   });
@@ -372,13 +373,22 @@ describe("Expenses: recorded is not paid (PRD §7.5, §17)", () => {
     ).rejects.toThrow(/تتجاوز المتبقي/);
   });
 
-  it("never lets an operating expense be attached to a project (PRD §4.5)", async () => {
-    await expect(
-      createExpense({ kind: "operating", projectId: "prj-1", amount: 5000, expenseDate: TODAY }, NOW)
-    ).rejects.toThrow(/لا يُربط بمشروع/);
-    await expect(
-      createExpense({ kind: "direct", amount: 5000, expenseDate: TODAY }, NOW)
-    ).rejects.toThrow(/يجب أن تُربط بمشروع/);
+  it("allows direct expenses without projectId and keeps directCosts separate from operatingExpenses", async () => {
+    const direct = await createExpense(
+      { kind: "direct", beneficiary: "تنفيذ وتركيب", amount: 15000, expenseDate: TODAY },
+      NOW
+    );
+    const operating = await createExpense(
+      { kind: "operating", beneficiary: "كهرباء وإيجار", amount: 8000, expenseDate: TODAY },
+      NOW
+    );
+
+    expect(direct.kind).toBe("direct");
+    expect(operating.kind).toBe("operating");
+
+    const profitability = await getCompanyProfitability();
+    expect(profitability.directCosts).toBe(15000);
+    expect(profitability.operatingExpenses).toBe(8000);
   });
 });
 
@@ -450,5 +460,92 @@ describe("Company profitability keeps the three dimensions apart (PRD §8, §9)"
 
     const receivables = await getReceivablesSummary(TODAY);
     expect(receivables.outstanding).toBe(150000);
+  });
+});
+
+describe("Phase 3 production guards & multi-currency durability", () => {
+  it("persists USD receipts separately and rejects mixed-currency allocations", async () => {
+    addCustomer("cust-usd", "شركة الدولار");
+    db.db
+      .prepare(
+        `INSERT INTO custom_invoices
+          (id, serial, type, date, party_name, customer_id, language, currency, total_amount, created_at, updated_at, reference)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      )
+      .run("inv-usd-1", "001", "sales", TODAY, "شركة الدولار", "cust-usd", "en", "USD", 500, NOW, NOW, "26-0010");
+
+    const { createAccount } = await import("@/lib/repositories/FinancialAccountRepository");
+    const usdBank = await createAccount({ name: "خزينة دولار", kind: "bank", currency: "USD" }, NOW as any);
+
+    await expect(
+      recordCustomerReceipt({
+        customerId: "cust-usd",
+        amount: 200,
+        currency: "SDG",
+        paidAt: TODAY,
+        accountId: usdBank.id,
+        allocations: [{ invoiceId: "inv-usd-1", amount: 200 }],
+      })
+    ).rejects.toThrow(/عملة السند/);
+
+    const receipt = await recordCustomerReceipt({
+      customerId: "cust-usd",
+      amount: 200,
+      currency: "USD",
+      paidAt: TODAY,
+      accountId: usdBank.id,
+      allocations: [{ invoiceId: "inv-usd-1", amount: 200 }],
+    });
+    expect(receipt.payment.currency).toBe("USD");
+    expect((await getCashSummary("USD")).liquidity).toBe(200);
+    expect((await getCashSummary("SDG")).liquidity).toBe(0);
+    expect((await getReceivablesSummary(TODAY, "USD")).outstanding).toBe(300);
+  });
+
+  it("blocks cancelling or under-editing paid invoices/expenses and cleanly reverses expense_payment", async () => {
+    addCustomer("cust-guard", "عميل محمي");
+    await upsertCustomInvoice({
+      id: "inv-guard-1",
+      meta: { serial: "011", type: "sales", date: TODAY, partyName: "عميل محمي", language: "ar", currency: "SDG" },
+      items: [{ id: "it-guard-1", description: "بند", qty: 1, unitPrice: 1000, total: 1000 }],
+      totalAmount: 1000,
+      currency: "SDG",
+      customerId: "cust-guard",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const cashId = await defaultAccount();
+    await recordCustomerReceipt({
+      customerId: "cust-guard",
+      amount: 600,
+      paidAt: TODAY,
+      accountId: cashId,
+      allocations: [{ invoiceId: "inv-guard-1", amount: 600 }],
+    });
+
+    await expect(cancelCustomInvoice("inv-guard-1", "test")).rejects.toThrow(/سدادات نشطة/);
+    await expect(
+      upsertCustomInvoice({
+        id: "inv-guard-1",
+        meta: { serial: "011", type: "sales", date: TODAY, partyName: "عميل محمي", language: "ar", currency: "SDG" },
+        items: [{ id: "it-guard-1", description: "بند", qty: 1, unitPrice: 400, total: 400 }],
+        totalAmount: 400,
+        currency: "SDG",
+        customerId: "cust-guard",
+        createdAt: NOW,
+        updatedAt: NOW,
+      })
+    ).rejects.toThrow(/أقل من المبلغ المسدّد/);
+
+    const expense = await createExpense(
+      { kind: "operating", beneficiary: "صيانة", amount: 500, expenseDate: TODAY },
+      NOW
+    );
+    const expPay = await payExpense({ expenseId: expense.id, amount: 500, paidAt: TODAY, accountId: cashId }, NOW);
+
+    await expect(cancelExpense(expense.id, "test", NOW)).rejects.toThrow(/سدادات نشطة/);
+    await cancelPayment("expense_payment", expPay.id, "خطأ في القيد", NOW);
+    expect((await getCashSummary()).liquidity).toBe(600);
+    await expect(cancelExpense(expense.id, "تم إلغاء السداد", NOW)).resolves.toBeUndefined();
   });
 });

@@ -27,16 +27,10 @@ describe("Reference format (PRD §5.3.3)", () => {
     expect(formatReference("purchase", "11112026", 1)).not.toBe(formatReference("sales", "11112026", 1));
   });
 
-  it("builds PRJ-YYYY-NNN annual project references", () => {
-    expect(formatReference("project", "2026", 1)).toBe("PRJ-2026-001");
-    expect(formatReference("project", "2026", 12)).toBe("PRJ-2026-012");
-  });
-
   it("refuses to build a reference from an invalid sequence or date key", () => {
     expect(() => formatReference("sales", "11112026", 0)).toThrow();
     expect(() => formatReference("sales", "11112026", -3)).toThrow();
     expect(() => formatReference("sales", "2026-11-11", 1)).toThrow();
-    expect(() => formatReference("project", "26", 1)).toThrow();
   });
 
   it("parses its own output and rejects anything else", () => {
@@ -46,7 +40,6 @@ describe("Reference format (PRD §5.3.3)", () => {
     expect(parsed?.date).toEqual({ year: 2026, month: 11, day: 11 });
 
     expect(parseReference("PINV-01122026-042")?.scope).toBe("purchase");
-    expect(parseReference("PRJ-2026-003")?.scope).toBe("project");
     expect(parseReference("INV-11112026-007")).not.toBeNull();
 
     expect(parseReference("001")).toBeNull();
@@ -58,12 +51,16 @@ describe("Reference format (PRD §5.3.3)", () => {
 
   it("validates references and distinguishes invoice references", () => {
     expect(isValidReference("INV-11112026-001")).toBe(true);
-    expect(isValidReference("PRJ-2026-001")).toBe(true);
+    expect(isValidReference("RCV-11112026-001")).toBe(true);
+    expect(isValidReference("EXP-11112026-001")).toBe(true);
+    expect(parseReference("EXP-11112026-004")?.scope).toBe("expense_payment");
+    expect(formatReference("expense_payment", "11112026", 4)).toBe("EXP-11112026-004");
     expect(isValidReference("001")).toBe(false);
     expect(isInvoiceReference("INV-11112026-001")).toBe(true);
     expect(isInvoiceReference("PINV-11112026-001")).toBe(true);
-    // a project reference is not an invoice reference
-    expect(isInvoiceReference("PRJ-2026-001")).toBe(false);
+    // a receipt or expense payment reference is not an invoice reference
+    expect(isInvoiceReference("RCV-11112026-001")).toBe(false);
+    expect(isInvoiceReference("EXP-11112026-001")).toBe(false);
   });
 });
 
@@ -85,16 +82,18 @@ describe("Local business date handling (PRD §5.3.5)", () => {
     expect(parts).toEqual({ year: 2026, month: 11, day: 11 });
     expect(dateKeyFromParts("sales", parts!)).toBe("2026");
     expect(dateKeyFromParts("receipt", parts!)).toBe("11112026");
-    for (const offset of [-720, -120, 0, 120, 600]) {
-      expect(sequenceDateKey("receipt", Date.UTC(2026, 10, 11, 12), offset * 0 + 0)).toBe("11112026");
-      expect(sequenceDateKey("sales", Date.UTC(2026, 10, 11, 12), offset * 0 + 0)).toBe("2026");
+    for (const offset of [-660, -120, 0, 120, 600]) {
+      expect(sequenceDateKey("receipt", Date.UTC(2026, 10, 11, 12), offset)).toBe("11112026");
+      expect(sequenceDateKey("sales", Date.UTC(2026, 10, 11, 12), offset)).toBe("2026");
     }
+    // Verify genuine timezone rollovers across midnight (UTC+12 and Sudan UTC+2 New Year boundary).
+    expect(sequenceDateKey("receipt", Date.UTC(2026, 10, 11, 12), -720)).toBe("12112026");
+    const sudanNewYear = Date.parse("2026-12-31T22:30:00.000Z"); // 2027-01-01 00:30 UTC+2
+    expect(sequenceDateKey("sales", sudanNewYear, -120)).toBe("2027");
+    expect(sequenceDateKey("receipt", sudanNewYear, -120)).toBe("01012027");
+    expect(sequenceDateKey("sales", sudanNewYear, 0)).toBe("2026");
     expect(localPartsFromIsoDate("bad-date")).toBeNull();
     expect(localPartsFromIsoDate("2026-13-01")).toBeNull();
-  });
-
-  it("keeps the project bucket at year granularity", () => {
-    expect(sequenceDateKey("project", Date.parse("2026-11-11T10:00:00Z"), 0)).toBe("2026");
   });
 });
 

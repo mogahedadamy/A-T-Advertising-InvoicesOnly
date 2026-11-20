@@ -137,8 +137,9 @@ async function runQueue(kind: BackupKind, reason: string): Promise<void> {
       await recordBackupRun("failed", nowIso, result.message ?? result.errorCode ?? "خطأ غير معروف");
       emit(result);
     }
-  } catch (err: any) {
-    const message = err?.message === "NATIVE_UNAVAILABLE" ? "وحدة النسخ الاحتياطي غير متوفرة في هذه النسخة." : String(err?.message ?? err);
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const message = rawMsg === "NATIVE_UNAVAILABLE" ? "وحدة النسخ الاحتياطي غير متوفرة في هذه النسخة." : rawMsg;
     await recordBackupRun("failed", new Date().toISOString(), message);
     emit({ ok: false, errorCode: "IO_FAILED", message });
   } finally {
@@ -173,8 +174,9 @@ export async function createManualBackup(): Promise<BackupRunResult> {
     if (result.ok) await recordBackupRun("ok", nowIso, null);
     else await recordBackupRun("failed", nowIso, result.message ?? result.errorCode ?? "خطأ غير معروف");
     return result;
-  } catch (err: any) {
-    const message = err?.message === "NATIVE_UNAVAILABLE" ? "وحدة النسخ الاحتياطي غير متوفرة في هذه النسخة." : String(err?.message ?? err);
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const message = rawMsg === "NATIVE_UNAVAILABLE" ? "وحدة النسخ الاحتياطي غير متوفرة في هذه النسخة." : rawMsg;
     await recordBackupRun("failed", new Date().toISOString(), message);
     return { ok: false, errorCode: "IO_FAILED", message };
   } finally {

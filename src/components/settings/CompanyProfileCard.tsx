@@ -2,12 +2,11 @@ import React, { useState } from "react";
 import { Mail, Phone, MapPin, Check, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { useCompanyProfile } from "@/lib/settings/companyProfileStore";
 
 export const CompanyProfileCard: React.FC = () => {
   const { email, phone, addressAr, addressEn, updateCompanyProfile } = useCompanyProfile();
-  const { toast } = useToast();
 
   const [formEmail, setFormEmail] = useState(email);
   const [formPhone, setFormPhone] = useState(phone);
@@ -33,15 +32,12 @@ export const CompanyProfileCard: React.FC = () => {
         addressAr: formAddrAr,
         addressEn: formAddrEn,
       });
-      toast({
-        title: "تم حفظ بيانات الفاتورة بنجاح",
+      toast.success("تم حفظ بيانات الفاتورة بنجاح", {
         description: "سيتم تطبيق البريد الإلكتروني والبيانات المحدثة فوراً على كل الفواتير.",
       });
     } catch {
-      toast({
-        title: "تعذر الحفظ",
+      toast.error("تعذر الحفظ", {
         description: "حدث خطأ أثناء حفظ الإعدادات.",
-        variant: "destructive",
       });
     } finally {
       setIsSaving(false);

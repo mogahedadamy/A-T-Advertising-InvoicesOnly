@@ -1,6 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { MobileHistoryPage } from "@/components/history/MobileHistoryPage";
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/orders")({
-  component: MobileHistoryPage,
+  component: lazyRouteComponent(() => import("@/components/history/MobileHistoryPage"), "MobileHistoryPage"),
 });

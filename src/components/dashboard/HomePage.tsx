@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import {
   Building2,
   Calendar,
-  FileText,
   Plus,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
@@ -11,8 +10,6 @@ import { ModuleGrid } from "@/components/dashboard/ModuleGrid";
 import { useUserProfile } from "@/lib/userProfileStore";
 import { UserProfileDialog } from "@/components/common/UserProfileDialog";
 import { AppTourLauncherBanner } from "@/components/common/AppTourAssistant";
-import { playTapSound } from "@/lib/soundEffects";
-import { toast } from "sonner";
 
 function getGreeting(name?: string) {
   const h = new Date().getHours();
@@ -85,7 +82,7 @@ export function HomePage() {
                 </div>
 
                 <p className="text-[11.5px] sm:text-xs text-muted-foreground font-medium leading-relaxed max-w-2xl">
-                  نظام إدارة وتوثيق الفواتير، المشاريع، والعمليات المالية لوكالة T.A Advertising Solution
+                  نظام إدارة وتوثيق الفواتير والعمليات المالية لوكالة T.A Advertising Solution
                 </p>
               </div>
 
@@ -97,18 +94,6 @@ export function HomePage() {
                   <Plus className="h-4 w-4" />
                   <span>إصدار فاتورة</span>
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playTapSound();
-                    toast.info("قسم إصدار الخطابات والمراسلات الرسمية قيد التطوير حالياً، وسيتوفر قريباً بقوالب ونماذج معتمدة.");
-                  }}
-                  className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-border/80 bg-background/80 px-3.5 text-xs font-black text-foreground hover:border-primary/40 hover:text-primary active:scale-[0.98] transition-all cursor-pointer"
-                  title="إصدار خطاب ومراسلة رسمية (قيد التطوير)"
-                >
-                  <FileText className="h-4 w-4 text-primary" />
-                  <span>إصدار خطاب</span>
-                </button>
               </div>
             </div>
           </section>
@@ -121,7 +106,7 @@ export function HomePage() {
             <div className="flex items-center justify-between px-0.5">
               <h2 className="text-xs sm:text-sm font-black text-foreground/90">أقسام إدارة الوكالة</h2>
               <span className="text-[10.5px] font-bold text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full border border-border/50">
-                9 أقسام معتمدة
+                8 أقسام معتمدة
               </span>
             </div>
             <ModuleGrid />

@@ -21,21 +21,18 @@ vi.mock("@/lib/database", () => ({
 
 vi.mock("@/lib/backup/notify", () => ({ notifyDataChanged: () => {} }));
 
-import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
+import { CREATE_SCHEMA_V1, DB_VERSION } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
 import { createSupplier } from "@/lib/repositories/SupplierRepository";
 import { createExpense, payExpense } from "@/lib/repositories/ExpenseRepository";
 import { recordCustomerReceipt, recordSupplierPayment, recordTransfer } from "@/lib/repositories/PaymentRepository";
 import { getDefaultAccountId, createAccount } from "@/lib/repositories/FinancialAccountRepository";
-import { createProject, linkDocumentToProject } from "@/lib/repositories/ProjectRepository";
 import {
   getCashMovementReport,
   getCustomerCollectionsReport,
   getCustomerStatement,
   getFinancialPerformanceReport,
-  getIncompleteProjectsReport,
-  getProjectProfitabilityReport,
   getPurchasesReport,
   getSalesPerformance,
   getSupplierStatement,
@@ -54,7 +51,7 @@ beforeEach(async () => {
   db.db.prepare("INSERT OR REPLACE INTO db_meta(key, value) VALUES('schema_version','1')").run();
   const outcome = await runPendingMigrations(db, { nowIso: NOW });
   expect(outcome.warnings).toEqual([]);
-  expect(outcome.to).toBe(3);
+  expect(outcome.to).toBe(DB_VERSION);
   state.db = db;
 });
 
@@ -62,24 +59,24 @@ function addCustomer(id: string, name: string) {
   db.db.prepare("INSERT INTO customers (id, name, phone, type, created_at) VALUES (?,?,?,?,?)").run(id, name, "0912", "company", NOW);
 }
 
-function addSalesInvoice(id: string, reference: string, date: string, total: number, customerId: string, partyName: string, projectId?: string, discount = 0) {
+function addSalesInvoice(id: string, reference: string, date: string, total: number, customerId: string, partyName: string, discount = 0) {
   db.db
     .prepare(
       `INSERT INTO custom_invoices
-        (id, serial, type, date, party_name, customer_id, language, total_amount, discount, created_at, updated_at, reference, project_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    )
-    .run(id, "001", "sales", date, partyName, customerId, "ar", total, discount, NOW, NOW, reference, projectId ?? null);
-}
-
-function addPurchaseInvoice(id: string, reference: string, date: string, total: number, supplierId: string, projectId?: string) {
-  db.db
-    .prepare(
-      `INSERT INTO custom_invoices
-        (id, serial, type, date, party_name, supplier_id, language, total_amount, created_at, updated_at, reference, project_id)
+        (id, serial, type, date, party_name, customer_id, language, total_amount, discount, created_at, updated_at, reference)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     )
-    .run(id, "001", "purchase", date, "مورد", supplierId, "ar", total, NOW, NOW, reference, projectId ?? null);
+    .run(id, "001", "sales", date, partyName, customerId, "ar", total, discount, NOW, NOW, reference);
+}
+
+function addPurchaseInvoice(id: string, reference: string, date: string, total: number, supplierId: string) {
+  db.db
+    .prepare(
+      `INSERT INTO custom_invoices
+        (id, serial, type, date, party_name, supplier_id, language, total_amount, created_at, updated_at, reference)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    )
+    .run(id, "001", "purchase", date, "مورد", supplierId, "ar", total, NOW, NOW, reference);
 }
 
 async function defaultAccount(): Promise<string> {
@@ -92,7 +89,7 @@ describe("Sales performance report (PRD §11.1)", () => {
   it("totals match the invoices and can be drilled down", async () => {
     addCustomer("cust-1", "شركة النيل");
     addSalesInvoice("inv-1", "INV-10112026-001", "2026-11-10", 100000, "cust-1", "شركة النيل");
-    addSalesInvoice("inv-2", "INV-11112026-001", "2026-11-11", 250000, "cust-1", "شركة النيل", undefined, 5000);
+    addSalesInvoice("inv-2", "INV-11112026-001", "2026-11-11", 250000, "cust-1", "شركة النيل", 5000);
     addSalesInvoice("inv-3", "INV-20112026-001", "2026-11-20", 40000, "cust-1", "شركة النيل");
 
     const all = await getSalesPerformance();
@@ -108,17 +105,6 @@ describe("Sales performance report (PRD §11.1)", () => {
     const withinRange = await getSalesPerformance({ from: "2026-11-11", to: "2026-11-20" });
     expect(withinRange.invoiceCount).toBe(2);
     expect(withinRange.totalSales).toBe(290000);
-  });
-
-  it("groups sales by project with the project reference resolved", async () => {
-    addCustomer("cust-1", "شركة");
-    const project = await createProject({ customerId: "cust-1", title: "حملة" }, NOW);
-    addSalesInvoice("inv-1", "INV-11112026-001", "2026-11-11", 150000, "cust-1", "شركة", project.id);
-
-    const report = await getSalesPerformance();
-    expect(report.byProject.length).toBe(1);
-    expect(report.byProject[0].title).toContain(project.reference);
-    expect(report.byProject[0].total).toBe(150000);
   });
 });
 
@@ -183,7 +169,7 @@ describe("Purchases and execution costs report (PRD §11.3)", () => {
       allocations: [{ invoiceId: "pinv-1", amount: 70000 }],
     });
     const expense = await createExpense(
-      { kind: "direct", projectId: "prj-1", beneficiary: "فريق التركيب", amount: 25000, expenseDate: "2026-11-11" },
+      { kind: "direct", beneficiary: "فريق التركيب", amount: 25000, expenseDate: "2026-11-11" },
       NOW
     );
     await payExpense({ expenseId: expense.id, amount: 25000, paidAt: "2026-11-11", accountId }, NOW);
@@ -239,26 +225,6 @@ describe("Financial performance report (PRD §11.4)", () => {
 
     expect(after.netProfit).toBe(before.netProfit);
     expect(after.liquidity).toBe(before.liquidity);
-  });
-});
-
-describe("Project profitability report (PRD §11.5 A)", () => {
-  it("reports margin per project and marks incomplete figures", async () => {
-    addCustomer("cust-1", "شركة");
-    const project = await createProject({ customerId: "cust-1", title: "حملة" }, NOW);
-    addSalesInvoice("inv-1", "INV-11112026-001", "2026-11-11", 250000, "cust-1", "شركة", project.id);
-    const supplier = await createSupplier({ name: "مطبعة" }, NOW);
-    addPurchaseInvoice("pinv-1", "PINV-11112026-001", "2026-11-11", 120000, supplier.id, project.id);
-
-    const rows = await getProjectProfitabilityReport({});
-    const row = rows.find((r) => r.projectId === project.id)!;
-    expect(row.revenue).toBe(250000);
-    expect(row.directCosts).toBe(120000);
-    expect(row.margin).toBe(130000);
-    // nothing was collected and no costs were settled → incomplete, and it says so
-    expect(row.isComplete).toBe(false);
-    expect(row.outstanding).toBe(250000);
-    expect(row.missing.length).toBeGreaterThan(0);
   });
 });
 
@@ -338,22 +304,30 @@ describe("Statements (PRD §11.5 B and C)", () => {
     expect(statement.totalCollected).toBe(30000);
     // an advance is money received, so the balance is negative (customer in credit)
     expect(statement.lines[0].runningBalance).toBe(-30000);
+    expect(statement.netBalance).toBe(-30000);
   });
-});
 
-describe("Report E — incomplete projects (PRD §11.5 E)", () => {
-  it("lists projects with open money and explains what is missing", async () => {
-    addCustomer("cust-1", "شركة");
-    const project = await createProject({ customerId: "cust-1", title: "حملة" }, NOW);
-    addSalesInvoice("inv-1", "INV-11112026-001", "2026-11-11", 100000, "cust-1", "شركة", project.id);
+  it("computes brought-forward balance accurately when filtered by date range", async () => {
+    addCustomer("cust-bf", "شركة الرصيد المرحل");
+    addSalesInvoice("inv-jan", "26-0001", "2026-01-10", 200000, "cust-bf", "شركة الرصيد المرحل");
+    const accountId = await defaultAccount();
+    await recordCustomerReceipt({
+      customerId: "cust-bf",
+      amount: 50000,
+      paidAt: "2026-01-15",
+      accountId,
+      allocations: [{ invoiceId: "inv-jan", amount: 50000 }],
+    });
+    addSalesInvoice("inv-feb", "26-0002", "2026-02-05", 100000, "cust-bf", "شركة الرصيد المرحل");
 
-    const rows = await getIncompleteProjectsReport();
-    const row = rows.find((r) => r.projectId === project.id)!;
-    expect(row.customerOutstanding).toBe(100000);
-    expect(row.missing.length).toBeGreaterThan(0);
-    // executing the link helper keeps the project consistent
-    await linkDocumentToProject("invoice", "inv-1", project.id, NOW);
-    const after = await getIncompleteProjectsReport();
-    expect(after.find((r) => r.projectId === project.id)?.customerOutstanding).toBe(100000);
+    const febStmt = await getCustomerStatement("cust-bf", { from: "2026-02-01", to: "2026-02-28" }, "SDG");
+    expect(febStmt.lines.length).toBe(2);
+    expect(febStmt.lines[0].kind).toBe("opening_balance");
+    expect(febStmt.lines[0].debit).toBe(150000);
+    expect(febStmt.lines[0].runningBalance).toBe(150000);
+    expect(febStmt.lines[1].id).toBe("inv-feb");
+    expect(febStmt.lines[1].runningBalance).toBe(250000);
+    expect(febStmt.outstanding).toBe(250000);
+    expect(febStmt.netBalance).toBe(250000);
   });
 });

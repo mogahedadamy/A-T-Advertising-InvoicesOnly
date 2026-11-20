@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Lock, AlertOctagon, PhoneCall, ShieldAlert, MapPin, Building2, Calculator, Receipt } from "lucide-react";
+import { useEffect } from "react";
+import { Lock, AlertOctagon, PhoneCall, MapPin, Building2 } from "lucide-react";
 import { registerBackHandler } from "@/lib/backButtonHandler";
 
 export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolean }) {
@@ -39,7 +39,7 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
         />
         <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/15 px-3 py-1 text-[11px] font-bold text-rose-300">
           <AlertOctagon className="h-3.5 w-3.5" />
-          <span>نسخة إدارة الفواتير والمشاريع (7 أيام)</span>
+          <span>نسخة إدارة الفواتير والعمليات المالية (7 أيام)</span>
         </div>
       </div>
 
@@ -68,7 +68,7 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
             هذه النسخة مخصصة لتقييم <strong>نظام إدارة الوكالة والفواتير</strong> لمدة <strong>7 أيام (168 ساعة)</strong> فقط من لحظة التثبيت الأولى على هذا الجهاز.
           </p>
           <p className="text-[11px] text-muted-foreground border-t border-white/10 pt-2">
-            تم قفل ميزات إدارة المشاريع، إصدار فواتير المبيعات، المشتريات، والأرشيف. للحصول على التفعيل الدائم والترخيص الرسمي يرجى التواصل مع الإدارة.
+            تم قفل ميزات إصدار فواتير المبيعات، المشتريات، المالية، والأرشيف. للحصول على التفعيل الدائم والترخيص الرسمي يرجى التواصل مع الإدارة.
           </p>
         </div>
 
@@ -85,11 +85,11 @@ export function TrialExpiredScreen({ isTampered = false }: { isTampered?: boolea
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
             <a
-              href="tel:0123456789"
+              href="tel:+249123711444"
               className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-black text-white shadow-md hover:bg-primary/90 transition-transform active:scale-95"
             >
               <PhoneCall className="h-3.5 w-3.5" />
-              <span>اتصال بالإدارة: 0123456789</span>
+              <span dir="ltr">+249 12371 1444</span>
             </a>
           </div>
 

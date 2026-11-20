@@ -1,4 +1,3 @@
-// @ts-nocheck
 // مساعدات البصمة — تدعم بيئتين:
 // 1) تطبيق Capacitor الأصلي (Android/iOS) عبر إضافة BiometricAuth
 // 2) المتصفح/PWA عبر WebAuthn (Platform Authenticator)
@@ -25,6 +24,7 @@ const bufToB64Url = (buf: ArrayBuffer): string => {
   for (let i = 0; i < bytes.byteLength; i++) str += String.fromCharCode(bytes[i]);
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
+
 const b64UrlToBuf = (b64url: string): ArrayBuffer => {
   const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
   const b64 = (b64url + pad).replace(/-/g, "+").replace(/_/g, "/");
@@ -33,6 +33,7 @@ const b64UrlToBuf = (b64url: string): ArrayBuffer => {
   for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
   return bytes.buffer;
 };
+
 const randomBytes = (len: number): ArrayBuffer => {
   const arr = new Uint8Array(new ArrayBuffer(len));
   crypto.getRandomValues(arr);
@@ -88,7 +89,11 @@ export const getStoredCredential = (): StoredCredential | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as StoredCredential;
+    const parsed = JSON.parse(raw) as Partial<StoredCredential> | null;
+    if (!parsed || typeof parsed.id !== "string" || typeof parsed.createdAt !== "number") {
+      return null;
+    }
+    return { id: parsed.id, createdAt: parsed.createdAt };
   } catch {
     return null;
   }
@@ -96,20 +101,24 @@ export const getStoredCredential = (): StoredCredential | null => {
 
 export const isBiometricEnabled = (): boolean => {
   if (isNativeApp()) {
-    return getStoredSync(NATIVE_FLAG, "") === "1" || localStorage.getItem(NATIVE_FLAG) === "1";
+    return getStoredSync(NATIVE_FLAG, "") === "1";
   }
   return !!getStoredCredential();
 };
 
 export const disableBiometric = (): void => {
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(NATIVE_FLAG);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(NATIVE_FLAG);
+  } catch {
+    // ignore storage removal errors in restricted webviews
+  }
   removeStoredItem(NATIVE_FLAG).catch(() => {});
 };
 
 // تسجيل البصمة (بعد التحقق بكلمة المرور)
 export const registerBiometric = async (): Promise<boolean> => {
-  // --- Native: نطلب تحقّقاً واحداً ثم نرفع علماً للتفعيل ---
+  // --- Native: نطلب تحقّقاً واحداً بالبصمة فقط ثم نحفظ حالة التفعيل ---
   if (isNativeApp()) {
     const available = await isNativeBiometryAvailable();
     if (!available) throw new Error("البصمة غير مدعومة على هذا الجهاز");
@@ -118,12 +127,11 @@ export const registerBiometric = async (): Promise<boolean> => {
         reason: "تأكيد تفعيل فتح التطبيق بالبصمة",
         cancelTitle: "إلغاء",
         allowDeviceCredential: false,
-        iosFallbackTitle: "استخدم رمز الجهاز",
+        iosFallbackTitle: "استخدم كلمة مرور التطبيق",
         androidTitle: "تفعيل البصمة",
         androidSubtitle: "T.A Advertising Solution",
         androidConfirmationRequired: false,
       });
-      localStorage.setItem(NATIVE_FLAG, "1");
       await setStoredItem(NATIVE_FLAG, "1");
       return true;
     } catch (err) {
@@ -174,15 +182,15 @@ export const registerBiometric = async (): Promise<boolean> => {
 
 // التحقق بالبصمة عند فتح التطبيق
 export const verifyBiometric = async (): Promise<boolean> => {
-  // --- Native ---
+  // --- Native: allowDeviceCredential = false لتطابق سياسة التسجيل وعدم قبول سحب الشاشة ---
   if (isNativeApp()) {
     if (!isBiometricEnabled()) return false;
     try {
       await BiometricAuth.authenticate({
         reason: "افتح التطبيق باستخدام البصمة",
         cancelTitle: "إلغاء",
-        allowDeviceCredential: true,
-        iosFallbackTitle: "استخدم رمز الجهاز",
+        allowDeviceCredential: false,
+        iosFallbackTitle: "استخدم كلمة مرور التطبيق",
         androidTitle: "فتح التطبيق",
         androidSubtitle: "T.A Advertising Solution",
         androidConfirmationRequired: false,

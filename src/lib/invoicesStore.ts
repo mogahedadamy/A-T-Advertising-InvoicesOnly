@@ -131,7 +131,7 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
     createdAt: existingIdx >= 0 ? invoicesSnapshot[existingIdx].createdAt : new Date().toISOString(),
   };
 
-  const previousSnapshot = invoicesSnapshot;
+  const previousRecord: InvoiceRecord | undefined = existingIdx >= 0 ? invoicesSnapshot[existingIdx] : undefined;
   // Replace if exists with same serial or prepend
   if (existingIdx >= 0) {
     const next = [...invoicesSnapshot];
@@ -144,8 +144,18 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
   if (Capacitor.isNativePlatform()) {
     repoUpsertPrintInvoice(record).catch((err) => {
       console.warn("[InvoicesStore] SQLite save failed:", err);
-      invoicesSnapshot = previousSnapshot;
-      notify();
+      // Roll back ONLY this record if no newer write superseded it
+      const current = invoicesSnapshot.find((inv) => inv.id === record.id);
+      if (current === record) {
+        if (previousRecord) {
+          invoicesSnapshot = invoicesSnapshot.map((inv) =>
+            inv.id === record.id ? previousRecord : inv
+          );
+        } else {
+          invoicesSnapshot = invoicesSnapshot.filter((inv) => inv.id !== record.id);
+        }
+        notify();
+      }
       toast.error("تعذّر حفظ الفاتورة في قاعدة البيانات");
     });
   }
@@ -153,14 +163,20 @@ export function saveInvoice(invoice: Invoice, paidAmount?: number): InvoiceRecor
 }
 
 export function deleteInvoice(id: string): void {
-  const previousSnapshot = invoicesSnapshot;
+  const deletedIndex = invoicesSnapshot.findIndex((inv) => inv.id === id);
+  const deletedRecord = deletedIndex >= 0 ? invoicesSnapshot[deletedIndex] : undefined;
   invoicesSnapshot = invoicesSnapshot.filter((inv) => inv.id !== id);
   notify();
   if (Capacitor.isNativePlatform()) {
     repoDeletePrintInvoice(id).catch((err) => {
       console.warn("[InvoicesStore] SQLite delete failed:", err);
-      invoicesSnapshot = previousSnapshot;
-      notify();
+      // Re-insert ONLY this record without clobbering concurrent writes to other records
+      if (deletedRecord && !invoicesSnapshot.some((inv) => inv.id === id)) {
+        const next = [...invoicesSnapshot];
+        next.splice(Math.min(deletedIndex, next.length), 0, deletedRecord);
+        invoicesSnapshot = next;
+        notify();
+      }
       toast.error("تعذّر حذف الفاتورة من قاعدة البيانات");
     });
   }

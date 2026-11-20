@@ -5,7 +5,6 @@ import {
   Receipt,
   Wallet,
   Truck,
-  FolderKanban,
   ArrowLeftRight,
   Users,
 } from "lucide-react";
@@ -17,7 +16,6 @@ export type ReportTab =
   | "sales"
   | "collections"
   | "purchases"
-  | "projects"
   | "cash"
   | "statements";
 
@@ -38,7 +36,6 @@ interface Props {
     salesTotal: number;
     collectedTotal: number;
     purchasesTotal: number;
-    projectsCount: number;
     cashNet: number;
   };
 }
@@ -78,14 +75,6 @@ export function ReportsIconCards({ activeTab, onSelectTab, metrics }: Props) {
       gradient: "from-rose-500 to-red-600",
     },
     {
-      id: "projects",
-      title: "ربحية المشاريع",
-      description: "هوامش التنفيذ والسلامة",
-      badge: `${metrics.projectsCount} مشروعات`,
-      icon: FolderKanban,
-      gradient: "from-emerald-600 to-teal-700",
-    },
-    {
       id: "cash",
       title: "الحركة النقدية",
       description: "التدفق النقدي والسيولة",
@@ -114,7 +103,7 @@ export function ReportsIconCards({ activeTab, onSelectTab, metrics }: Props) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
         {cards.map((card) => {
           const Icon = card.icon;
           const isActive = activeTab === card.id;

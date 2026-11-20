@@ -97,6 +97,12 @@ export async function updateSupplier(
 }
 
 export async function cancelSupplier(id: string, reason: string | null, nowIso = new Date().toISOString()): Promise<void> {
+  const account = await getSupplierAccount(id);
+  if (account.outstanding > 0.009) {
+    throw new Error(
+      `لا يمكن إلغاء المورد «${account.supplier.name}» لوجود التزامات غير مسدّدة بقيمة (${account.outstanding}).`
+    );
+  }
   const db = await getDb();
   await db.run("UPDATE suppliers SET cancelled_at = ? WHERE id = ? AND cancelled_at IS NULL", [nowIso, id]);
   await appendAuditEntry({ entityType: "supplier", entityId: id, action: "cancel", reason, nowIso });
@@ -108,7 +114,7 @@ export interface SupplierObligationRow {
   reference: string;
   supplierInvoiceNumber?: string | undefined;
   date: string;
-  projectId?: string | undefined;
+  currency?: string | undefined;
   settlement: SettlementSummary;
 }
 
@@ -120,43 +126,54 @@ export interface SupplierAccount {
   invoices: SupplierObligationRow[];
 }
 
-/** Purchase invoices of one supplier with their payments applied (§9.2). */
+/** Purchase invoices of one supplier with payments applied (single grouped query, includes unallocated advances). */
 export async function getSupplierAccount(supplierId: string): Promise<SupplierAccount> {
   const db = await getDb();
-  const supplier = await getSupplierById(supplierId);
-  const invoicesRes = await db.query(
-    `SELECT id, reference, supplier_invoice_number, date, total_amount, project_id
-       FROM custom_invoices
-      WHERE supplier_id = ? AND type = 'purchase' AND cancelled_at IS NULL
-      ORDER BY date DESC, created_at DESC`,
-    [supplierId]
-  );
+  const [supplier, invoicesRes, totalPaymentsRes] = await Promise.all([
+    getSupplierById(supplierId),
+    db.query(
+      `SELECT i.id, i.reference, i.supplier_invoice_number, i.date, i.total_amount,
+              COALESCE(i.currency, 'SDG') AS currency,
+              COALESCE(a.paid, 0) AS allocated_paid
+         FROM custom_invoices i
+         LEFT JOIN (
+           SELECT al.invoice_id, SUM(al.amount) AS paid
+             FROM supplier_payment_allocations al
+             JOIN supplier_payments p ON p.id = al.payment_id
+            WHERE p.cancelled_at IS NULL
+            GROUP BY al.invoice_id
+         ) a ON a.invoice_id = i.id
+        WHERE i.supplier_id = ? AND i.type = 'purchase' AND i.cancelled_at IS NULL
+        ORDER BY i.date DESC, i.created_at DESC`,
+      [supplierId]
+    ),
+    db.query(
+      "SELECT COALESCE(SUM(amount), 0) AS paid FROM supplier_payments WHERE supplier_id = ? AND cancelled_at IS NULL",
+      [supplierId]
+    ),
+  ]);
 
   const invoices: SupplierObligationRow[] = [];
   let totalObligations = 0;
-  let totalPaid = 0;
+  let allocatedTotal = 0;
 
   for (const row of invoicesRes.values ?? []) {
-    const paidRes = await db.query(
-      `SELECT COALESCE(SUM(a.amount), 0) AS paid
-         FROM supplier_payment_allocations a
-         JOIN supplier_payments p ON p.id = a.payment_id
-        WHERE a.invoice_id = ? AND p.cancelled_at IS NULL`,
-      [row.id]
-    );
-    const paid = Number(paidRes.values?.[0]?.paid) || 0;
+    const paid = Number(row.allocated_paid) || 0;
     const settlement = buildSettlement(Number(row.total_amount) || 0, paid);
     totalObligations += settlement.total;
-    totalPaid += settlement.paid;
+    allocatedTotal += settlement.paid;
     invoices.push({
       invoiceId: String(row.id),
       reference: String(row.reference ?? ""),
       supplierInvoiceNumber: row.supplier_invoice_number ?? undefined,
       date: String(row.date ?? ""),
-      projectId: row.project_id ?? undefined,
+      currency: String(row.currency ?? "SDG"),
       settlement,
     });
   }
+
+  const totalPayments = Number(totalPaymentsRes.values?.[0]?.paid) || 0;
+  const totalPaid = Math.max(allocatedTotal, totalPayments);
 
   return {
     supplier: supplier ?? {
@@ -171,13 +188,36 @@ export async function getSupplierAccount(supplierId: string): Promise<SupplierAc
   };
 }
 
-/** Outstanding per supplier, for the suppliers list. */
+/** Single grouped SQL query replacing the previous N+1 loop across suppliers. */
 export async function getSupplierOutstandingMap(): Promise<Record<string, number>> {
-  const suppliers = await getAllSuppliers();
+  const db = await getDb();
+  const [supRes, invRes, payRes] = await Promise.all([
+    db.query("SELECT id FROM suppliers WHERE cancelled_at IS NULL"),
+    db.query(
+      `SELECT supplier_id, COALESCE(SUM(total_amount), 0) AS total
+         FROM custom_invoices
+        WHERE type = 'purchase' AND cancelled_at IS NULL AND supplier_id IS NOT NULL
+        GROUP BY supplier_id`
+    ),
+    db.query(
+      `SELECT supplier_id, COALESCE(SUM(amount), 0) AS paid
+         FROM supplier_payments
+        WHERE cancelled_at IS NULL
+        GROUP BY supplier_id`
+    ),
+  ]);
+
+  const invMap = new Map<string, number>();
+  for (const r of invRes.values ?? []) invMap.set(String(r.supplier_id), Number(r.total) || 0);
+  const payMap = new Map<string, number>();
+  for (const r of payRes.values ?? []) payMap.set(String(r.supplier_id), Number(r.paid) || 0);
+
   const result: Record<string, number> = {};
-  for (const supplier of suppliers) {
-    const account = await getSupplierAccount(supplier.id);
-    result[supplier.id] = account.outstanding;
+  for (const s of supRes.values ?? []) {
+    const sid = String(s.id);
+    const total = invMap.get(sid) ?? 0;
+    const paid = payMap.get(sid) ?? 0;
+    result[sid] = Math.round(Math.max(0, total - paid) * 100) / 100;
   }
   return result;
 }

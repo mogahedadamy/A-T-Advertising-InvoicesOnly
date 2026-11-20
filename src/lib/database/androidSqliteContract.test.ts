@@ -84,12 +84,6 @@ import { closeDb, getDb } from "@/lib/database";
 import { initSQLiteStorage } from "@/lib/sqliteStorage";
 import { saveUserProfile, getStoredUserName, isUserOnboarded } from "@/lib/userProfileStore";
 import { createSupplier, getAllSuppliers } from "@/lib/repositories/SupplierRepository";
-import {
-  createProject,
-  getAllProjects,
-  getProjectRelations,
-  getProjectById,
-} from "@/lib/repositories/ProjectRepository";
 import { optimizeStorage } from "@/lib/repositories/MaintenanceRepository";
 import {
   convertProformaToSalesInvoice,
@@ -107,7 +101,7 @@ afterEach(async () => {
 });
 
 describe("Android SQLCipher plugin contract through real getDb()", () => {
-  it("initializes DB, creates suppliers and projects, and runs maintenance without Execute or transaction errors", async () => {
+  it("initializes DB, creates suppliers, and runs maintenance without Execute or transaction errors", async () => {
     state.dir = mkdtempSync(join(tmpdir(), "ta-android-contract-"));
     state.fixture = FixtureDatabase.open({ dir: state.dir });
 
@@ -125,13 +119,6 @@ describe("Android SQLCipher plugin contract through real getDb()", () => {
     );
     expect(supplier.name).toBe("شركة النور للدعاية");
     expect(await getAllSuppliers()).toHaveLength(1);
-
-    const project = await createProject(
-      { customerId: "cust-1", title: "حملة إطلاق الهوية" },
-      "2026-11-11T10:02:00.000Z"
-    );
-    expect(project.reference).toMatch(/^PRJ-2026-\d{3}$/);
-    expect(await getAllProjects()).toHaveLength(1);
 
     const maintenance = await optimizeStorage();
     expect(maintenance.ok).toBe(true);
@@ -184,69 +171,15 @@ describe("Android SQLCipher plugin contract through real getDb()", () => {
     ]);
   });
 
-  it("links sales, purchase, and proforma invoices to a project and exposes them inside getProjectRelations", async () => {
-    state.dir = mkdtempSync(join(tmpdir(), "ta-project-link-"));
-    state.fixture = FixtureDatabase.open({ dir: state.dir });
-    resetCustomInvoicesStoreForTests();
-
-    await initSQLiteStorage();
-    const project = await createProject({
-      customerId: null,
-      title: "حملة شاملة",
-    });
-
-    const salesInv = await saveCustomInvoice({
-      id: "prj-link-sales",
-      projectId: project.id,
-      meta: { serial: "001", type: "sales", date: "2026-11-11", partyName: "شركة أ", language: "ar" },
-      items: [{ id: "li-1", description: "تصميم هوية", qty: 1, unitPrice: 5000, total: 5000 }],
-      totalAmount: 5000,
-      createdAt: "2026-11-11T10:00:00.000Z",
-      updatedAt: "2026-11-11T10:00:00.000Z",
-    });
-    const purchaseInv = await saveCustomInvoice({
-      id: "prj-link-purchase",
-      projectId: project.id,
-      meta: { serial: "001", type: "purchase", date: "2026-11-11", partyName: "مورد ب", language: "ar" },
-      items: [{ id: "li-2", description: "تنفيذ ميداني", qty: 1, unitPrice: 1200, total: 1200 }],
-      totalAmount: 1200,
-      createdAt: "2026-11-11T10:01:00.000Z",
-      updatedAt: "2026-11-11T10:01:00.000Z",
-    });
-    await saveCustomInvoice({
-      id: "prj-link-proforma",
-      projectId: project.id,
-      meta: { serial: "001", type: "proforma", date: "2026-11-11", partyName: "شركة أ", language: "ar" },
-      items: [{ id: "li-3", description: "عرض أولي", qty: 1, unitPrice: 3000, total: 3000 }],
-      totalAmount: 3000,
-      createdAt: "2026-11-11T10:02:00.000Z",
-      updatedAt: "2026-11-11T10:02:00.000Z",
-    });
-
-    const relations = await getProjectRelations(project.id);
-    expect(relations.salesInvoices.map((s) => s.reference)).toEqual([salesInv.reference]);
-    expect(relations.purchaseInvoices.map((p) => p.reference)).toEqual([purchaseInv.reference]);
-    expect(relations.quotations).toHaveLength(1);
-    expect(relations.quotations[0].label).toBe("فاتورة مبدئية");
-
-    const updatedProject = await getProjectById(project.id);
-    expect(updatedProject?.financialStatus).toBe("unpaid");
-  });
-
   it("deduplicates concurrent double-taps on saveCustomInvoice (proforma) and updates the single row on edit", async () => {
     state.dir = mkdtempSync(join(tmpdir(), "ta-proforma-idempotent-"));
     state.fixture = FixtureDatabase.open({ dir: state.dir });
     resetCustomInvoicesStoreForTests();
 
     await initSQLiteStorage();
-    const project = await createProject({
-      customerId: null,
-      title: "مشروع اختبار الفاتورة المبدئية",
-    });
 
     const proformaDraft = {
       id: "stable-proforma-draft-1",
-      projectId: project.id,
       meta: {
         serial: "001",
         type: "proforma" as const,
@@ -271,9 +204,6 @@ describe("Android SQLCipher plugin contract through real getDb()", () => {
     expect(secondSave.reference).toBe(firstSave.reference);
     expect(getCustomInvoicesSnapshot()).toHaveLength(1);
 
-    let relations = await getProjectRelations(project.id);
-    expect(relations.quotations).toHaveLength(1);
-
     // Editing and saving again must update the existing record rather than inserting a duplicate
     const editedSave = await saveCustomInvoice({
       ...proformaDraft,
@@ -286,26 +216,17 @@ describe("Android SQLCipher plugin contract through real getDb()", () => {
     expect(editedSave.reference).toBe(firstSave.reference);
     expect(editedSave.totalAmount).toBe(3000);
     expect(getCustomInvoicesSnapshot()).toHaveLength(1);
-
-    relations = await getProjectRelations(project.id);
-    expect(relations.quotations).toHaveLength(1);
-    expect(relations.quotations[0].total).toBe(3000);
   });
 
-  it("converts a project-linked proforma quote directly into a sales invoice without duplicates", async () => {
+  it("converts a proforma quote directly into a sales invoice without duplicates", async () => {
     state.dir = mkdtempSync(join(tmpdir(), "ta-proforma-convert-sales-"));
     state.fixture = FixtureDatabase.open({ dir: state.dir });
     resetCustomInvoicesStoreForTests();
 
     await initSQLiteStorage();
-    const project = await createProject({
-      customerId: null,
-      title: "حملة إطلاق هوية بصرية",
-    });
 
     const proforma = await saveCustomInvoice({
       id: "proforma-quote-to-convert-1",
-      projectId: project.id,
       meta: {
         serial: "001",
         type: "proforma",
@@ -326,18 +247,8 @@ describe("Android SQLCipher plugin contract through real getDb()", () => {
     expect(firstConvert.alreadyConverted).toBe(false);
     expect(firstConvert.salesInvoice.id).toBe(`sales-from-${proforma.id}`);
     expect(firstConvert.salesInvoice.meta.type).toBe("sales");
-    expect(firstConvert.salesInvoice.projectId).toBe(project.id);
     expect(firstConvert.salesInvoice.totalAmount).toBe(7000);
     expect(firstConvert.salesInvoice.reference).toMatch(/^26-\d{4}$/);
-
-    // Original proforma stays preserved alongside the new sales invoice in project relations
-    const relations = await getProjectRelations(project.id);
-    expect(relations.quotations).toHaveLength(1);
-    expect(relations.quotations[0].convertedSalesId).toBe(firstConvert.salesInvoice.id);
-    expect(relations.quotations[0].convertedSalesReference).toBe(firstConvert.salesInvoice.reference);
-    expect(relations.salesInvoices).toHaveLength(1);
-    expect(relations.salesInvoices[0].id).toBe(firstConvert.salesInvoice.id);
-    expect(relations.salesInvoices[0].reference).toBe(firstConvert.salesInvoice.reference);
 
     // Repeating or double-tapping conversion must return the existing sales invoice without duplicates
     const secondConvert = await convertProformaToSalesInvoice(proforma);

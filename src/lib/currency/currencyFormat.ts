@@ -1,4 +1,4 @@
-import { AppCurrency, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from "./types";
+import { AppCurrency, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, sanitizeCurrency } from "./types";
 import { formatNumber } from "@/lib/printCalculator";
 
 export interface FormatCurrencyOptions {
@@ -17,15 +17,20 @@ export function formatCurrencyAmount(
   options: FormatCurrencyOptions = {}
 ): string {
   const { showIso = true, decimals = 2, useFixedDecimals = true } = options;
-  const num = typeof amount === "number" && !isNaN(amount) ? amount : 0;
-  
+  const safeCurrency = sanitizeCurrency(currency);
+  const rawNum = typeof amount === "number" && Number.isFinite(amount) ? amount : 0;
+  const num = Object.is(rawNum, -0) ? 0 : rawNum;
+  const safeDecimals = Number.isInteger(decimals) && decimals >= 0 && decimals <= 6 ? decimals : 2;
+
   // تنسيق الأرقام مع فواصل الآلاف
   let formattedNumber: string;
   if (useFixedDecimals) {
-    const fixed = num.toFixed(decimals);
-    const [intPart, decPart] = fixed.split(".");
+    const isNegative = num < 0;
+    const absFixed = Math.abs(num).toFixed(safeDecimals);
+    const [intPart, decPart] = absFixed.split(".");
     const withCommas = Number(intPart).toLocaleString("en-US");
-    formattedNumber = decPart !== undefined ? `${withCommas}.${decPart}` : withCommas;
+    const signed = isNegative && Number(absFixed) !== 0 ? `-${withCommas}` : withCommas;
+    formattedNumber = decPart !== undefined ? `${signed}.${decPart}` : signed;
   } else {
     formattedNumber = formatNumber(num);
   }
@@ -34,7 +39,7 @@ export function formatCurrencyAmount(
     return formattedNumber;
   }
 
-  return `${formattedNumber} ${currency}`;
+  return `${formattedNumber} ${safeCurrency}`;
 }
 
 /**
@@ -44,7 +49,8 @@ export function getCurrencyDisplayName(
   currency: AppCurrency = DEFAULT_CURRENCY,
   locale: "ar" | "en" = "ar"
 ): string {
-  const conf = SUPPORTED_CURRENCIES[currency] || SUPPORTED_CURRENCIES[DEFAULT_CURRENCY];
+  const safeCurrency = sanitizeCurrency(currency);
+  const conf = SUPPORTED_CURRENCIES[safeCurrency];
   return locale === "en" ? conf.nameEn : conf.nameAr;
 }
 

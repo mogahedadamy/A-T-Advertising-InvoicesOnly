@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -20,38 +20,38 @@ import {
   playSuccessSound,
   playTapSound,
 } from "@/lib/soundEffects";
-import { useToast } from "@/hooks/use-toast";
-import {
-  isBiometricEnabled,
-  isPlatformAuthenticatorAvailable,
-  registerBiometric,
-  disableBiometric,
-} from "@/lib/biometricAuth";
-import {
-  runBiometricDiagnostics,
-  type BiometricDiagnostics,
-} from "@/lib/biometricDiagnostics";
+import { toast } from "sonner";
+import { APP_VERSION } from "@/lib/appVersion";
+import { useCompanyProfile } from "@/lib/settings/companyProfileStore";
 import { BiometricDiagnosticsDialog } from "@/components/settings/BiometricDiagnosticsDialog";
 import { BiometricSettingsCard } from "@/components/settings/BiometricSettingsCard";
 import { PasswordChangeCard } from "@/components/settings/PasswordChangeCard";
 import { BackupManagerCard } from "@/components/settings/BackupManagerCard";
 import { StorageIntegrityCard } from "@/components/settings/StorageIntegrityCard";
 import { CompanyProfileCard } from "@/components/settings/CompanyProfileCard";
+import { useBiometricSettings } from "@/components/settings/useBiometricSettings";
 import { cn } from "@/lib/utils";
 
 type SettingsTab = "backup" | "profile" | "security" | "system";
 
 const Settings: React.FC = () => {
   const { theme, toggle } = useTheme();
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>("backup");
+  const { addressAr } = useCompanyProfile();
 
-  // Biometric state
-  const [bioAvailable, setBioAvailable] = useState(false);
-  const [bioEnabled, setBioEnabled] = useState(false);
-  const [bioBusy, setBioBusy] = useState(false);
+  const {
+    bioAvailable,
+    bioEnabled,
+    bioBusy,
+    handleToggleBiometric,
+    diagOpen,
+    setDiagOpen,
+    diag,
+    diagLoading,
+    openDiagnostics,
+    copyDiagLabel,
+  } = useBiometricSettings();
 
-  // Sound effects state
   const [soundEnabled, setSoundState] = useState(() => isSoundEnabled());
 
   const handleToggleSound = (checked: boolean) => {
@@ -59,93 +59,13 @@ const Settings: React.FC = () => {
     setSoundEnabled(checked);
     if (checked) {
       playSuccessSound();
-      toast({
-        title: "تم تشغيل المؤثرات الصوتية",
+      toast.success("تم تشغيل المؤثرات الصوتية", {
         description: "ستسمع نقرات تفاعلية خفيفة وأصوات تأكيد مريحة.",
       });
     } else {
-      toast({
-        title: "تم كتم المؤثرات الصوتية",
+      toast("تم كتم المؤثرات الصوتية", {
         description: "التطبيق يعمل الآن في الوضع الصامت تماماً.",
       });
-    }
-  };
-
-  // Diagnostics
-  const [diagOpen, setDiagOpen] = useState(false);
-  const [diag, setDiag] = useState<BiometricDiagnostics | null>(null);
-  const [diagLoading, setDiagLoading] = useState(false);
-
-  const openDiagnostics = async () => {
-    setDiagOpen(true);
-    setDiagLoading(true);
-    try {
-      const result = await runBiometricDiagnostics();
-      setDiag(result);
-    } finally {
-      setDiagLoading(false);
-    }
-  };
-
-  const copyDiagLabel = async () => {
-    if (!diag?.settingsLabel) return;
-    try {
-      await navigator.clipboard.writeText(diag.settingsLabel);
-      toast({ title: "تم النسخ", description: diag.settingsLabel });
-    } catch {
-      toast({ title: "تعذّر النسخ", variant: "destructive" });
-    }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const available = await isPlatformAuthenticatorAvailable();
-      if (cancelled) return;
-      setBioAvailable(available);
-      setBioEnabled(isBiometricEnabled());
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleToggleBiometric = async (next: boolean) => {
-    if (bioBusy) return;
-    setBioBusy(true);
-    try {
-      if (next) {
-        const ok = await registerBiometric();
-        if (ok) {
-          setBioEnabled(true);
-          toast({
-            title: "تم تفعيل البصمة",
-            description: "يمكنك الآن فتح التطبيق بالبصمة في المرة القادمة.",
-          });
-        } else {
-          toast({
-            title: "تعذّر التفعيل",
-            description: "حاول مرة أخرى أو تأكد من إعدادات البصمة على جهازك.",
-            variant: "destructive",
-          });
-        }
-      } else {
-        disableBiometric();
-        setBioEnabled(false);
-        toast({
-          title: "تم إلغاء البصمة",
-          description: "ستحتاج لكلمة المرور في كل مرة لفتح التطبيق.",
-        });
-      }
-    } catch (err) {
-      console.warn("biometric toggle failed", err);
-      toast({
-        title: "حدث خطأ",
-        description: "تعذّر إكمال العملية على هذا الجهاز.",
-        variant: "destructive",
-      });
-    } finally {
-      setBioBusy(false);
     }
   };
 
@@ -195,7 +115,7 @@ const Settings: React.FC = () => {
             </div>
           </div>
           <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[10px] font-mono font-bold">
-            v1.3.4
+            v{APP_VERSION}
           </span>
         </div>
 
@@ -208,7 +128,7 @@ const Settings: React.FC = () => {
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-black text-foreground">T.A Advertising Solution</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                المسؤول: طارق عثمان علي • الخرطوم - بورتسودان
+                المسؤول: طارق عثمان علي • {addressAr || "الخرطوم - بورتسودان"}
               </p>
               <div
                 className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground font-mono"
@@ -356,7 +276,7 @@ const Settings: React.FC = () => {
         )}
 
         <p className="text-center text-[11px] text-muted-foreground pt-2">
-          © T.A Advertising Solution — الخرطوم - بورتسودان
+          © T.A Advertising Solution — {addressAr || "الخرطوم - بورتسودان"}
         </p>
       </main>
 

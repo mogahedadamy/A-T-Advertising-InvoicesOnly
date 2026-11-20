@@ -43,7 +43,8 @@ public class BackupPlugin extends Plugin {
     public void load() {
         BridgeAccess.set(getBridge());
         if (engine == null) engine = new BackupEngine(getContext());
-        engine.ensureSchemaVersion();
+        // Do NOT open the live SQLite database OPEN_READWRITE during load():
+        // WebView/SQLCipher initializes the same database file concurrently.
         Log.i(TAG, "TaBackup plugin loaded");
     }
 
@@ -91,7 +92,7 @@ public class BackupPlugin extends Plugin {
             call.resolve(err);
             return;
         }
-        Intent intent = new BackupStorage(getContext()).buildOpenDocumentTreeIntent();
+        Intent intent = engine().storage().buildOpenDocumentTreeIntent();
         startActivityForResult(call, intent, "folderPicked");
     }
 
@@ -108,7 +109,7 @@ public class BackupPlugin extends Plugin {
         }
         final Uri treeUri = result.getData().getData();
         background(call, () -> {
-            BackupStorage storage = new BackupStorage(getContext());
+            BackupStorage storage = engine().storage();
             storage.persistFolder(treeUri);
             engine().rememberPreferredFolder(treeUri.toString());
             BackupEngine.prefs(getContext())
@@ -130,7 +131,7 @@ public class BackupPlugin extends Plugin {
     public void restoreFolderPermission(PluginCall call) {
         final String uriString = call.getString("treeUri", "");
         background(call, () -> {
-            BackupStorage storage = new BackupStorage(getContext());
+            BackupStorage storage = engine().storage();
             storage.rememberFolderIfGranted(uriString);
             JSObject out = new JSObject();
             boolean granted = !storage.getFolderUri().isEmpty();
@@ -144,7 +145,7 @@ public class BackupPlugin extends Plugin {
     @PluginMethod
     public void getFolder(PluginCall call) {
         background(call, () -> {
-            BackupStorage storage = new BackupStorage(getContext());
+            BackupStorage storage = engine().storage();
             JSObject out = new JSObject();
             out.put("ok", true);
             out.put("folderUri", storage.getFolderUri());
@@ -157,7 +158,7 @@ public class BackupPlugin extends Plugin {
     @PluginMethod
     public void forgetFolder(PluginCall call) {
         background(call, () -> {
-            new BackupStorage(getContext()).forget();
+            engine().storage().forget();
             BackupEngine.prefs(getContext()).edit().remove("folder_uri").remove("folder_label").commit();
             JSObject out = new JSObject();
             out.put("ok", true);
@@ -299,6 +300,7 @@ public class BackupPlugin extends Plugin {
             JSObject out = new JSObject();
             out.put("ok", true);
             out.put("engineVersion", BackupEngine.ENGINE_VERSION);
+            out.put("appVersionCode", engine().appVersionCode());
             out.put("sdkInt", Build.VERSION.SDK_INT);
             out.put("model", Build.MANUFACTURER + " " + Build.MODEL);
             out.put("supported", true);

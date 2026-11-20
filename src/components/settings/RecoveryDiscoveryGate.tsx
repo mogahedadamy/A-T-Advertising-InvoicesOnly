@@ -18,6 +18,33 @@ import { restoreBackup } from "@/lib/backup/restoreService";
 import { saveBackupSettings } from "@/lib/backup/settingsStore";
 import { formatBytes, formatDateTime } from "@/components/settings/BackupManagerCard";
 import { playSuccessSound, playTapSound } from "@/lib/soundEffects";
+import { hasCustomPassword } from "@/lib/passwordStore";
+import { getStoredSync } from "@/lib/sqliteStorage";
+
+function hasExistingLocalDatabaseData(discovery: DiscoveryState | null): boolean {
+  const db = discovery?.loaded?.database;
+  if (!db) return false;
+  if ((db.invoiceCount ?? 0) > 0) return true;
+  const counts = db.counts ?? {};
+  return (
+    (counts.custom_invoices ?? 0) > 0 ||
+    (counts.proforma_invoices ?? 0) > 0 ||
+    (counts.print_invoices ?? 0) > 0 ||
+    (counts.customers ?? 0) > 0 ||
+    (counts.orders ?? 0) > 0 ||
+    (counts.customer_payments ?? 0) > 0 ||
+    (counts.suppliers ?? 0) > 0 ||
+    (counts.expenses ?? 0) > 0
+  );
+}
+
+function hasLocalInitializedProfile(): boolean {
+  return (
+    hasCustomPassword() ||
+    getStoredSync("future_print_onboarded", "") === "true" ||
+    Boolean(getStoredSync("future_print_user_name", ""))
+  );
+}
 
 function isPermanentlyDismissed(): boolean {
   if (typeof window === "undefined") return true;
@@ -35,13 +62,21 @@ function isPermanentlyDismissed(): boolean {
 /**
  * First-launch recovery discovery.
  *
- * Runs before the password lock on first install (the PIN itself may live in the backup being
- * restored). Once dismissed or once the app has been used, it is permanently bypassed
- * so it never interrupts the user on subsequent launches. Full restore is always
- * accessible at any time inside Settings > Backup Center.
+ * Security invariant (SEC-08):
+ * - Pre-authentication recovery ONLY runs on a genuinely fresh, empty database with NO user PIN.
+ * - If a custom PIN or existing local records exist, unauthenticated users are NEVER shown backup
+ *   counts and can NEVER overwrite the database before unlocking.
+ * - Full restore is always accessible after authentication inside Settings > Backup Center.
  */
-export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode }) {
-  const isAlreadyDismissed = isPermanentlyDismissed();
+export function RecoveryDiscoveryGate({
+  children,
+  isAuthenticated = false,
+}: {
+  children: React.ReactNode;
+  isAuthenticated?: boolean;
+}) {
+  const blockedPreAuth = !isAuthenticated && hasLocalInitializedProfile();
+  const isAlreadyDismissed = isPermanentlyDismissed() || blockedPreAuth;
   const [checked, setChecked] = useState(
     isAlreadyDismissed || !Capacitor.isNativePlatform() || !isBackupEngineAvailable()
   );
@@ -57,6 +92,11 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
       try {
         const result = await discoverForRecovery();
         if (cancelled) return;
+        // Never allow pre-auth discovery to overwrite or leak data on an existing non-empty DB
+        if (!isAuthenticated && hasExistingLocalDatabaseData(result)) {
+          setDismissed(true);
+          return;
+        }
         setDiscovery(result);
       } catch (err) {
         console.warn("[Recovery] discovery failed:", err);
@@ -67,7 +107,11 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
     return () => {
       cancelled = true;
     };
-  }, [checked, isAlreadyDismissed]);
+  }, [checked, isAlreadyDismissed, isAuthenticated]);
+
+  if (blockedPreAuth) {
+    return <>{children}</>;
+  }
 
   if (!checked) {
     return (
@@ -80,9 +124,13 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
     );
   }
 
+  const hasLocalData = hasExistingLocalDatabaseData(discovery);
   const newest = discovery?.decision?.newest ?? null;
   const needsReconnect = Boolean(discovery?.needsFolderReconnect);
-  const showPrompt = !dismissed && (Boolean(newest && discovery?.decision?.shouldPrompt) || needsReconnect);
+  const showPrompt =
+    !dismissed &&
+    (isAuthenticated || (!hasLocalData && !hasLocalInitializedProfile())) &&
+    (Boolean(newest && discovery?.decision?.shouldPrompt) || needsReconnect);
 
   const handleDismiss = async () => {
     setDismissed(true);
@@ -104,6 +152,11 @@ export function RecoveryDiscoveryGate({ children }: { children: React.ReactNode 
 
   const handleRestore = async () => {
     if (!newest) return;
+    if (!isAuthenticated && (hasLocalInitializedProfile() || hasExistingLocalDatabaseData(discovery))) {
+      toast.error("يجب فتح قفل التطبيق أولاً قبل استعادة البيانات على قاعدة بيانات قائمة.");
+      setDismissed(true);
+      return;
+    }
     playTapSound();
     setBusy("restore");
     try {

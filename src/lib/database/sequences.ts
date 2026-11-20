@@ -23,7 +23,7 @@
  *    an older build), the counter is derived from the highest stored sequence.
  */
 
-import { REFERENCE_PREFIX, formatReference, parseReference, type ReferenceScope } from "@/lib/domain/references";
+import { formatReference, parseReference, type ReferenceScope } from "@/lib/domain/references";
 
 export interface NumberingDatabase {
   query(statement: string, values?: unknown[]): Promise<{ values?: any[] }> | { values?: any[] };
@@ -42,7 +42,58 @@ export interface AllocationTarget {
 }
 
 export const DEFAULT_INVOICE_TARGET: AllocationTarget = { table: "custom_invoices" };
-export const PROJECT_TARGET: AllocationTarget = { table: "projects" };
+export const EXPENSE_PAYMENT_TARGET: AllocationTarget = { table: "expense_payments" };
+
+/**
+ * Strict SQL identifier allowlist for sequence collision checks.
+ * Prevents arbitrary SQL identifier interpolation into SELECT queries.
+ */
+export const ALLOWED_SEQUENCE_TARGETS: Readonly<
+  Record<string, Readonly<{ columns: readonly string[]; idColumns: readonly string[] }>>
+> = Object.freeze({
+  custom_invoices: Object.freeze({
+    columns: Object.freeze(["reference"]),
+    idColumns: Object.freeze(["id"]),
+  }),
+  customer_payments: Object.freeze({
+    columns: Object.freeze(["reference"]),
+    idColumns: Object.freeze(["id"]),
+  }),
+  supplier_payments: Object.freeze({
+    columns: Object.freeze(["reference"]),
+    idColumns: Object.freeze(["id"]),
+  }),
+  expense_payments: Object.freeze({
+    columns: Object.freeze(["reference"]),
+    idColumns: Object.freeze(["id"]),
+  }),
+  projects: Object.freeze({
+    columns: Object.freeze(["reference"]),
+    idColumns: Object.freeze(["id"]),
+  }),
+});
+
+function resolveSafeTarget(target: AllocationTarget): {
+  table: string;
+  column: string;
+  idColumn: string;
+} {
+  const allowed = Object.prototype.hasOwnProperty.call(ALLOWED_SEQUENCE_TARGETS, target.table)
+    ? ALLOWED_SEQUENCE_TARGETS[target.table]
+    : undefined;
+  if (!allowed) {
+    throw new Error(`Invalid sequence target table: ${target.table}`);
+  }
+  const column = target.column ?? "reference";
+  if (!allowed.columns.includes(column)) {
+    throw new Error(`Invalid sequence target column: ${target.table}.${column}`);
+  }
+  const idColumn = target.idColumn ?? "id";
+  if (!allowed.idColumns.includes(idColumn)) {
+    throw new Error(`Invalid sequence target idColumn: ${target.table}.${idColumn}`);
+  }
+  return { table: target.table, column, idColumn };
+}
 
 export interface AllocatedReference {
   sequence: number;
@@ -55,6 +106,36 @@ function safeInt(value: unknown): number {
 }
 
 /**
+ * Checks whether a reference already exists in the validated target table.
+ */
+export async function referenceExists(
+  db: NumberingDatabase,
+  reference: string,
+  target: AllocationTarget = DEFAULT_INVOICE_TARGET
+): Promise<boolean> {
+  const safe = resolveSafeTarget(target);
+  const res = await db.query(
+    `SELECT ${safe.idColumn} AS id FROM ${safe.table} WHERE ${safe.column} = ? LIMIT 1`,
+    [reference]
+  );
+  return Boolean(res?.values?.length);
+}
+
+function isAnnualInvoiceBucket(scope: ReferenceScope, dateKey: string): boolean {
+  return (scope === "sales" || scope === "purchase") && /^\d{2,4}$/.test(dateKey);
+}
+
+/**
+ * Annual YY-NNNN invoices share a single UNIQUE namespace across sales and
+ * purchase invoices in `custom_invoices`, so they must share one counter row
+ * (`("sales", "YYYY")`) to prevent collisions after 64 sales invoices (FIN-05).
+ * Daily/legacy keys (`DDMMYYYY`) keep `sales` and `purchase` separate.
+ */
+function resolveCounterScope(scope: ReferenceScope, dateKey: string): ReferenceScope {
+  return isAnnualInvoiceBucket(scope, dateKey) ? "sales" : scope;
+}
+
+/**
  * Highest sequence already present in the target table for one date bucket.
  * This is the safety net for restored/older data (§5.3.2).
  */
@@ -64,18 +145,29 @@ async function highestStoredSequence(
   dateKey: string,
   target: AllocationTarget
 ): Promise<number> {
-  const column = target.column ?? "reference";
+  const safe = resolveSafeTarget(target);
+  const annual = isAnnualInvoiceBucket(scope, dateKey);
   const yy = dateKey.length === 8 ? dateKey.slice(6, 8) : dateKey.slice(-2);
-  const prefix = scope === "project" ? `${REFERENCE_PREFIX[scope]}-${dateKey}-` : `${yy}-`;
   let highest = 0;
   try {
-    const res = await db.query(
-      `SELECT ${column} AS ref FROM ${target.table} WHERE ${column} LIKE ? OR ${column} LIKE ?`,
-      [`${prefix}%`, `%${dateKey}%`]
-    );
+    const res = annual
+      ? await db.query(`SELECT ${safe.column} AS ref FROM ${safe.table} WHERE ${safe.column} LIKE ?`, [`${yy}-%`])
+      : await db.query(`SELECT ${safe.column} AS ref FROM ${safe.table} WHERE ${safe.column} LIKE ?`, [`%${dateKey}%`]);
     for (const row of res?.values ?? []) {
-      const parsed = parseReference(String(row?.ref ?? ""));
-      if (parsed && parsed.scope === scope && parsed.sequence > highest) highest = parsed.sequence;
+      const rawRef = String(row?.ref ?? "").trim();
+      const parsed = parseReference(rawRef);
+      if (!parsed) continue;
+      if (annual) {
+        // Match all annual YY-NNNN references for the same year (shared across sales & purchase).
+        if (!/^\d{2}-\d{4,6}$/.test(parsed.raw)) continue;
+        if (String(parsed.date.year).slice(-2) !== yy) continue;
+        if (parsed.sequence > highest) highest = parsed.sequence;
+      } else {
+        if (parsed.scope !== scope) continue;
+        const parsedDayKey = `${String(parsed.date.day).padStart(2, "0")}${String(parsed.date.month).padStart(2, "0")}${parsed.date.year}`;
+        if (parsedDayKey !== dateKey) continue;
+        if (parsed.sequence > highest) highest = parsed.sequence;
+      }
     }
   } catch {
     // A missing table simply means nothing to collide with yet.
@@ -89,7 +181,11 @@ export async function readSequenceCounter(
   scope: ReferenceScope,
   dateKey: string
 ): Promise<number> {
-  const res = await db.query("SELECT last_number FROM document_sequences WHERE scope = ? AND date_key = ?", [scope, dateKey]);
+  const counterScope = resolveCounterScope(scope, dateKey);
+  const res = await db.query("SELECT last_number FROM document_sequences WHERE scope = ? AND date_key = ?", [
+    counterScope,
+    dateKey,
+  ]);
   return safeInt(res?.values?.[0]?.last_number);
 }
 
@@ -101,9 +197,10 @@ export async function seedSequenceCounter(
   value: number,
   nowIso: string
 ): Promise<void> {
+  const counterScope = resolveCounterScope(scope, dateKey);
   await db.run(
     "INSERT INTO document_sequences(scope, date_key, last_number, updated_at) VALUES(?,?,?,?) ON CONFLICT(scope, date_key) DO UPDATE SET last_number = CASE WHEN excluded.last_number > last_number THEN excluded.last_number ELSE last_number END, updated_at = excluded.updated_at",
-    [scope, dateKey, safeInt(value), nowIso]
+    [counterScope, dateKey, safeInt(value), nowIso]
   );
 }
 
@@ -119,7 +216,8 @@ export async function allocateDocumentNumber(
   target: AllocationTarget = DEFAULT_INVOICE_TARGET,
   maxAttempts = 64
 ): Promise<AllocatedReference> {
-  const column = target.column ?? "reference";
+  const safe = resolveSafeTarget(target);
+  const counterScope = resolveCounterScope(scope, dateKey);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let sequence = 0;
@@ -128,18 +226,19 @@ export async function allocateDocumentNumber(
       // transaction = false: an explicit transaction is already open on Android SQLite.
       await db.run(
         "INSERT OR IGNORE INTO document_sequences(scope, date_key, last_number, updated_at) VALUES(?,?,0,?)",
-        [scope, dateKey, nowIso],
+        [counterScope, dateKey, nowIso],
         false
       );
-      let current = await readSequenceCounter(db, scope, dateKey);
-      if (current === 0) {
-        // Counter lost/never seeded while references exist: derive it.
-        current = await highestStoredSequence(db, scope, dateKey, target);
+      let current = await readSequenceCounter(db, counterScope, dateKey);
+      if (current === 0 || attempt > 0) {
+        // Counter lost/never seeded or fell behind restored/imported rows: jump past highest stored sequence.
+        const highest = await highestStoredSequence(db, counterScope, dateKey, safe);
+        if (highest > current) current = highest;
       }
       sequence = current + 1;
       await db.run(
         "UPDATE document_sequences SET last_number = ?, updated_at = ? WHERE scope = ? AND date_key = ?",
-        [sequence, nowIso, scope, dateKey],
+        [sequence, nowIso, counterScope, dateKey],
         false
       );
       await db.commitTransaction();
@@ -153,8 +252,7 @@ export async function allocateDocumentNumber(
     }
 
     const reference = formatReference(scope, dateKey, sequence);
-    const clash = await db.query(`SELECT ${target.idColumn ?? "id"} AS id FROM ${target.table} WHERE ${column} = ? LIMIT 1`, [reference]);
-    if (!clash?.values?.length) return { sequence, reference };
+    if (!(await referenceExists(db, reference, safe))) return { sequence, reference };
     // Reference already taken (restored data, manual import): advance and retry.
   }
 
@@ -175,19 +273,18 @@ export async function reserveReference(
   nowIso: string,
   target: AllocationTarget = DEFAULT_INVOICE_TARGET
 ): Promise<AllocatedReference> {
-  const column = target.column ?? "reference";
+  const safe = resolveSafeTarget(target);
   const preferred = formatReference(scope, dateKey, preferredSequence);
 
   // A number at or below the persisted counter has already been handed out, and
   // one that exists in the table is taken: both must advance instead of repeat.
   const counter = await readSequenceCounter(db, scope, dateKey);
   if (preferredSequence > counter) {
-    const taken = await db.query(`SELECT ${target.idColumn ?? "id"} AS id FROM ${target.table} WHERE ${column} = ? LIMIT 1`, [preferred]);
-    if (!taken?.values?.length) {
+    if (!(await referenceExists(db, preferred, safe))) {
       // Keep the counter ahead of any number we hand out.
       await seedSequenceCounter(db, scope, dateKey, preferredSequence, nowIso);
       return { sequence: preferredSequence, reference: preferred };
     }
   }
-  return allocateDocumentNumber(db, scope, dateKey, nowIso, target);
+  return allocateDocumentNumber(db, scope, dateKey, nowIso, safe);
 }

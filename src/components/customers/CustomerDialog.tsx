@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { UserPlus, Pencil, Building2, Phone, MapPin, Wallet, Calendar, FileText, X } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { UserPlus, Pencil, Building2, Phone, MapPin, Wallet, FileText } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   CUSTOMER_TYPE_CONFIG,
@@ -9,7 +9,8 @@ import {
   type CustomerType,
 } from "@/lib/customersStore";
 import { AppCurrency } from "@/lib/currency/types";
-import { playTapSound } from "@/lib/soundEffects";
+import { getLocalIsoDate } from "@/lib/dateUtils";
+import { sanitizePositiveDecimal } from "@/components/finance/shared/numericInput";
 
 interface Props {
   open: boolean;
@@ -36,20 +37,21 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
   const [openingBalance, setOpeningBalance] = useState("0");
   const [openingCurrency, setOpeningCurrency] = useState<AppCurrency>("SDG");
   const [openingType, setOpeningType] = useState<"debit" | "credit">("debit");
-  const [openingDate, setOpeningDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [openingDate, setOpeningDate] = useState(() => getLocalIsoDate());
   const [openingNotes, setOpeningNotes] = useState("");
 
   useEffect(() => {
+    const today = getLocalIsoDate();
     if (initialData) {
       setName(initialData.name || "");
       setPhone(initialData.phone || "");
       setType(initialData.type || "company");
       setAddress(initialData.address || "");
       setNotes(initialData.notes || "");
-      setOpeningBalance(String(initialData.openingBalance ?? (initialData.balance ? Math.abs(initialData.balance) : 0)));
+      setOpeningBalance(String(Math.max(0, initialData.openingBalance ?? (initialData.balance ? Math.abs(initialData.balance) : 0))));
       setOpeningCurrency((initialData.openingBalanceCurrency as AppCurrency) || "SDG");
       setOpeningType(initialData.openingBalanceType || (initialData.balance < 0 ? "credit" : "debit"));
-      setOpeningDate(initialData.openingBalanceDate || initialData.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setOpeningDate(initialData.openingBalanceDate || initialData.createdAt?.slice(0, 10) || today);
       setOpeningNotes(initialData.openingBalanceNotes || "");
     } else {
       setName("");
@@ -60,7 +62,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
       setOpeningBalance("0");
       setOpeningCurrency("SDG");
       setOpeningType("debit");
-      setOpeningDate(new Date().toISOString().slice(0, 10));
+      setOpeningDate(today);
       setOpeningNotes("");
     }
   }, [initialData, open]);
@@ -69,7 +71,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const opBalNum = parseFloat(openingBalance) || 0;
+    const opBalNum = Math.max(0, parseFloat(openingBalance) || 0);
     const computedLegacyBalance = opBalNum > 0 ? (openingType === "debit" ? opBalNum : -opBalNum) : 0;
 
     onSave({
@@ -98,7 +100,6 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
         dir="rtl"
         className="max-w-lg w-[95vw] p-0 rounded-2xl bg-card border-border/80 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
       >
-        {/* Header */}
         <div className="p-4 sm:p-5 border-b border-border/60 bg-muted/20 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
@@ -115,9 +116,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
           </div>
         </div>
 
-        {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* الاسم والتصنيف */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-black text-foreground flex items-center gap-1">
               <span>اسم العميل / الوكالة أو الشركة</span>
@@ -183,7 +182,6 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             />
           </div>
 
-          {/* قسم الرصيد الافتتاحي الموثق كحركة مالية */}
           <div className="rounded-2xl border border-border/80 bg-secondary/25 p-3.5 space-y-3">
             <div className="flex items-center justify-between border-b border-border/50 pb-2">
               <div className="flex items-center gap-1.5">
@@ -201,7 +199,7 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
                   inputMode="decimal"
                   pattern="[0-9]*[.,]?[0-9]*"
                   value={openingBalance}
-                  onChange={(e) => setOpeningBalance(e.target.value)}
+                  onChange={(e) => setOpeningBalance(sanitizePositiveDecimal(e.target.value))}
                   placeholder="0"
                   className={fieldStyle}
                 />
@@ -274,7 +272,6 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
             />
           </div>
 
-          {/* Action Footer */}
           <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-border/60">
             <Button
               type="submit"

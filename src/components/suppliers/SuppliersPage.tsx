@@ -5,24 +5,22 @@ import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   createSupplier,
   getAllSuppliers,
-  getSupplierAccount,
+  getSupplierOutstandingMap,
   updateSupplier,
   type Supplier,
-  type SupplierAccount,
 } from "@/lib/repositories/SupplierRepository";
 import { formatNumber } from "@/lib/printCalculator";
 import { SupplierPaymentDialog } from "@/components/finance/SupplierPaymentDialog";
 
 /**
  * الموردون (PRD §7.1): شركات الطباعة ومقدّمو الخدمات، مع رصيد مشتق من
- * فواتير الشراء والمدفوعات — لا رقم مخزّن يدوياً.
+ * فواتير الشراء والمدفوعات — باستعلام تجميعي واحد بدون N+1.
  */
 export function SuppliersPage() {
-  const { toast } = useToast();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [outstanding, setOutstanding] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -35,17 +33,15 @@ export function SuppliersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await getAllSuppliers();
+      const [list, outstandingMap] = await Promise.all([
+        getAllSuppliers(),
+        getSupplierOutstandingMap(),
+      ]);
       setSuppliers(list);
-      const entries = await Promise.all(
-        list.map(async (supplier) => {
-          const account: SupplierAccount = await getSupplierAccount(supplier.id);
-          return [supplier.id, account.outstanding] as const;
-        })
-      );
-      setOutstanding(Object.fromEntries(entries));
+      setOutstanding(outstandingMap);
     } catch (err) {
       console.error("[SuppliersPage] load failed:", err);
+      toast.error("تعذّر تحميل بيانات الموردين");
     } finally {
       setLoading(false);
     }
@@ -53,35 +49,37 @@ export function SuppliersPage() {
 
   useEffect(() => {
     void load();
-    const onReady = () => {
+    const onRefresh = () => {
       void load();
     };
-    window.addEventListener("native-storage-ready", onReady);
-    return () => window.removeEventListener("native-storage-ready", onReady);
+    window.addEventListener("native-storage-ready", onRefresh);
+    window.addEventListener("finance-changed", onRefresh);
+    return () => {
+      window.removeEventListener("native-storage-ready", onRefresh);
+      window.removeEventListener("finance-changed", onRefresh);
+    };
   }, [load]);
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast({ title: "اسم المورد مطلوب", variant: "destructive" });
+      toast.error("اسم المورد مطلوب");
       return;
     }
     try {
       if (editing) {
         await updateSupplier(editing.id, { name, phone });
-        toast({ title: "تم تحديث المورد" });
+        toast.success("تم تحديث المورد");
       } else {
         await createSupplier({ name, phone });
-        toast({ title: "تم إضافة المورد" });
+        toast.success("تم إضافة المورد");
       }
       setName("");
       setPhone("");
       setEditing(null);
       await load();
     } catch (err) {
-      toast({
-        title: "تعذّر الحفظ",
+      toast.error("تعذّر الحفظ", {
         description: err instanceof Error ? err.message : undefined,
-        variant: "destructive",
       });
     }
   };
@@ -342,7 +340,6 @@ export function SuppliersPage() {
         open={Boolean(paySupplierId)}
         onOpenChange={(open) => !open && setPaySupplierId(null)}
         initialSupplierId={paySupplierId}
-        onRecorded={() => void load()}
       />
     </PageShell>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import React, { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useSafeArea } from "@/hooks/useSafeArea";
 import { cn } from "@/lib/utils";
 
@@ -8,11 +8,6 @@ interface SafeAreaContainerProps extends React.HTMLAttributes<HTMLDivElement> {
   as?: React.ElementType;
 }
 
-/**
- * مكون حاوية مساحات الأمان المركزية (SafeAreaContainer):
- * يضمن تطبيق هوامش الأمان المطلوبة بدقة وتوافق تام مع الأندرويد والـ iOS
- * ويمنع أي تكرار مضاعف للحشوات.
- */
 export function SafeAreaContainer({
   children,
   edges = ["top", "bottom", "left", "right"],
@@ -21,8 +16,6 @@ export function SafeAreaContainer({
   style,
   ...props
 }: SafeAreaContainerProps) {
-  const insets = useSafeArea();
-
   const computedStyle: CSSProperties = {
     ...style,
     paddingTop: edges.includes("top") ? `max(0px, env(safe-area-inset-top, 0px))` : undefined,
@@ -42,9 +35,6 @@ export function SafeAreaContainer({
   );
 }
 
-/**
- * هوك لمراقبة الحقول المدخلة وسحبها للأعلى تلقائياً عند ظهور لوحة المفاتيح
- */
 export function useKeyboardAvoidance() {
   const insets = useSafeArea();
 
@@ -53,10 +43,10 @@ export function useKeyboardAvoidance() {
 
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
-      setTimeout(() => {
+      const timerId = window.setTimeout(() => {
         activeEl.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 150);
+      return () => window.clearTimeout(timerId);
     }
   }, [insets.isKeyboardOpen]);
 }
-

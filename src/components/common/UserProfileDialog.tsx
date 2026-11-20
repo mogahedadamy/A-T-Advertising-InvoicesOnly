@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   Building2,
   Receipt,
-  FolderKanban,
+  Users,
   Lock,
 } from "lucide-react";
 import { useUserProfile, getAvatarInitials } from "@/lib/userProfileStore";
@@ -117,7 +117,7 @@ export function UserProfileDialog({
           </h2>
           <p className="mt-1 text-xs font-medium text-muted-foreground max-w-sm leading-relaxed">
             {isFirstLaunch
-              ? "المنصة الذكية المتكاملة لإدارة وتوثيق الفواتير، المشروعات، والعمليات التجارية المعتمدة."
+              ? "المنصة الذكية المتكاملة لإدارة وتوثيق الفواتير، العملاء، والعمليات المالية المعتمدة."
               : "تحديث اسم المشغل المعتمد ليظهر على ترويسة النظام والفواتير الصادرة."}
           </p>
 
@@ -147,9 +147,9 @@ export function UserProfileDialog({
 
             <div className="rounded-xl border border-border/70 bg-secondary/30 p-2.5 text-center space-y-1">
               <div className="grid h-7 w-7 place-items-center rounded-lg bg-[#C5A059]/15 text-[#C5A059] mx-auto">
-                <FolderKanban className="h-3.5 w-3.5" />
+                <Users className="h-3.5 w-3.5" />
               </div>
-              <p className="text-[11px] font-black text-foreground">تحكم بالمشروعات</p>
+              <p className="text-[11px] font-black text-foreground">تحكم بالعملاء والذمم</p>
               <p className="text-[9.5px] text-muted-foreground leading-tight">
                 إدارة العملاء والذمم وهوامش الربح
               </p>

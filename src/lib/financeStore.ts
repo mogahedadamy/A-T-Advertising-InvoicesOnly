@@ -62,12 +62,11 @@ export function useSettlementVersion(): number {
   return useSyncExternalStore(subscribeSettlements, getSettlementVersion, () => 0);
 }
 
-/** يعلن تحديث المالية والتسويات لباقي الصفحات فوراً (الفواتير، المشاريع، العملاء، الخزينة). */
+/** يعلن تحديث المالية والتسويات لباقي الصفحات فوراً (الفواتير، العملاء، الخزينة). */
 export async function notifyFinanceUpdated(): Promise<void> {
   await refreshSettlements();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("finance-changed"));
-    window.dispatchEvent(new Event("project-relations-changed"));
   }
 }
 

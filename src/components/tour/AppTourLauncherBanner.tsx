@@ -33,7 +33,7 @@ export function AppTourLauncherBanner() {
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground font-medium leading-relaxed">
-              تعرّف على كيفية إدارة فواتير A4، العملاء، المشاريع، والنسخ الاحتياطي في دقيقة واحدة مبسطة.
+              تعرّف على كيفية إدارة فواتير A4، العملاء، المالية، والنسخ الاحتياطي في دقيقة واحدة مبسطة.
             </p>
           </div>
         </div>

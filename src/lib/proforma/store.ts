@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { ProformaInvoice, ProformaLine, ProformaMeta } from "./types";
 import { getInvoiceAmountInWords } from "@/lib/currency/amountToWords";
 import { AppCurrency, sanitizeCurrency } from "@/lib/currency/types";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import { saveInvoice } from "@/lib/invoicesStore";
 import { addOrder } from "@/lib/ordersStore";
 import { Capacitor } from "@capacitor/core";
@@ -33,7 +34,7 @@ export function calculateProformaTotals(
       .toFixed(2)
   );
   const totalQty = safeLines.reduce((sum, l) => sum + (Number(l?.qty) || 0), 0);
-  const totalAmount = safeLines.reduce((sum, l) => sum + (Number(l?.total) || 0), 0);
+  const totalAmount = Math.round(safeLines.reduce((sum, l) => sum + (Number(l?.total) || 0), 0) * 100) / 100;
   const totalInWords = getInvoiceAmountInWords(totalAmount, currency, isRtl);
 
   return { totalArea, totalQty, totalAmount, totalInWords };
@@ -64,7 +65,7 @@ function sanitizeProforma(raw: any): ProformaInvoice {
     id: String(raw?.id || `proforma-${raw?.meta?.serial || Date.now()}`),
     meta: {
       serial: String(raw?.meta?.serial || "001"),
-      date: String(raw?.meta?.date || new Date().toISOString().slice(0, 10)),
+      date: String(raw?.meta?.date || getLocalIsoDate()),
       customerName: String(raw?.meta?.customerName || "عميل غير محدد"),
       customerEnName: raw?.meta?.customerEnName ? String(raw.meta.customerEnName) : undefined,
       phone: String(raw?.meta?.phone || ""),
@@ -79,7 +80,6 @@ function sanitizeProforma(raw: any): ProformaInvoice {
     ...totals,
     currency,
     status: raw?.status || "draft",
-    projectId: raw?.projectId ? String(raw.projectId) : undefined,
     createdAt: raw?.createdAt || new Date().toISOString(),
     updatedAt: raw?.updatedAt || new Date().toISOString(),
   };
@@ -139,17 +139,16 @@ const inFlightProformaSaves = new Map<string, Promise<ProformaInvoice>>();
 async function executeSaveProformaInvoice(
   meta: ProformaMeta,
   lines: ProformaLine[],
-  existingId?: string,
-  projectId?: string | null
+  existingId?: string
 ): Promise<ProformaInvoice> {
   const currency = meta.currency || "SDG";
   const totals = calculateProformaTotals(lines, currency, (meta.language || "ar") !== "en");
   const now = new Date().toISOString();
 
-  // 1. البحث عن فاتورة سابقة بنفس الـ ID أو بنفس الرقم التسلسلي لمنع التكرار نهائياً
-  const idx = snapshot.findIndex(
-    (p) => (existingId && p.id === existingId) || (p.meta?.serial && p.meta.serial === meta.serial)
-  );
+  // 1. عند التعديل يُطابق المعرّف مباشرة، وعند الإنشاء يمنع تكرار الرقم التسلسلي
+  const idx = existingId
+    ? snapshot.findIndex((p) => p.id === existingId)
+    : snapshot.findIndex((p) => p.meta?.serial && p.meta.serial === meta.serial);
 
   if (idx !== -1) {
     const matched = snapshot[idx];
@@ -159,7 +158,6 @@ async function executeSaveProformaInvoice(
       lines,
       ...totals,
       currency,
-      projectId: projectId === undefined ? matched.projectId : projectId ?? undefined,
       updatedAt: now,
     };
     if (Capacitor.isNativePlatform()) {
@@ -185,7 +183,6 @@ async function executeSaveProformaInvoice(
     ...totals,
     currency,
     status: "draft",
-    projectId: projectId ?? undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -208,13 +205,12 @@ async function executeSaveProformaInvoice(
 export function saveProformaInvoice(
   meta: ProformaMeta,
   lines: ProformaLine[],
-  existingId?: string,
-  projectId?: string | null
+  existingId?: string
 ): Promise<ProformaInvoice> {
   const lockKey = existingId || `serial:${meta.serial}`;
   const previous = inFlightProformaSaves.get(lockKey);
   const run = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(() =>
-    executeSaveProformaInvoice(meta, lines, existingId, projectId)
+    executeSaveProformaInvoice(meta, lines, existingId)
   );
   inFlightProformaSaves.set(lockKey, run);
   return run.finally(() => {
@@ -280,7 +276,7 @@ export async function convertProformaToOperatingInvoice(proformaId: string) {
     items: proforma.lines.map((l, i) => ({
       id: `item-${Date.now()}-${i}`,
       description: l.description,
-      material: "flex",
+      material: (l.material || "flex") as any,
       width: l.width,
       height: l.height,
       qty: l.qty,

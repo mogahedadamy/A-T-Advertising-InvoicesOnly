@@ -3,7 +3,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   ClipboardList,
-  FolderKanban,
   Receipt,
   ReceiptText,
   Settings as SettingsIcon,
@@ -25,7 +24,7 @@ interface SystemModule {
 
 /**
  * وحدات وكالة T.A Advertising Solution الإعلانية:
- * درج أيقونات من 3 أعمدة × 3 أسطر (9 وحدات أساسية) لتجربة تنقل واضحة وسريعة.
+ * درج أيقونات متوازن (8 وحدات أساسية) لتجربة تنقل واضحة وسريعة.
  */
 const MODULES: SystemModule[] = [
   {
@@ -46,16 +45,6 @@ const MODULES: SystemModule[] = [
     status: "active",
     to: "/customers",
     gradient: "from-cyan-600 to-blue-600",
-    iconColor: "text-white",
-  },
-  {
-    key: "projects",
-    label: "المشاريع",
-    description: "إدارة المشاريع والفواتير والتكاليف",
-    icon: FolderKanban,
-    status: "active",
-    to: "/projects",
-    gradient: "from-emerald-600 to-teal-700",
     iconColor: "text-white",
   },
   {
@@ -121,14 +110,14 @@ const MODULES: SystemModule[] = [
 ];
 
 /**
- * درج أقسام الوكالة الإعلانية — 3 أيقونات في كل سطر (3×3) مع أيقونة كبيرة ووصف أسفلها
+ * درج أقسام الوكالة الإعلانية — 8 وحدات متماثلة (4×2 على الجوال و2×4 على الشاشات الأكبر) مع أيقونة كبيرة ووصف أسفلها
  */
 export function ModuleGrid() {
   return (
     <nav
       aria-label="أقسام الوكالة الإعلانية"
       dir="rtl"
-      className="grid grid-cols-3 gap-2.5 sm:gap-3.5"
+      className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5"
     >
       {MODULES.map((mod) => {
         const Icon = mod.icon;

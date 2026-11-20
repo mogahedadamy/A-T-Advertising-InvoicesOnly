@@ -92,9 +92,34 @@ describe("Multi-Currency System — Unit & Integration Test Suite", () => {
     it("reproduces exact illustrative examples from the specification", () => {
       expect(tafqeetEnglish(65000, "SDG")).toBe("Sixty-Five Thousand Sudanese Pounds Only.");
       expect(tafqeetEnglish(150, "USD")).toBe("One Hundred and Fifty US Dollars Only.");
-      expect(tafqeetEnglish(2500, "SAR")).toBe("Two Thousand Five Hundred Saudi Rivals Only." ? tafqeetEnglish(2500, "SAR") : "");
       expect(tafqeetEnglish(2500, "SAR")).toBe("Two Thousand Five Hundred Saudi Riyals Only.");
       expect(tafqeetEnglish(8000, "EGP")).toBe("Eight Thousand Egyptian Pounds Only.");
+    });
+
+    it("handles rounding edge cases (99.996), unknown currencies, trillions, and non-finite inputs", () => {
+      // Regression (FIN-07): 99.996 must roll over to 100 units, never "100 piastres/cents".
+      expect(tafqeetArabic(99.996, "SDG")).toBe("مائة جنيه سوداني لا غير");
+      expect(tafqeetEnglish(99.996, "USD")).toBe("One Hundred US Dollars Only.");
+
+      // Unknown currency falls back safely to SDG without throwing TypeError.
+      expect(tafqeetArabic(100, "XYZ" as unknown as AppCurrency)).toBe("مائة جنيه سوداني لا غير");
+      expect(tafqeetEnglish(100, "XYZ" as unknown as AppCurrency)).toBe("One Hundred Sudanese Pounds Only.");
+      expect(formatCurrencyAmount(100, "XYZ" as unknown as AppCurrency)).toBe("100.00 SDG");
+
+      // Non-finite and negative values never produce "∞.00" or "undefined".
+      expect(formatCurrencyAmount(Infinity, "USD")).toBe("0.00 USD");
+      expect(formatCurrencyAmount(-Infinity, "SDG")).toBe("0.00 SDG");
+      expect(formatCurrencyAmount(NaN, "SAR")).toBe("0.00 SAR");
+      expect(tafqeetArabic(Infinity, "SDG")).toBe("صفر جنيه سوداني لا غير");
+      expect(tafqeetEnglish(-50, "USD")).toBe("Zero US Dollars Only.");
+
+      // Trillion-scale amounts never contain "undefined".
+      const arTrillion = tafqeetArabic(1_500_000_000_000, "SDG");
+      const enTrillion = tafqeetEnglish(1_500_000_000_000, "USD");
+      expect(arTrillion).not.toContain("undefined");
+      expect(arTrillion).toContain("تريليون");
+      expect(enTrillion).not.toContain("undefined");
+      expect(enTrillion).toContain("Trillion");
     });
 
     it("correctly handles English singular, plural, and fractional cents/piastres/halalas", () => {

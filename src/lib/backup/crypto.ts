@@ -206,6 +206,16 @@ async function importAesKey(rawKey: Uint8Array): Promise<CryptoKey> {
   ]);
 }
 
+function getSecureRandomBytes(length: number): Uint8Array {
+  const g = typeof globalThis !== "undefined" ? (globalThis as { crypto?: Crypto }) : undefined;
+  if (!g?.crypto?.getRandomValues) {
+    throw new Error("CSPRNG_UNAVAILABLE");
+  }
+  const bytes = new Uint8Array(length);
+  g.crypto.getRandomValues(bytes);
+  return bytes;
+}
+
 /**
  * Seals `plaintext` with AES-256-GCM under a random 96-bit IV.
  * The output is iv(12) || ciphertext || tag(16).
@@ -214,10 +224,7 @@ export async function sealPayload(plaintext: Uint8Array, rawKey: Uint8Array): Pr
   const subtle = getSubtle();
   if (!subtle) throw new Error("ENCRYPTION_UNAVAILABLE");
   const key = await importAesKey(rawKey);
-  const iv = new Uint8Array(12);
-  const g: any = globalThis;
-  if (g.crypto?.getRandomValues) g.crypto.getRandomValues(iv);
-  else for (let i = 0; i < iv.length; i++) iv[i] = Math.floor(Math.random() * 256);
+  const iv = getSecureRandomBytes(12);
 
   const sealed = await subtle.encrypt(
     { name: "AES-GCM", iv: iv as unknown as BufferSource, tagLength: 128 },
@@ -258,7 +265,14 @@ export async function openPayload(sealed: Uint8Array, rawKey: Uint8Array): Promi
 export async function deriveKeyFromPassphrase(passphrase: string, saltHex: string, iterations = 210000): Promise<Uint8Array> {
   const subtle = getSubtle();
   if (!subtle) throw new Error("ENCRYPTION_UNAVAILABLE");
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) ?? []);
+  if (typeof saltHex !== "string" || !/^[0-9a-f]{32,}$/i.test(saltHex) || saltHex.length % 2 !== 0) {
+    throw new Error("INVALID_SALT_HEX");
+  }
+  const saltBytes = saltHex.match(/.{2}/g);
+  if (!saltBytes || saltBytes.length < 16) {
+    throw new Error("INVALID_SALT_HEX");
+  }
+  const salt = new Uint8Array(saltBytes.map((b) => parseInt(b, 16)));
   const base = await subtle.importKey("raw", utf8Encode(passphrase) as unknown as BufferSource, "PBKDF2", false, [
     "deriveBits",
   ]);
@@ -272,9 +286,6 @@ export async function deriveKeyFromPassphrase(passphrase: string, saltHex: strin
 
 /** Generates a fresh random 256-bit key, encoded as base64. */
 export function generateKeyBase64(): string {
-  const raw = new Uint8Array(32);
-  const g: any = globalThis;
-  if (g.crypto?.getRandomValues) g.crypto.getRandomValues(raw);
-  else for (let i = 0; i < raw.length; i++) raw[i] = Math.floor(Math.random() * 256);
+  const raw = getSecureRandomBytes(32);
   return bytesToBase64(raw);
 }

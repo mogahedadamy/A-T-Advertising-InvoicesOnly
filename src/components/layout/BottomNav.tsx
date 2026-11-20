@@ -2,7 +2,7 @@ import React from "react";
 import {
   Home,
   Receipt,
-  FolderKanban,
+  Users,
   ClipboardList,
   Settings as SettingsIcon,
 } from "lucide-react";
@@ -21,7 +21,7 @@ interface NavItem {
  * 5 أقسام رئيسية متناسقة ومريحة للمستخدم:
  * 1. الرئيسية (الوصول السريع والوحدات الشاملة)
  * 2. الفواتير (إصدار فواتير المبيعات والمشتريات وعروض الأسعار A4)
- * 3. المشاريع (إدارة المشروعات والعملاء والتشغيل)
+ * 3. العملاء (دليل العملاء وكشوف حساباتهم)
  * 4. الأرشيف (سجل الفواتير الموحد والطباعة والتصدير)
  * 5. الإعدادات (الأمان والبصمة والنسخ الاحتياطي)
  * 
@@ -39,10 +39,9 @@ const NAV_ITEMS: NavItem[] = [
     icon: Receipt,
   },
   {
-    to: "/projects",
-    label: "المشاريع",
-    icon: FolderKanban,
-    also: ["/customers"],
+    to: "/customers",
+    label: "العملاء",
+    icon: Users,
   },
   {
     to: "/orders",

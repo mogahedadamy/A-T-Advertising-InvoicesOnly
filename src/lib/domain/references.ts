@@ -7,44 +7,44 @@
  * Formats:
  *   Production Standard Invoices:  YY-NNNN       (e.g. 26-0001, 26-0002, 27-0001)
  *   Historical / Daily Invoices:   INV-DDMMYYYY-NNN / PINV-DDMMYYYY-NNN
- *   Project:                       PRJ-YYYY-NNN  (annual sequence)
  *   Receipt:                       RCV-DDMMYYYY-NNN
  *   Supplier Payment:              PAY-DDMMYYYY-NNN
+ *   Expense Payment:               EXP-DDMMYYYY-NNN
  */
 
-export type ReferenceScope = "sales" | "purchase" | "project" | "receipt" | "supplier_payment";
+export type ReferenceScope = "sales" | "purchase" | "receipt" | "supplier_payment" | "expense_payment";
 export type InvoiceReferenceScope = "sales" | "purchase";
 
 export const REFERENCE_SCOPES: ReferenceScope[] = [
   "sales",
   "purchase",
-  "project",
   "receipt",
   "supplier_payment",
+  "expense_payment",
 ];
 
 export const REFERENCE_PREFIX: Record<ReferenceScope, string> = {
   sales: "INV",
   purchase: "PINV",
-  project: "PRJ",
   receipt: "RCV",
   supplier_payment: "PAY",
+  expense_payment: "EXP",
 };
 
 export const REFERENCE_SEQUENCE_DIGITS: Record<ReferenceScope, number> = {
   sales: 3,
   purchase: 3,
-  project: 3,
   receipt: 3,
   supplier_payment: 3,
+  expense_payment: 3,
 };
 
 const PATTERNS: Record<ReferenceScope, RegExp> = {
   sales: /^INV-(\d{2})(\d{2})(\d{4})-(\d{3,6})$/,
   purchase: /^PINV-(\d{2})(\d{2})(\d{4})-(\d{3,6})$/,
-  project: /^PRJ-(\d{4})-(\d{3,6})$/,
   receipt: /^RCV-(\d{2})(\d{2})(\d{4})-(\d{3,6})$/,
   supplier_payment: /^PAY-(\d{2})(\d{2})(\d{4})-(\d{3,6})$/,
+  expense_payment: /^EXP-(\d{2})(\d{2})(\d{4})-(\d{3,6})$/,
 };
 
 export interface LocalDateParts {
@@ -71,7 +71,7 @@ export function localDateParts(at: Date | number, timeZoneOffsetMinutes: number)
 }
 
 export function dateKeyFromParts(scope: ReferenceScope, parts: LocalDateParts): string {
-  if (scope === "project" || scope === "sales" || scope === "purchase") return String(parts.year);
+  if (scope === "sales" || scope === "purchase") return String(parts.year);
   return `${pad(parts.day, 2)}${pad(parts.month, 2)}${parts.year}`;
 }
 
@@ -157,11 +157,6 @@ export function formatReference(scope: ReferenceScope, dateKey: string, sequence
   const digits = REFERENCE_SEQUENCE_DIGITS[scope];
   const prefix = REFERENCE_PREFIX[scope];
 
-  if (scope === "project") {
-    if (!/^\d{4}$/.test(dateKey)) throw new Error(`project date key must be a 4-digit year, got ${dateKey}`);
-    return `${prefix}-${dateKey}-${pad(sequence, digits)}`;
-  }
-
   if (!/^\d{8}$/.test(dateKey)) throw new Error(`invoice date key must be DDMMYYYY, got ${dateKey}`);
   return `${prefix}-${dateKey}-${pad(sequence, digits)}`;
 }
@@ -189,14 +184,6 @@ export function parseReference(raw: string | null | undefined): ParsedReference 
   for (const scope of REFERENCE_SCOPES) {
     const match = PATTERNS[scope].exec(value);
     if (!match) continue;
-    if (scope === "project") {
-      return {
-        scope,
-        date: { year: Number(match[1]), month: 1, day: 1 },
-        sequence: Number(match[2]),
-        raw: value,
-      };
-    }
     const day = Number(match[1]);
     const month = Number(match[2]);
     const year = Number(match[3]);
@@ -220,7 +207,10 @@ export function isInvoiceReference(raw: string | null | undefined): boolean {
 
 export function isMoneyReference(raw: string | null | undefined): boolean {
   const parsed = parseReference(raw);
-  return parsed !== null && (parsed.scope === "receipt" || parsed.scope === "supplier_payment");
+  return (
+    parsed !== null &&
+    (parsed.scope === "receipt" || parsed.scope === "supplier_payment" || parsed.scope === "expense_payment")
+  );
 }
 
 export function scopeForInvoiceType(type: string | null | undefined): InvoiceReferenceScope | null {
@@ -246,7 +236,7 @@ export function compareForBackfill(a: BackfillCandidate, b: BackfillCandidate): 
 }
 
 export function planReferenceBackfill(
-  scope: Exclude<ReferenceScope, "project">,
+  scope: ReferenceScope,
   candidates: BackfillCandidate[],
   timeZoneOffsetMinutes: number
 ): {

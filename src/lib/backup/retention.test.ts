@@ -250,6 +250,11 @@ describe("Manifest & file validation", () => {
 
     const failedCheck = evaluateBackupFile({ ...base, manifest: manifest({}), payloadSha256: "a".repeat(64), quickCheckOk: false });
     expect(failedCheck.status).toBe("corrupt");
+
+    // Missing payloadSha256 must NEVER be marked verified (SEC-13)
+    const unverifiedHash = evaluateBackupFile({ ...base, manifest: manifest({}), payloadSha256: null, quickCheckOk: true });
+    expect(unverifiedHash.status).toBe("unreadable");
+    expect(unverifiedHash.sha256Ok).toBe(false);
   });
 
   it("only maps schemas the running build understands", () => {

@@ -45,6 +45,7 @@ export interface FinancialAccount {
   id: string;
   name: string;
   kind: AccountKind;
+  currency?: import("@/lib/currency/types").AppCurrency | undefined;
   openingBalance: number;
   isActive: boolean;
   notes?: string | undefined;
@@ -60,7 +61,6 @@ export interface LedgerEntry {
   counterAccountId?: string | undefined;
   sourceType?: string | undefined;
   sourceId?: string | undefined;
-  projectId?: string | undefined;
   referenceNote?: string | undefined;
   notes?: string | undefined;
   createdAt: string;
@@ -92,8 +92,25 @@ export interface AllocationValidation {
 }
 
 /**
+ * Sanitizes an untrusted numeric money input into a finite 2-decimal number.
+ * Returns `0` for `NaN`, `Infinity`, `-Infinity`, or non-numeric inputs.
+ */
+export function sanitizeMoney(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? round2(n) : 0;
+}
+
+function toMinorUnits(value: number): number {
+  return Math.round(value * 100);
+}
+
+/**
  * Validates a payment's allocations (§4.2, §6.2, §12).
  * An unallocated remainder is allowed: it is an advance payment.
+ *
+ * All comparisons use exact integer minor units (1/100) and accumulate per
+ * `invoiceId` so duplicate rows or sub-cent rounding exploits cannot exceed
+ * an invoice's outstanding balance or the payment amount.
  */
 export function validateAllocations(
   paymentAmount: number,
@@ -101,19 +118,27 @@ export function validateAllocations(
   invoices: AllocationInvoice[]
 ): AllocationValidation {
   const errors: string[] = [];
-  const amount = Number(paymentAmount) || 0;
+  const rawPayment = Number(paymentAmount);
+  const isPaymentValid = Number.isFinite(rawPayment) && rawPayment > 0;
+  const amountCents = isPaymentValid ? toMinorUnits(rawPayment) : 0;
 
-  if (amount <= 0) {
+  if (!isPaymentValid || amountCents <= 0) {
     errors.push("قيمة الدفعة يجب أن تكون أكبر من صفر");
   }
 
   const byInvoice = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+  const allocatedByInvoiceCents = new Map<string, number>();
   const normalised: AllocationIntent[] = [];
-  let totalAllocated = 0;
+  let totalAllocatedCents = 0;
 
   for (const allocation of allocations) {
-    const value = Number(allocation.amount) || 0;
-    if (value <= 0) {
+    const rawValue = Number(allocation.amount);
+    if (!Number.isFinite(rawValue) || rawValue <= 0) {
+      errors.push("كل تخصيص يجب أن يكون أكبر من صفر");
+      continue;
+    }
+    const valueCents = toMinorUnits(rawValue);
+    if (valueCents <= 0) {
       errors.push("كل تخصيص يجب أن يكون أكبر من صفر");
       continue;
     }
@@ -122,25 +147,35 @@ export function validateAllocations(
       errors.push("الفاتورة المحددة في التخصيص غير موجودة");
       continue;
     }
-    const outstanding = Math.max(0, (Number(invoice.total) || 0) - (Number(invoice.alreadyAllocated) || 0));
-    if (value > outstanding + 0.009) {
-      errors.push(`التخصيص (${value}) يتجاوز المتبقي على الفاتورة (${round2(outstanding)})`);
+    const outstandingCents = Math.max(
+      0,
+      toMinorUnits(safe(invoice.total)) - toMinorUnits(safe(invoice.alreadyAllocated))
+    );
+    const accumulatedCents = (allocatedByInvoiceCents.get(allocation.invoiceId) ?? 0) + valueCents;
+    if (accumulatedCents > outstandingCents) {
+      errors.push(
+        `التخصيص (${accumulatedCents / 100}) يتجاوز المتبقي على الفاتورة (${outstandingCents / 100})`
+      );
       continue;
     }
-    normalised.push({ invoiceId: allocation.invoiceId, amount: round2(value) });
-    totalAllocated = round2(totalAllocated + value);
+    allocatedByInvoiceCents.set(allocation.invoiceId, accumulatedCents);
+    normalised.push({ invoiceId: allocation.invoiceId, amount: valueCents / 100 });
+    totalAllocatedCents += valueCents;
   }
 
-  if (totalAllocated > amount + 0.009) {
+  if (isPaymentValid && totalAllocatedCents > amountCents) {
     errors.push("مجموع التخصيصات يتجاوز قيمة الدفعة");
   }
+
+  const totalAllocated = totalAllocatedCents / 100;
+  const unallocated = isPaymentValid ? Math.max(0, amountCents - totalAllocatedCents) / 100 : 0;
 
   return {
     ok: errors.length === 0,
     errors,
     normalised,
     totalAllocated,
-    unallocated: round2(Math.max(0, amount - totalAllocated)),
+    unallocated,
   };
 }
 
@@ -249,10 +284,10 @@ export const SETTLEMENT_STATUS_TONES: Record<SettlementStatus, string> = {
  * rather than manually toggled”).
  */
 export function deriveSettlementStatus(total: number, paid: number): SettlementStatus {
-  const amount = safe(total);
-  const settled = safe(paid);
-  if (settled <= 0) return "unpaid";
-  if (settled + 0.009 >= amount) return "fully_paid";
+  const amountCents = toMinorUnits(safe(total));
+  const settledCents = toMinorUnits(safe(paid));
+  if (settledCents <= 0) return "unpaid";
+  if (settledCents >= amountCents) return "fully_paid";
   return "partially_paid";
 }
 
@@ -311,7 +346,8 @@ export function buildCompanyProfitability(inputs: CompanyProfitabilityInputs): C
 }
 
 /** Reference scope used for each money document. */
-export const MONEY_REFERENCE_SCOPE: Record<"receipt" | "supplier_payment", ReferenceScope> = {
+export const MONEY_REFERENCE_SCOPE: Record<"receipt" | "supplier_payment" | "expense_payment", ReferenceScope> = {
   receipt: "receipt",
   supplier_payment: "supplier_payment",
+  expense_payment: "expense_payment",
 };

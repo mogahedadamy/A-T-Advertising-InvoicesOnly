@@ -4,13 +4,11 @@ import { BillingCards } from "./BillingCards";
 import { BillingArchiveTable } from "./BillingArchiveTable";
 import { ReceiptDialog } from "@/components/finance/ReceiptDialog";
 import { CustomInvoiceDialog } from "./CustomInvoiceDialog";
-import { CustomInvoicePrintPortal } from "./CustomInvoicePrintButton";
 import { useCustomInvoices } from "@/lib/billing/store";
 import type { CustomInvoice, CustomInvoiceType } from "@/lib/billing/types";
 import type { ProformaInvoice } from "@/lib/proforma/types";
 import type { InvoiceRecord } from "@/lib/invoicesStore";
 import { InvoicesModalsManager } from "@/components/invoices/InvoicesModalsManager";
-import { ProformaDialog } from "@/components/proforma/ProformaDialog";
 import { useUnifiedInvoices } from "@/components/invoices/useUnifiedInvoices";
 import { Receipt, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,16 +17,11 @@ export function BillingPage() {
   const invoices = useCustomInvoices();
   const { stats } = useUnifiedInvoices();
 
-  // نوافذ إنشاء وتعديل الفواتير المخصصة (مبيعات / مشتريات)
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
   const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
   const [dialogType, setDialogType] = useState<CustomInvoiceType>("sales");
   const [editingCustomInvoice, setEditingCustomInvoice] = useState<CustomInvoice | null>(null);
 
-  // نافذة إنشاء فاتورة مبدئية جديدة
-  const [newProformaOpen, setNewProformaOpen] = useState(false);
-
-  // حالات المعاينة والتعديل عبر InvoicesModalsManager لجميع الأنواع
   const [previewCalcInvoice, setPreviewCalcInvoice] = useState<InvoiceRecord | null>(null);
   const [previewCustomInvoice, setPreviewCustomInvoice] = useState<CustomInvoice | null>(null);
   const [previewProformaInvoice, setPreviewProformaInvoice] = useState<ProformaInvoice | null>(null);
@@ -37,6 +30,12 @@ export function BillingPage() {
   const handleOpenCreate = (type: CustomInvoiceType) => {
     setEditingCustomInvoice(null);
     setDialogType(type);
+    setCustomDialogOpen(true);
+  };
+
+  const handleEditCustomInvoice = (inv: CustomInvoice) => {
+    setEditingCustomInvoice(inv);
+    setDialogType(inv.meta.type);
     setCustomDialogOpen(true);
   };
 
@@ -77,18 +76,12 @@ export function BillingPage() {
             </div>
           </div>
 
-          {/* بطاقات الإجراءات السريعة المدمجة والإحصائيات المباشرة (Action Hub) */}
           <BillingCards invoices={invoices} onCreateClick={handleOpenCreate} />
 
-          {/* جدول الأرشيف والسجل الكامل المرتبط بنظام الفواتير الشامل */}
           <div className="space-y-2 pt-1">
             <BillingArchiveTable
               invoices={invoices}
-              onEditCustom={(inv) => {
-                setEditingCustomInvoice(inv);
-                setDialogType(inv.meta.type);
-                setCustomDialogOpen(true);
-              }}
+              onEditCustom={handleEditCustomInvoice}
               onPreviewCustom={(inv) => setPreviewCustomInvoice(inv)}
               onEditProforma={(proforma) => setEditingProformaInvoice(proforma)}
               onPreviewProforma={(proforma) => setPreviewProformaInvoice(proforma)}
@@ -98,49 +91,42 @@ export function BillingPage() {
             />
           </div>
 
-          {/* تسجيل دفعة مباشرة من سياق الفاتورة (PRD §7.3) */}
           <ReceiptDialog
             open={Boolean(receiptInvoiceId)}
             onOpenChange={(open) => !open && setReceiptInvoiceId(null)}
             initialInvoiceId={receiptInvoiceId}
           />
 
-          {/* نافذة إنشاء وتعديل الفاتورة المخصصة (مبيعات ومشتريات) */}
           <CustomInvoiceDialog
             open={customDialogOpen}
-            onOpenChange={setCustomDialogOpen}
+            onOpenChange={(open) => {
+              setCustomDialogOpen(open);
+              if (!open) setEditingCustomInvoice(null);
+            }}
             initialType={dialogType}
             invoiceToEdit={editingCustomInvoice}
             onSaved={(saved) => {
               setCustomDialogOpen(false);
+              setEditingCustomInvoice(null);
               setPreviewCustomInvoice(saved);
             }}
           />
 
-          {/* نافذة إصدار فاتورة مبدئية جديدة */}
-          {newProformaOpen && (
-            <ProformaDialog
-              open={newProformaOpen}
-              onClose={() => setNewProformaOpen(false)}
-            />
-          )}
-
-          {/* مدير النوافذ المنبثقة الموحد للمعاينة والطباعة والتعديل */}
           <InvoicesModalsManager
             previewCalcInvoice={previewCalcInvoice}
             setPreviewCalcInvoice={setPreviewCalcInvoice}
             previewCustomInvoice={previewCustomInvoice}
             setPreviewCustomInvoice={setPreviewCustomInvoice}
-            editingCustomInvoice={editingCustomInvoice}
-            setEditingCustomInvoice={setEditingCustomInvoice}
+            editingCustomInvoice={null}
+            setEditingCustomInvoice={(inv) => {
+              if (inv) handleEditCustomInvoice(inv);
+              else setEditingCustomInvoice(null);
+            }}
             previewProformaInvoice={previewProformaInvoice}
             setPreviewProformaInvoice={setPreviewProformaInvoice}
             editingProformaInvoice={editingProformaInvoice}
             setEditingProformaInvoice={setEditingProformaInvoice}
           />
-
-          {/* بورتال الطباعة المعزول مباشرة إلى document.body عند استدعاء window.print() */}
-          <CustomInvoicePrintPortal />
         </div>
       </main>
     </PageShell>

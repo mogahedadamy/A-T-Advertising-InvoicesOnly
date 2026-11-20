@@ -8,8 +8,6 @@ import {
   getCustomerCollectionsReport,
   getCustomerStatement,
   getFinancialPerformanceReport,
-  getIncompleteProjectsReport,
-  getProjectProfitabilityReport,
   getPurchasesReport,
   getSalesPerformance,
   getSupplierStatement,
@@ -17,12 +15,11 @@ import {
   type CustomerCollectionsReport,
   type CustomerStatement,
   type FinancialPerformanceReport,
-  type IncompleteProjectRow,
-  type ProjectProfitabilityRow,
   type PurchasesReport,
   type SalesPerformance,
   type SupplierStatement,
 } from "@/lib/repositories/ReportsRepository";
+import type { AppCurrency } from "@/lib/currency/types";
 
 import { ReportsHeader } from "./ReportsHeader";
 import { ReportsIconCards, type ReportTab } from "./ReportsIconCards";
@@ -43,14 +40,13 @@ export function ReportsWorkspace() {
   const [collections, setCollections] = useState<CustomerCollectionsReport | null>(null);
   const [purchases, setPurchases] = useState<PurchasesReport | null>(null);
   const [performance, setPerformance] = useState<FinancialPerformanceReport | null>(null);
-  const [profitability, setProfitability] = useState<ProjectProfitabilityRow[]>([]);
-  const [incomplete, setIncomplete] = useState<IncompleteProjectRow[]>([]);
   const [cash, setCash] = useState<CashMovementReport | null>(null);
 
   const [statementCustomerId, setStatementCustomerId] = useState<string | null>(null);
   const [statement, setStatement] = useState<CustomerStatement | null>(null);
   const [statementSupplierId, setStatementSupplierId] = useState<string | null>(null);
   const [supplierStatement, setSupplierStatement] = useState<SupplierStatement | null>(null);
+  const [statementCurrency, setStatementCurrency] = useState<AppCurrency>("SDG");
 
   const range = useMemo(() => ({ from: from || undefined, to: to || undefined }), [from, to]);
 
@@ -62,24 +58,18 @@ export function ReportsWorkspace() {
         collectionsData,
         purchasesData,
         performanceData,
-        profitRows,
-        incompleteRows,
         cashData,
       ] = await Promise.all([
         getSalesPerformance(range),
         getCustomerCollectionsReport(range),
         getPurchasesReport(range),
         getFinancialPerformanceReport(range),
-        getProjectProfitabilityReport(range),
-        getIncompleteProjectsReport(),
         getCashMovementReport(range),
       ]);
       setSales(salesData);
       setCollections(collectionsData);
       setPurchases(purchasesData);
       setPerformance(performanceData);
-      setProfitability(profitRows);
-      setIncomplete(incompleteRows);
       setCash(cashData);
     } catch (err) {
       console.error("[Reports] load failed:", err);
@@ -107,16 +97,36 @@ export function ReportsWorkspace() {
       setStatement(null);
       return;
     }
-    void (async () => setStatement(await getCustomerStatement(statementCustomerId, range)))();
-  }, [statementCustomerId, range]);
+    let cancelled = false;
+    void getCustomerStatement(statementCustomerId, range, statementCurrency)
+      .then((res) => {
+        if (!cancelled) setStatement(res);
+      })
+      .catch((err) => {
+        console.error("[Reports] customer statement failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [statementCustomerId, range, statementCurrency]);
 
   useEffect(() => {
     if (!statementSupplierId) {
       setSupplierStatement(null);
       return;
     }
-    void (async () => setSupplierStatement(await getSupplierStatement(statementSupplierId, range)))();
-  }, [statementSupplierId, range]);
+    let cancelled = false;
+    void getSupplierStatement(statementSupplierId, range, statementCurrency)
+      .then((res) => {
+        if (!cancelled) setSupplierStatement(res);
+      })
+      .catch((err) => {
+        console.error("[Reports] supplier statement failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [statementSupplierId, range, statementCurrency]);
 
   const handleQuickPreset = (preset: "today" | "month" | "year" | "all") => {
     if (preset === "all") {
@@ -146,16 +156,14 @@ export function ReportsWorkspace() {
       salesTotal: sales?.totalSales ?? 0,
       collectedTotal: collections?.collectedTotal ?? 0,
       purchasesTotal: purchases?.purchaseTotal ?? 0,
-      projectsCount: profitability.length,
       cashNet: cash?.net ?? 0,
     }),
-    [performance, sales, collections, purchases, profitability, cash]
+    [performance, sales, collections, purchases, cash]
   );
 
   return (
     <PageShell>
       <main className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden px-3.5 sm:px-4 py-4 pb-36 md:max-w-4xl md:pb-16 touch-pan-y overscroll-contain">
-        {/* رأس التقرير مع الفلاتر السريعة واختيار التاريخ */}
         <ReportsHeader
           from={from}
           to={to}
@@ -166,14 +174,12 @@ export function ReportsWorkspace() {
           loading={loading}
         />
 
-        {/* لوحة أيقونات التقارير التنفيذية (نظام الأيقونات المتجاوب) */}
         <ReportsIconCards
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           metrics={metrics}
         />
 
-        {/* عرض تفاصيل التقرير المختار */}
         {loading && !sales ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
             <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -182,10 +188,7 @@ export function ReportsWorkspace() {
         ) : (
           <div className="space-y-4 pt-1 transition-all duration-200">
             {activeTab === "performance" && (
-              <ReportsPerformanceView
-                performance={performance}
-                incomplete={incomplete}
-              />
+              <ReportsPerformanceView performance={performance} />
             )}
 
             {(activeTab === "sales" || activeTab === "collections") && (
@@ -196,11 +199,10 @@ export function ReportsWorkspace() {
               />
             )}
 
-            {(activeTab === "purchases" || activeTab === "projects" || activeTab === "cash") && (
+            {(activeTab === "purchases" || activeTab === "cash") && (
               <ReportsPurchasesProjectsView
                 type={activeTab}
                 purchases={purchases}
-                profitability={profitability}
                 cash={cash}
               />
             )}
@@ -213,6 +215,8 @@ export function ReportsWorkspace() {
                 statementSupplierId={statementSupplierId}
                 statement={statement}
                 supplierStatement={supplierStatement}
+                currency={statementCurrency}
+                onCurrencyChange={setStatementCurrency}
                 onSelectCustomer={setStatementCustomerId}
                 onSelectSupplier={setStatementSupplierId}
               />

@@ -17,11 +17,10 @@
  */
 
 import { CREATE_SCHEMA_V2, CREATE_SCHEMA_V2_COLUMN_INDEXES, V2_ADDED_COLUMNS } from "../schema";
-import { allocateDocumentNumber, reserveReference, seedSequenceCounter, type NumberingDatabase } from "../sequences";
+import { reserveReference, seedSequenceCounter, type NumberingDatabase } from "../sequences";
 import {
   compareForBackfill,
   dateKeyFromParts,
-  formatReference,
   localPartsFromIsoDate,
   parseReference,
   planReferenceBackfill,
@@ -203,12 +202,6 @@ export async function verifySequenceConsistency(db: MigrationDatabase, nowIso: s
     }
   }
   return repaired;
-}
-
-/** Creates a project reference (annual sequence, PRJ-YYYY-NNN). */
-export async function nextProjectReference(db: MigrationDatabase, year: number, nowIso: string): Promise<string> {
-  const allocated = await allocateDocumentNumber(db, "project", String(year), nowIso, { table: "projects" });
-  return formatReference("project", String(year), allocated.sequence);
 }
 
 export { dateKeyFromParts, localPartsFromIsoDate };

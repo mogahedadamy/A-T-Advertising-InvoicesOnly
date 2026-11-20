@@ -15,7 +15,6 @@ import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as OrdersRouteImport } from './routes/orders'
-import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SuppliersRouteImport } from './routes/suppliers'
@@ -50,11 +49,6 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsRoute = ProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -78,7 +72,6 @@ export interface FileRoutesByFullPath {
   '/expenses': typeof ExpensesRoute
   '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/suppliers': typeof SuppliersRoute
@@ -90,7 +83,6 @@ export interface FileRoutesByTo {
   '/expenses': typeof ExpensesRoute
   '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/suppliers': typeof SuppliersRoute
@@ -103,7 +95,6 @@ export interface FileRoutesById {
   '/expenses': typeof ExpensesRoute
   '/finance': typeof FinanceRoute
   '/orders': typeof OrdersRoute
-  '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/suppliers': typeof SuppliersRoute
@@ -117,7 +108,6 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/finance'
     | '/orders'
-    | '/projects'
     | '/reports'
     | '/settings'
     | '/suppliers'
@@ -129,7 +119,6 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/finance'
     | '/orders'
-    | '/projects'
     | '/reports'
     | '/settings'
     | '/suppliers'
@@ -141,7 +130,6 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/finance'
     | '/orders'
-    | '/projects'
     | '/reports'
     | '/settings'
     | '/suppliers'
@@ -154,7 +142,6 @@ export interface RootRouteChildren {
   ExpensesRoute: typeof ExpensesRoute
   FinanceRoute: typeof FinanceRoute
   OrdersRoute: typeof OrdersRoute
-  ProjectsRoute: typeof ProjectsRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
   SuppliersRoute: typeof SuppliersRoute
@@ -204,13 +191,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects': {
-      id: '/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/reports': {
       id: '/reports'
       path: '/reports'
@@ -242,7 +222,6 @@ const rootRouteChildren: RootRouteChildren = {
   ExpensesRoute: ExpensesRoute,
   FinanceRoute: FinanceRoute,
   OrdersRoute: OrdersRoute,
-  ProjectsRoute: ProjectsRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
   SuppliersRoute: SuppliersRoute,
@@ -250,13 +229,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

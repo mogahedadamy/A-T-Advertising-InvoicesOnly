@@ -2,14 +2,17 @@ package com.futureprint.calculator.backup;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 import org.json.JSONObject;
 
@@ -17,25 +20,30 @@ import org.json.JSONObject;
  * Retention policy — Java port of src/lib/backup/retention.ts.
  *
  * Same invariants:
- *  1. Only daily / weekly / monthly backups are prunable.
- *  2. Manual, transaction, pre-update and pre-restore copies are never pruned.
+ *  1. Only daily / weekly / monthly backups (and excess transaction backups
+ *     beyond MAX_TRANSACTION_BACKUPS) are prunable.
+ *  2. Manual, pre-update and pre-restore copies are ALWAYS protected and never pruned.
  *  3. Only VERIFIED backups are candidates; unreadable files are left alone
  *     (one may still be recoverable by a future build).
  *  4. The newest `keepMinimum` files are always kept.
  *  5. The file being written right now (protectName) is never pruned.
  *
- * Buckets use the device's local calendar (offset is passed in from the caller),
- * matching the TypeScript implementation so both agree on period boundaries.
+ * Buckets use the device's local calendar (Java TimeZone offsetMinutes, positive east of UTC).
  */
 final class RetentionPlanner {
+
+    private static final Set<String> ALWAYS_KEEP_KINDS = Collections.unmodifiableSet(
+        new HashSet<>(Arrays.asList("manual", "pre-update", "pre-restore"))
+    );
+    private static final int MAX_TRANSACTION_BACKUPS = 10;
 
     private RetentionPlanner() {}
 
     static List<String> plan(List<BackupEngine.FileRecord> verified, JSONObject policy, int offsetMinutes, String protectName) {
-        int dailyLimit = policy.optInt("daily", 7);
-        int weeklyLimit = policy.optInt("weekly", 4);
-        int monthlyLimit = policy.optInt("monthly", 12);
-        int keepMinimum = policy.optInt("keepMinimum", 2);
+        int dailyLimit = Math.max(0, policy.optInt("daily", 7));
+        int weeklyLimit = Math.max(0, policy.optInt("weekly", 4));
+        int monthlyLimit = Math.max(0, policy.optInt("monthly", 12));
+        int keepMinimum = Math.max(0, policy.optInt("keepMinimum", 2));
 
         List<BackupEngine.FileRecord> sorted = new ArrayList<>();
         for (BackupEngine.FileRecord r : verified) if (r.manifest != null) sorted.add(r);
@@ -49,16 +57,22 @@ final class RetentionPlanner {
         Map<String, List<BackupEngine.FileRecord>> daily = new LinkedHashMap<>();
         Map<String, List<BackupEngine.FileRecord>> weekly = new LinkedHashMap<>();
         Map<String, List<BackupEngine.FileRecord>> monthly = new LinkedHashMap<>();
+        List<BackupEngine.FileRecord> transactions = new ArrayList<>();
 
         for (BackupEngine.FileRecord r : sorted) {
             String kind = r.manifest.optString("kind", "");
+            if (ALWAYS_KEEP_KINDS.contains(kind)) {
+                continue;
+            }
             String iso = r.manifest.optString("createdAt", "");
-            if ("daily".equals(kind) || "manual".equals(kind) || "transaction".equals(kind)) {
+            if ("daily".equals(kind)) {
                 add(daily, dailyKey(iso, offsetMinutes), r);
             } else if ("weekly".equals(kind)) {
                 add(weekly, weeklyKey(iso, offsetMinutes), r);
             } else if ("monthly".equals(kind)) {
                 add(monthly, monthlyKey(iso, offsetMinutes), r);
+            } else if ("transaction".equals(kind)) {
+                transactions.add(r);
             }
         }
 
@@ -66,10 +80,20 @@ final class RetentionPlanner {
         collectExpired(daily, dailyLimit, candidates);
         collectExpired(weekly, weeklyLimit, candidates);
         collectExpired(monthly, monthlyLimit, candidates);
+        // Keep newest MAX_TRANSACTION_BACKUPS transaction backups so they stay bounded.
+        for (int i = MAX_TRANSACTION_BACKUPS; i < transactions.size(); i++) {
+            candidates.add(transactions.get(i).fileName);
+        }
 
-        List<String> protectedNames = new ArrayList<>();
+        Set<String> protectedNames = new HashSet<>();
         for (int i = 0; i < Math.min(keepMinimum, sorted.size()); i++) {
             protectedNames.add(sorted.get(i).fileName);
+        }
+        for (BackupEngine.FileRecord r : sorted) {
+            String kind = r.manifest.optString("kind", "");
+            if (ALWAYS_KEEP_KINDS.contains(kind)) {
+                protectedNames.add(r.fileName);
+            }
         }
         if (protectName != null) protectedNames.add(protectName);
 
@@ -98,11 +122,21 @@ final class RetentionPlanner {
         int limit,
         List<String> out
     ) {
+        int effectiveLimit = Math.max(0, limit);
         List<String> keys = new ArrayList<>(buckets.keySet());
         Collections.sort(keys, Collections.<String>reverseOrder()); // newest period first
         for (int i = 0; i < keys.size(); i++) {
-            if (i < limit) continue;
-            for (BackupEngine.FileRecord r : buckets.get(keys.get(i))) out.add(r.fileName);
+            List<BackupEngine.FileRecord> members = buckets.get(keys.get(i));
+            if (members == null) continue;
+            // Members are newest-first; keep only index 0 within kept periods, prune duplicates & expired buckets.
+            for (int pos = 0; pos < members.size(); pos++) {
+                BackupEngine.FileRecord r = members.get(pos);
+                String kind = r.manifest == null ? "" : r.manifest.optString("kind", "");
+                if (ALWAYS_KEEP_KINDS.contains(kind)) continue;
+                if (pos > 0 || i >= effectiveLimit) {
+                    out.add(r.fileName);
+                }
+            }
         }
     }
 
@@ -126,15 +160,25 @@ final class RetentionPlanner {
             fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
             return fmt.parse(iso).getTime();
         } catch (Exception e) {
-            return 0;
+            try {
+                SimpleDateFormat fmtNoMs = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+                fmtNoMs.setTimeZone(TimeZone.getTimeZone("UTC"));
+                return fmtNoMs.parse(iso).getTime();
+            } catch (Exception ignored) {
+                return 0;
+            }
         }
     }
 
+    /**
+     * Converts a UTC ISO timestamp to local calendar fields using Java's
+     * TimeZone.getOffset(ms)/60000 convention (positive east of UTC, e.g. +120 for UTC+2).
+     */
     private static Calendar localCalendar(String iso, int offsetMinutes) {
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.US);
         cal.setFirstDayOfWeek(Calendar.MONDAY);
         cal.setMinimalDaysInFirstWeek(4);
-        cal.setTimeInMillis(parseIso(iso) - offsetMinutes * 60000L);
+        cal.setTimeInMillis(parseIso(iso) + offsetMinutes * 60000L);
         return cal;
     }
 

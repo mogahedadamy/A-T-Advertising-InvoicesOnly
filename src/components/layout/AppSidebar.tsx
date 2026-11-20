@@ -1,24 +1,11 @@
+import { Link, useMatchRoute, useLocation } from "@tanstack/react-router";
 import {
-  Link,
-  useMatchRoute,
-  useLocation,
-} from "@tanstack/react-router";
-import {
-  Home,
-  ClipboardList,
-  Receipt,
-  Settings as SettingsIcon,
   ChevronLeft,
   X,
   Sun,
   Moon,
   Lock,
-  BarChart3,
   ShieldCheck,
-  FolderKanban,
-  Users,
-  Truck,
-  Wallet,
   BookOpen,
 } from "lucide-react";
 import { triggerOpenTour } from "@/lib/appTourStore";
@@ -31,22 +18,14 @@ import {
 } from "@/components/ui/sidebar";
 import { useInvoices } from "@/lib/invoicesStore";
 import { useCustomInvoices } from "@/lib/billing/store";
+import { useProformaInvoices } from "@/lib/proforma/store";
 import { useTheme } from "@/hooks/useTheme";
-
+import { APP_VERSION } from "@/lib/appVersion";
 import { SidebarTrialCountdown } from "@/components/common/TrialCountdownBadge";
+import { SIDEBAR_NAV_ITEMS, getTourSectionFromPath } from "./navConfig";
 
-interface NavItem {
-  to: string;
-  label: string;
-  subtitle: string;
-  icon: React.ElementType;
-  gradient: string;
-  badge?: string | number | undefined;
-}
-
-// بيانات المطور والإصدار
 export const APP_VERSION_INFO = {
-  version: "v1.3.4-INVOICE",
+  version: `v${APP_VERSION}`,
   edition: "النظام الشامل لإدارة وإصدار الفواتير",
   developer: "من تطوير MA Smart Solutions",
   copyright: "جميع الحقوق محفوظة © 2026-2027",
@@ -62,105 +41,29 @@ export function AppSidebar() {
   const isDark = theme === "dark";
   const calcInvoices = useInvoices();
   const customInvoices = useCustomInvoices();
+  const proformaInvoices = useProformaInvoices();
 
   const totalInvoicesCount =
-    (calcInvoices || []).length + (customInvoices || []).length;
-
-  // اختصارات أدوات نظام الفواتير الشامل المعتمد
-  const NAV_ITEMS: NavItem[] = [
-    {
-      to: "/",
-      label: "الصفحة الرئيسية",
-      subtitle: "الرئيسية وأقسام الوكالة الإعلانية",
-      icon: Home,
-      gradient: "from-[#0D4A39] to-[#168063] shadow-[#168063]/30",
-    },
-    {
-      to: "/billing",
-      label: "مركز إصدار الفواتير",
-      subtitle: "إصدار فواتير المبيعات، المشتريات، وعروض الأسعار A4",
-      icon: Receipt,
-      gradient: "from-[#168063] to-[#22A07E] shadow-[#168063]/30",
-    },
-    {
-      to: "/projects",
-      label: "المشاريع",
-      subtitle: "المشروع كمحور: الفواتير، التكاليف، والملخص المالي",
-      icon: FolderKanban,
-      gradient: "from-[#168063] to-[#0F766E] shadow-emerald-500/20",
-    },
-    {
-      to: "/customers",
-      label: "العملاء",
-      subtitle: "سجل العملاء وكشوف حساباتهم",
-      icon: Users,
-      gradient: "from-[#0E7490] to-[#0891B2] shadow-cyan-500/20",
-    },
-    {
-      to: "/suppliers",
-      label: "الموردون",
-      subtitle: "الموردون ومقدّمو الخدمات الإعلانية وأرصدتهم",
-      icon: Truck,
-      gradient: "from-[#B45309] to-[#D97706] shadow-amber-500/20",
-    },
-    {
-      to: "/finance",
-      label: "المالية",
-      subtitle: "التحصيلات والمدفوعات والحسابات والذمم",
-      icon: Wallet,
-      gradient: "from-[#047857] to-[#10B981] shadow-emerald-500/20",
-    },
-    {
-      to: "/expenses",
-      label: "المصروفات",
-      subtitle: "تكاليف مباشرة للمشاريع ومصروفات تشغيلية",
-      icon: Receipt,
-      gradient: "from-[#BE123C] to-[#E11D48] shadow-rose-500/20",
-    },
-    {
-      to: "/orders",
-      label: "سجل وأرشيف الفواتير",
-      subtitle: "متابعة الفواتير المحفوظة والطباعة وإعادة التصدير",
-      icon: ClipboardList,
-      gradient: "from-[#0C251E] to-[#1B4D40] shadow-black/20",
-      badge: totalInvoicesCount > 0 ? `${totalInvoicesCount}` : undefined,
-    },
-    {
-      to: "/reports",
-      label: "التقارير ومؤشرات أداء الفواتير",
-      subtitle: "مراقبة الإيرادات، التحصيلات، وسرعة إنجاز الفواتير",
-      icon: BarChart3,
-      gradient: "from-[#0F766E] to-[#0D9488] shadow-teal-500/20",
-    },
-    {
-      to: "/settings",
-      label: "الإعدادات وقفل الأمان",
-      subtitle: "أمان النظام، البصمة، وتخصيص المظهر",
-      icon: SettingsIcon,
-      gradient: "from-[#071914] to-[#0D4A39] shadow-black/30",
-    },
-  ];
+    (calcInvoices || []).length +
+    (customInvoices || []).length +
+    (proformaInvoices || []).length;
 
   const handleClose = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    } else {
-      setOpen(false);
-    }
+    if (isMobile) setOpenMobile(false);
+    else setOpen(false);
   };
 
   const handleNavClick = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    } else if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setOpen(false);
-    }
+    if (isMobile) setOpenMobile(false);
+    else if (typeof window !== "undefined" && window.innerWidth < 1024) setOpen(false);
   };
 
   return (
     <Sidebar side="right" collapsible="offcanvas" className="border-l border-border/80 bg-background/98">
-      {/* 1. رأس القائمة: الشعار والعنوان وزر الإغلاق */}
-      <SidebarHeader className="border-b border-border/60 px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-3.5 bg-gradient-to-b from-card/90 to-card/40" dir="rtl">
+      <SidebarHeader
+        className="border-b border-border/60 px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-3.5 bg-gradient-to-b from-card/90 to-card/40"
+        dir="rtl"
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Link
@@ -171,7 +74,7 @@ export function AppSidebar() {
               <img
                 key={isDark ? "sidebar-dark-logo" : "sidebar-light-logo"}
                 src={isDark ? "/ta-logo-white.png" : "/ta-logo.png"}
-                alt="A-T-Advertising"
+                alt="T.A Advertising Solution"
                 className="h-10 w-auto max-w-[110px] object-contain drop-shadow-xs"
                 onError={(e) => {
                   if ((e.currentTarget as HTMLImageElement).src.includes("white")) {
@@ -182,7 +85,7 @@ export function AppSidebar() {
             </Link>
             <div className="flex flex-col text-right min-w-0">
               <span className="text-sm font-black tracking-tight text-foreground truncate">
-                A-T-Advertising
+                T.A Advertising Solution
               </span>
               <span className="text-[10.5px] font-bold text-muted-foreground truncate">
                 نظام إدارة وإصدار الفواتير
@@ -201,23 +104,26 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      {/* 2. المحتوى: اختصارات أدوات النسخة الحالية فقط */}
-      <SidebarContent className="px-4 py-3.5 space-y-2 overflow-y-auto flex-1 overscroll-contain select-none" dir="rtl">
-        {/* عداد الفترة التجريبية داخل الشريط الجانبي */}
+      <SidebarContent
+        className="px-4 py-3.5 space-y-2 overflow-y-auto flex-1 overscroll-contain select-none"
+        dir="rtl"
+      >
         <SidebarTrialCountdown />
 
         <div className="space-y-2">
-          {NAV_ITEMS.map(({ to, label, subtitle, icon: Icon, gradient, badge }) => {
+          {SIDEBAR_NAV_ITEMS.map(({ to, label, subtitle, icon: Icon, gradient, showInvoiceBadge }) => {
             const active = !!matchRoute({ to, fuzzy: to !== "/" });
+            const badge = showInvoiceBadge && totalInvoicesCount > 0 ? `${totalInvoicesCount}` : undefined;
             return (
               <Link
                 key={to}
                 to={to}
                 onClick={handleNavClick}
-                className={`group flex items-center justify-between gap-3 rounded-2xl p-3 transition-all border touch-manipulation ${active
+                className={`group flex items-center justify-between gap-3 rounded-2xl p-3 transition-all border touch-manipulation ${
+                  active
                     ? "bg-primary/10 border-primary/50 shadow-xs shadow-primary/10 ring-1 ring-primary/30"
                     : "bg-card/70 border-border/70 hover:bg-card hover:border-primary/40 active:scale-[0.98]"
-                  }`}
+                }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div
@@ -228,8 +134,9 @@ export function AppSidebar() {
 
                   <div className="flex flex-col text-right min-w-0">
                     <span
-                      className={`truncate text-xs font-black tracking-tight ${active ? "text-primary" : "text-foreground"
-                        }`}
+                      className={`truncate text-xs font-black tracking-tight ${
+                        active ? "text-primary" : "text-foreground"
+                      }`}
                     >
                       {label}
                     </span>
@@ -246,8 +153,9 @@ export function AppSidebar() {
                     </span>
                   )}
                   <ChevronLeft
-                    className={`h-4 w-4 transition-transform group-hover:-translate-x-0.5 ${active ? "text-primary font-bold" : "text-muted-foreground/60"
-                      }`}
+                    className={`h-4 w-4 transition-transform group-hover:-translate-x-0.5 ${
+                      active ? "text-primary font-bold" : "text-muted-foreground/60"
+                    }`}
                   />
                 </div>
               </Link>
@@ -255,32 +163,13 @@ export function AppSidebar() {
           })}
         </div>
 
-        {/* الإجراءات السريعة (المساعد، المظهر، والقفل) */}
         <div className="pt-3 border-t border-border/60">
           <button
             type="button"
             onClick={() => {
               handleClose();
-              const sectionId = pathname.startsWith("/billing")
-                ? "billing"
-                : pathname.startsWith("/projects")
-                ? "projects"
-                : pathname.startsWith("/orders")
-                ? "orders"
-                : pathname.startsWith("/reports")
-                ? "reports"
-                : pathname.startsWith("/finance")
-                ? "finance"
-                : pathname.startsWith("/customers")
-                ? "customers"
-                : pathname.startsWith("/suppliers")
-                ? "suppliers"
-                : pathname.startsWith("/expenses")
-                ? "expenses"
-                : pathname.startsWith("/settings")
-                ? "settings"
-                : "home";
-              triggerOpenTour({ sectionId, mode: "context" });
+              const section = getTourSectionFromPath(pathname);
+              triggerOpenTour({ sectionId: section.id, mode: "context" });
             }}
             className="w-full flex h-10 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 px-3 text-xs font-black active:scale-[0.98] transition-all shadow-2xs cursor-pointer touch-manipulation mb-2"
           >
@@ -291,9 +180,7 @@ export function AppSidebar() {
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => {
-                toggle();
-              }}
+              onClick={toggle}
               className="flex h-9.5 items-center justify-center gap-2 rounded-xl border border-border/70 bg-secondary/60 px-2 text-[11px] font-bold text-foreground hover:bg-card active:scale-95 transition-all shadow-2xs cursor-pointer touch-manipulation"
             >
               {isDark ? (
@@ -324,8 +211,10 @@ export function AppSidebar() {
         </div>
       </SidebarContent>
 
-      {/* 3. التذييل: المطور وتفاصيله فقط */}
-      <SidebarFooter className="border-t border-border/60 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] bg-card/95 shrink-0" dir="rtl">
+      <SidebarFooter
+        className="border-t border-border/60 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] bg-card/95 shrink-0"
+        dir="rtl"
+      >
         <div className="rounded-2xl border border-border/70 bg-card p-3 shadow-2xs space-y-1.5 text-center">
           <div className="flex items-center justify-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5 text-primary" />

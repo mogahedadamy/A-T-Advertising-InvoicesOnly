@@ -6,6 +6,7 @@ import {
   deriveAccountBalance,
   deriveSettlementStatus,
   looksLikeDuplicatePayment,
+  sanitizeMoney,
   validateAllocations,
   type FinancialAccount,
   type LedgerEntry,
@@ -74,6 +75,43 @@ describe("Allocation rules (PRD §4.2, §12)", () => {
     const result = validateAllocations(1000, [{ invoiceId: "nope", amount: 1000 }], invoices);
     expect(result.ok).toBe(false);
     expect(result.errors.join(" ")).toContain("غير موجودة");
+  });
+
+  it("refuses duplicate invoiceId allocations that collectively exceed invoice outstanding (FIN-08)", () => {
+    // inv-2 has only 60,000 remaining; two rows of 40,000 each total 80,000 > 60,000.
+    const result = validateAllocations(
+      100000,
+      [
+        { invoiceId: "inv-2", amount: 40000 },
+        { invoiceId: "inv-2", amount: 40000 },
+      ],
+      invoices
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(" ")).toContain("يتجاوز المتبقي");
+  });
+
+  it("refuses non-finite amounts (Infinity, -Infinity, NaN)", () => {
+    expect(validateAllocations(Infinity, [{ invoiceId: "inv-1", amount: 100 }], invoices).ok).toBe(false);
+    expect(validateAllocations(1000, [{ invoiceId: "inv-1", amount: Infinity }], invoices).ok).toBe(false);
+    expect(validateAllocations(1000, [{ invoiceId: "inv-1", amount: -Infinity }], invoices).ok).toBe(false);
+    expect(validateAllocations(NaN, [], invoices).ok).toBe(false);
+    expect(sanitizeMoney(Infinity)).toBe(0);
+    expect(sanitizeMoney(NaN)).toBe(0);
+    expect(sanitizeMoney(12.345)).toBe(12.35);
+  });
+
+  it("eliminates the 100.009 sub-cent rounding exploit via integer minor units", () => {
+    const smallInvoices = [{ id: "inv-small", total: 100, alreadyAllocated: 0 }];
+    const overOutstanding = validateAllocations(200, [{ invoiceId: "inv-small", amount: 100.009 }], smallInvoices);
+    expect(overOutstanding.ok).toBe(false);
+    expect(overOutstanding.errors.join(" ")).toContain("يتجاوز المتبقي");
+
+    const overPayment = validateAllocations(100, [{ invoiceId: "inv-small", amount: 100.009 }], [
+      { id: "inv-small", total: 500, alreadyAllocated: 0 },
+    ]);
+    expect(overPayment.ok).toBe(false);
+    expect(overPayment.errors.join(" ")).toContain("يتجاوز قيمة الدفعة");
   });
 });
 

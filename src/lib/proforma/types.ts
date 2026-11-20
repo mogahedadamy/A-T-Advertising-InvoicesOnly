@@ -5,6 +5,7 @@ export interface ProformaLine {
   width: number; // بالسنتمتر
   height: number; // بالسنتمتر
   qty: number;
+  rollUsed?: string;
   unitPrice: number; // سعر المتر / الوحدة
   area: number; // إجمالي المساحة بالمتر المربع
   total: number; // القيمة الإجمالية للبند (ج.س)
@@ -36,8 +37,6 @@ export interface ProformaInvoice {
   currency?: "SDG" | "USD" | "SAR" | "EGP";
   status: "draft" | "sent" | "approved" | "converted";
   convertedOrderId?: string;
-  /** المشروع المرتبط — علاقة حقيقية تُغذّي مساحة عمل المشروع (PRD §4.2) */
-  projectId?: string;
   createdAt: string;
   updatedAt: string;
 }

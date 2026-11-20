@@ -9,9 +9,9 @@
 export const DB_NAME = "ta_invoicing_db";
 /**
  * الإصدار المنطقي للمخطط — يطابق آخر ترحيل في `migrations/index.ts`
- * (v3: نموذج الأعمال + الترقيم + التسويات والحسابات المالية والعملات المتعددة).
+ * (v6: نموذج الأعمال + الترقيم + التسويات + إدارة العملاء + المحاسبة متعددة العملات والفهارس).
  */
-export const DB_VERSION = 3;
+export const DB_VERSION = 6;
 
 /**
  * Complete DDL for version 1.
@@ -265,7 +265,7 @@ export const SETTINGS_KEYS = {
  * the domain layer, so the database never invents its own vocabulary.
  */
 export const CREATE_SCHEMA_V2: string[] = [
-  // ── Projects — the central business entity (PRD §4) ────────────────────
+  // @deprecated: Projects module removed; retained inert for backward-compatible restores
   `CREATE TABLE IF NOT EXISTS projects (
     id                 TEXT PRIMARY KEY NOT NULL,
     reference          TEXT NOT NULL UNIQUE,
@@ -499,30 +499,6 @@ export const V2_ADDED_COLUMNS: Record<string, { name: string; ddl: string }[]> =
   ],
 };
 
-/** Execution status vocabulary (PRD §4.4) — kept separate from financial status. */
-export const PROJECT_EXECUTION_STATUSES = [
-  "new",
-  "quotation_pending",
-  "approved",
-  "in_progress",
-  "partially_delivered",
-  "completed",
-  "cancelled",
-] as const;
-
-/** Financial status vocabulary (PRD §4.4). */
-export const PROJECT_FINANCIAL_STATUSES = [
-  "not_invoiced",
-  "unpaid",
-  "partially_paid",
-  "fully_paid",
-  "partially_settled",
-  "financially_closed",
-] as const;
-
-export type ProjectExecutionStatus = (typeof PROJECT_EXECUTION_STATUSES)[number];
-export type ProjectFinancialStatus = (typeof PROJECT_FINANCIAL_STATUSES)[number];
-
 /**
  * ═══════════════════════════════════════════════════════════════
  * Schema v3 — settlements for expenses (PRD §7.5)
@@ -549,6 +525,32 @@ export const CREATE_SCHEMA_V3: string[] = [
 
   `CREATE INDEX IF NOT EXISTS idx_expense_payments_expense ON expense_payments(expense_id)`,
   `CREATE INDEX IF NOT EXISTS idx_expense_payments_date ON expense_payments(paid_at)`,
+];
+
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * Schema v6 — Multi-Currency Accounting & Composite Indexes
+ * ═══════════════════════════════════════════════════════════════
+ * Purely additive: ensures every financial table carries an explicit ISO
+ * currency code (defaulting to `'SDG'`) and adds missing composite indexes.
+ */
+export const V6_ADDED_COLUMNS: Record<string, { name: string; ddl: string }[]> = {
+  financial_accounts: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+  financial_transactions: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+  supplier_payments: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+  expenses: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+  expense_payments: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+  orders: [{ name: "currency", ddl: "TEXT NOT NULL DEFAULT 'SDG'" }],
+};
+
+export const CREATE_SCHEMA_V6_INDEXES: string[] = [
+  `CREATE INDEX IF NOT EXISTS idx_fin_tx_account_rev ON financial_transactions(account_id, reversed_by)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_tx_kind_rev ON financial_transactions(kind, reversed_by)`,
+  `CREATE INDEX IF NOT EXISTS idx_expense_payments_exp_cancel ON expense_payments(expense_id, cancelled_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_customers_archived_name ON customers(is_archived, name)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_tx_currency ON financial_transactions(currency)`,
+  `CREATE INDEX IF NOT EXISTS idx_expenses_currency ON expenses(currency)`,
+  `CREATE INDEX IF NOT EXISTS idx_supplier_payments_currency ON supplier_payments(currency)`,
 ];
 
 /** Default account so recording a payment never blocks on setup (PRD §13.2). */

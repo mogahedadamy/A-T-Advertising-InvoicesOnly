@@ -128,7 +128,6 @@ export function useOrders() {
 }
 
 export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintOrder {
-  const previousSnapshot = ordersSnapshot;
   const order: PrintOrder = {
     ...newOrder,
     id: `ord-${Date.now()}`,
@@ -139,8 +138,11 @@ export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintO
   if (Capacitor.isNativePlatform()) {
     repoUpsertOrder(order).catch((err) => {
       console.warn("[OrdersStore] SQLite add failed:", err);
-      ordersSnapshot = previousSnapshot;
-      notify();
+      // Roll back ONLY this added order without overwriting concurrent mutations
+      if (ordersSnapshot.some((o) => o === order)) {
+        ordersSnapshot = ordersSnapshot.filter((o) => o.id !== order.id);
+        notify();
+      }
       toast.error("تعذّر حفظ الطلب في قاعدة البيانات");
     });
   }
@@ -148,28 +150,46 @@ export function addOrder(newOrder: Omit<PrintOrder, "id" | "createdAt">): PrintO
 }
 
 export function updateOrderStatus(orderId: string, status: OrderStatus) {
-  const previousSnapshot = ordersSnapshot;
-  ordersSnapshot = ordersSnapshot.map((o) => (o.id === orderId ? { ...o, status } : o));
+  const existing = ordersSnapshot.find((o) => o.id === orderId);
+  const previousStatus = existing?.status;
+  const updatedOrder = existing ? { ...existing, status } : undefined;
+  if (updatedOrder) {
+    ordersSnapshot = ordersSnapshot.map((o) => (o.id === orderId ? updatedOrder : o));
+  }
   notify();
   if (Capacitor.isNativePlatform()) {
     repoUpdateOrderStatus(orderId, status).catch((err) => {
       console.warn("[OrdersStore] SQLite status update failed:", err);
-      ordersSnapshot = previousSnapshot;
-      notify();
+      // Roll back ONLY this order's status if no newer write superseded it
+      if (previousStatus !== undefined && updatedOrder) {
+        const current = ordersSnapshot.find((o) => o.id === orderId);
+        if (current === updatedOrder) {
+          ordersSnapshot = ordersSnapshot.map((o) =>
+            o.id === orderId ? { ...o, status: previousStatus } : o
+          );
+          notify();
+        }
+      }
       toast.error("تعذّر تحديث حالة الطلب في قاعدة البيانات");
     });
   }
 }
 
 export function deleteOrder(orderId: string) {
-  const previousSnapshot = ordersSnapshot;
+  const deletedIndex = ordersSnapshot.findIndex((o) => o.id === orderId);
+  const deletedOrder = deletedIndex >= 0 ? ordersSnapshot[deletedIndex] : undefined;
   ordersSnapshot = ordersSnapshot.filter((o) => o.id !== orderId);
   notify();
   if (Capacitor.isNativePlatform()) {
     repoDeleteOrder(orderId).catch((err) => {
       console.warn("[OrdersStore] SQLite delete failed:", err);
-      ordersSnapshot = previousSnapshot;
-      notify();
+      // Re-insert ONLY this order without overwriting concurrent mutations
+      if (deletedOrder && !ordersSnapshot.some((o) => o.id === orderId)) {
+        const next = [...ordersSnapshot];
+        next.splice(Math.min(deletedIndex, next.length), 0, deletedOrder);
+        ordersSnapshot = next;
+        notify();
+      }
       toast.error("تعذّر حذف الطلب من قاعدة البيانات");
     });
   }

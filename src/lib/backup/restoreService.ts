@@ -19,13 +19,15 @@ import { closeDb, getDb } from "@/lib/database";
 import { DB_VERSION } from "@/lib/database/schema";
 import { flushWalBeforeBackup } from "./autoBackup";
 import { backupBridge, isBackupEngineAvailable } from "./bridge";
+import { sha256Hex, utf8Encode } from "./crypto";
 import { getBackupSettingsSnapshot, loadBackupSettings, saveBackupSettings } from "./settingsStore";
 import { normalizeLegacyBackup, detectLegacyBackup } from "./legacyImport";
 import type { RestoreMode, RestoreResult } from "./types";
 
 const PRE_UPDATE_MARKER = "backup_pre_update_done_v";
+const APP_RELEASE_VERSION = "2.0.0-lifetime";
 
-/** True on the first launch after the app version changed (checked natively). */
+/** True on the first launch after the app version or DB schema version changed. */
 export async function runPreUpdateBackupIfNeeded(allowed = true): Promise<boolean> {
   if (!Capacitor.isNativePlatform() || !isBackupEngineAvailable() || !allowed) return false;
   try {
@@ -34,7 +36,7 @@ export async function runPreUpdateBackupIfNeeded(allowed = true): Promise<boolea
     if (!settings.folderUri) return false;
     const info = await backupBridge.getEngineInfo();
     if (!info?.ok) return false;
-    const versionKey = PRE_UPDATE_MARKER + info.engineVersion;
+    const versionKey = `${PRE_UPDATE_MARKER}${APP_RELEASE_VERSION}_schema${DB_VERSION}_engine${info.engineVersion}`;
     if (settings.lastPreUpdateVersion === versionKey) return false;
     // Record the attempt first: a failing backup must not retry on every launch,
     // it surfaces through the dashboard warning instead.
@@ -74,10 +76,9 @@ export async function reloadAllStoresFromDatabase(): Promise<void> {
     // its marker is absent in a restored older snapshot, then preloads caches.
     await initSQLiteStorage();
     await loadBackupSettings(true);
-    // Signal every store hook, project view, finance ledger and profile header to refresh.
+    // Signal every store hook, finance ledger and profile header to refresh.
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("native-storage-ready"));
-      window.dispatchEvent(new Event("project-relations-changed"));
       window.dispatchEvent(new Event("finance-changed"));
       window.dispatchEvent(new Event("future-user-profile-updated"));
     }
@@ -312,17 +313,16 @@ export async function importLegacyJson(text: string): Promise<{ ok: boolean; mes
     return { ok: false, message: "فشلت الاستعادة وتم التراجع عنها بالكامل: " + (err?.message ?? err), added: 0 };
   }
 
-  await reloadAllStoresFromDatabase();
-
-  // Imported invoices arrive without an official reference; the numbering system
-  // assigns them deterministically so a restored invoice can be searched by
-  // reference like any other (PRD §5.3.2, §17).
+  // Imported invoices arrive without an official reference; assign them BEFORE
+  // reloadAllStoresFromDatabase() closes and reopens the DB connection (DB-09).
   try {
     const { backfillReferencesOnly } = await import("@/lib/database/migrations");
     await backfillReferencesOnly(db);
   } catch (err) {
     console.warn("[Backup] reference backfill after legacy import failed:", err);
   }
+
+  await reloadAllStoresFromDatabase();
 
   return {
     ok: true,
@@ -413,9 +413,5 @@ async function findConflicts(db: any, normalized: ReturnType<typeof normalizeLeg
 }
 
 async function sha256Of(text: string): Promise<string> {
-  if (typeof crypto === "undefined" || !crypto.subtle) return "";
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return sha256Hex(utf8Encode(text));
 }

@@ -20,7 +20,7 @@ vi.mock("@/lib/database", () => ({
   closeDb: async () => {},
 }));
 
-import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
+import { CREATE_SCHEMA_V1, DB_VERSION } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
 import { optimizeStorage, runIntegrityCheck } from "@/lib/repositories/MaintenanceRepository";
@@ -47,8 +47,8 @@ describe("Storage integrity (PRD §12)", () => {
     const report = await runIntegrityCheck();
     expect(report.quickCheck).toBe("ok");
     expect(report.foreignKeyViolations).toEqual([]);
-    expect(report.schemaVersion).toBe(3);
-    expect(report.appSchemaVersion).toBe(3);
+    expect(report.schemaVersion).toBe(DB_VERSION);
+    expect(report.appSchemaVersion).toBe(DB_VERSION);
     expect(report.ok).toBe(true);
     expect(report.message).toContain("سليمة");
     // WAL is the mode the app runs in

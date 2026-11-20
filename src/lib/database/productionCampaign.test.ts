@@ -27,11 +27,9 @@ vi.mock("@/lib/backup/notify", () => ({ notifyDataChanged: () => {} }));
 import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
-import { getAllProjectSummaries, getProjectById } from "@/lib/repositories/ProjectRepository";
 import { getInvoiceSettlement, getOpenSalesInvoices, getReceivablesSummary } from "@/lib/repositories/LedgerRepository";
 import { getCustomerCollectionsReport, getSalesPerformance } from "@/lib/repositories/ReportsRepository";
-import { getAllCustomInvoices, getCustomInvoiceById, upsertCustomInvoice } from "@/lib/repositories/CustomInvoiceRepository";
-import { allocateInvoiceReference } from "@/lib/repositories/DocumentSequenceRepository";
+import { getCustomInvoiceById, upsertCustomInvoice } from "@/lib/repositories/CustomInvoiceRepository";
 
 const NOW = "2026-11-12T10:00:00.000Z";
 const TODAY = "2026-11-12";
@@ -67,7 +65,7 @@ beforeEach(async () => {
 
 // ── Synthetic Workload Generator ───────────────────────────────────────────
 
-function generateWorkload(projectCount: number, invoicesCount: number, paymentsCount: number) {
+function generateWorkload(batchCount: number, invoicesCount: number, paymentsCount: number) {
   const rawDb = db.db;
 
   rawDb.exec("BEGIN");
@@ -77,40 +75,22 @@ function generateWorkload(projectCount: number, invoicesCount: number, paymentsC
   rawDb.prepare("INSERT INTO customers (id, name, phone, type, created_at) VALUES (?,?,?,?,?)").run("c-retail", "زبون نقدي عابر", "0999900000", "individual", NOW);
   rawDb.prepare("INSERT INTO financial_accounts (id, name, kind, opening_balance, is_active, created_at) VALUES (?,?,?,?,?,?)").run("acc-cash-1", "الصندوق الرئيسي", "cash", 0, 1, NOW);
 
-  // 2. Projects
-  const insertProject = rawDb.prepare(
-    "INSERT INTO projects (id, reference, customer_id, title, execution_status, financial_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
-  );
-  for (let p = 1; p <= projectCount; p++) {
-    insertProject.run(
-      `prj-${p}`,
-      `PRJ-2026-${String(p).padStart(3, "0")}`,
-      p % 2 === 0 ? "c-main" : "c-retail",
-      `مشروع دعائي وتصميم رقم ${p}`,
-      p % 5 === 0 ? "completed" : "in_progress",
-      "partially_paid",
-      NOW,
-      NOW
-    );
-  }
-
-  // 3. Invoices
+  // 2. Invoices
   const insertInvoice = rawDb.prepare(
     `INSERT INTO custom_invoices
-       (id, serial, type, date, due_date, party_name, customer_id, language, total_amount, created_at, updated_at, reference, project_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (id, serial, type, date, due_date, party_name, customer_id, language, total_amount, created_at, updated_at, reference)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertItem = rawDb.prepare(
     `INSERT INTO custom_invoice_items (id, invoice_id, description, qty, unit_price, total, sort_order)
      VALUES (?,?,?,?,?,?,?)`
   );
 
-  const invsPerPrj = Math.max(1, Math.floor(invoicesCount / projectCount));
+  const invsPerBatch = Math.max(1, Math.floor(invoicesCount / batchCount));
   let invCounter = 1;
 
-  for (let p = 1; p <= projectCount; p++) {
-    const prjId = `prj-${p}`;
-    for (let i = 0; i < invsPerPrj && invCounter <= invoicesCount; i++) {
+  for (let p = 1; p <= batchCount; p++) {
+    for (let i = 0; i < invsPerBatch && invCounter <= invoicesCount; i++) {
       const invId = `inv-${invCounter}`;
       const amount = 15000;
       insertInvoice.run(
@@ -125,8 +105,7 @@ function generateWorkload(projectCount: number, invoicesCount: number, paymentsC
         amount,
         NOW,
         NOW,
-        `INV-12112026-${String(invCounter).padStart(5, "0")}`,
-        prjId
+        `INV-12112026-${String(invCounter).padStart(5, "0")}`
       );
       insertItem.run(`item-${invCounter}-1`, invId, "طباعة بنر خارجي فلكس 4x3", 1, 10000, 10000, 0);
       insertItem.run(`item-${invCounter}-2`, invId, "تصميم وتركيب هيكل حديدي", 1, 5000, 5000, 1);
@@ -134,9 +113,9 @@ function generateWorkload(projectCount: number, invoicesCount: number, paymentsC
     }
   }
 
-  // 4. Payments and Allocations
+  // 3. Payments and Allocations
   const insertPayment = rawDb.prepare(
-    "INSERT INTO customer_payments (id, reference, customer_id, project_id, amount, paid_at, method, account_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)"
+    "INSERT INTO customer_payments (id, reference, customer_id, amount, paid_at, method, account_id, created_at) VALUES (?,?,?,?,?,?,?,?)"
   );
   const insertAlloc = rawDb.prepare(
     "INSERT INTO customer_payment_allocations (id, payment_id, invoice_id, amount, created_at) VALUES (?,?,?,?,?)"
@@ -150,7 +129,6 @@ function generateWorkload(projectCount: number, invoicesCount: number, paymentsC
       payId,
       `RCV-12112026-${String(k).padStart(5, "0")}`,
       "c-main",
-      `prj-${(k % projectCount) + 1}`,
       amount,
       TODAY,
       "cash",
@@ -163,30 +141,23 @@ function generateWorkload(projectCount: number, invoicesCount: number, paymentsC
   rawDb.exec("COMMIT");
 }
 
-describe("STAGE 1 — Moderate Workload (50 Projects, 2,000 Invoices, 5,000 Transactions)", () => {
+describe("STAGE 1 — Moderate Workload (2,000 Invoices, 5,000 Transactions)", () => {
   it("executes all operations within strict target latency and query boundaries", async () => {
     generateWorkload(50, 2000, 5000);
 
-    // 1. Projects List Summaries
+    // 1. Sales Performance Report
     state.counting = true;
     state.queries = 0;
     let t0 = performance.now();
-    const summaries = await getAllProjectSummaries();
-    const tSummaries = performance.now() - t0;
+    const salesPerf = await getSalesPerformance({});
+    const tSales = performance.now() - t0;
     state.counting = false;
 
-    expect(summaries.length).toBe(50);
-    expect(state.queries).toBeLessThanOrEqual(8);
-    expect(tSummaries).toBeLessThan(300); // SLO < 300ms
+    expect(salesPerf.invoiceCount).toBe(2000);
+    expect(state.queries).toBeLessThanOrEqual(4);
+    expect(tSales).toBeLessThan(300); // SLO < 300ms
 
-    // 2. Open Single Project
-    t0 = performance.now();
-    const project = await getProjectById("prj-1");
-    const tOpenPrj = performance.now() - t0;
-    expect(project).toBeDefined();
-    expect(tOpenPrj).toBeLessThan(50);
-
-    // 3. Open Single Invoice & Settlement
+    // 2. Open Single Invoice & Settlement
     t0 = performance.now();
     const inv = await getCustomInvoiceById("inv-1");
     const settlement = await getInvoiceSettlement("inv-1", "sales", inv?.totalAmount);
@@ -195,7 +166,7 @@ describe("STAGE 1 — Moderate Workload (50 Projects, 2,000 Invoices, 5,000 Tran
     expect(settlement).toBeDefined();
     expect(tOpenInv).toBeLessThan(100);
 
-    // 4. Save Invoice
+    // 3. Save Invoice
     t0 = performance.now();
     const saved = await upsertCustomInvoice({
       id: "inv-test-new",
@@ -213,7 +184,7 @@ describe("STAGE 1 — Moderate Workload (50 Projects, 2,000 Invoices, 5,000 Tran
     expect(saved.reference).toBeDefined();
     expect(tSaveInv).toBeLessThan(250);
 
-    // 5. Receivables Report
+    // 4. Receivables Report
     state.counting = true;
     state.queries = 0;
     t0 = performance.now();
@@ -226,30 +197,18 @@ describe("STAGE 1 — Moderate Workload (50 Projects, 2,000 Invoices, 5,000 Tran
     expect(receivables.invoiced).toBeGreaterThan(0);
     expect(receivables.collected).toBeGreaterThan(0);
 
-    console.info(`[Stage 1 Latency] Projects: ${tSummaries.toFixed(1)}ms | OpenInv: ${tOpenInv.toFixed(1)}ms | SaveInv: ${tSaveInv.toFixed(1)}ms | Report: ${tReport.toFixed(1)}ms`);
+    console.info(`[Stage 1 Latency] SalesPerf: ${tSales.toFixed(1)}ms | OpenInv: ${tOpenInv.toFixed(1)}ms | SaveInv: ${tSaveInv.toFixed(1)}ms | Report: ${tReport.toFixed(1)}ms`);
   });
 });
 
-describe("STAGE 2 — High Workload (150 Projects, 10,000 Invoices, 25,000 Transactions)", () => {
+describe("STAGE 2 — High Workload (10,000 Invoices, 25,000 Transactions)", () => {
   it("sustains sub-second response times across large-scale database operations", async () => {
     generateWorkload(150, 10000, 25000);
 
-    // 1. Projects List Summaries
+    // 1. Open Sales Invoices Filter
     state.counting = true;
     state.queries = 0;
     let t0 = performance.now();
-    const summaries = await getAllProjectSummaries();
-    const tSummaries = performance.now() - t0;
-    state.counting = false;
-
-    expect(summaries.length).toBe(150);
-    expect(state.queries).toBeLessThanOrEqual(8);
-    expect(tSummaries).toBeLessThan(400);
-
-    // 2. Open Sales Invoices Filter
-    state.counting = true;
-    state.queries = 0;
-    t0 = performance.now();
     const openInvoices = await getOpenSalesInvoices(50);
     const tOpenInvoices = performance.now() - t0;
     state.counting = false;
@@ -258,7 +217,7 @@ describe("STAGE 2 — High Workload (150 Projects, 10,000 Invoices, 25,000 Trans
     expect(openInvoices.length).toBe(50);
     expect(tOpenInvoices).toBeLessThan(200);
 
-    // 3. Receivables Aggregation
+    // 2. Receivables Aggregation
     state.counting = true;
     state.queries = 0;
     t0 = performance.now();
@@ -268,41 +227,30 @@ describe("STAGE 2 — High Workload (150 Projects, 10,000 Invoices, 25,000 Trans
 
     expect(state.queries).toBe(1);
     expect(tReceivables).toBeLessThan(350);
+    expect(receivables.invoiced).toBeGreaterThan(0);
 
-    // 4. Customer Collections Report
+    // 3. Customer Collections Report
     t0 = performance.now();
     const collectionsReport = await getCustomerCollectionsReport({}, TODAY);
     const tCollections = performance.now() - t0;
     expect(collectionsReport.payments.length).toBeGreaterThan(0);
     expect(tCollections).toBeLessThan(500);
 
-    console.info(`[Stage 2 Latency] Projects: ${tSummaries.toFixed(1)}ms | OpenInvoices: ${tOpenInvoices.toFixed(1)}ms | Receivables: ${tReceivables.toFixed(1)}ms | Collections: ${tCollections.toFixed(1)}ms`);
+    console.info(`[Stage 2 Latency] OpenInvoices: ${tOpenInvoices.toFixed(1)}ms | Receivables: ${tReceivables.toFixed(1)}ms | Collections: ${tCollections.toFixed(1)}ms`);
   });
 });
 
-describe("STAGE 3 — Extreme Stress Workload (500 Projects, 50,000 Invoices, 250,000 Transactions)", () => {
+describe("STAGE 3 — Extreme Stress Workload (50,000 Invoices, 250,000 Transactions)", () => {
   it("operates reliably without memory exhaustion, database lockups, or query degradation", async () => {
     generateWorkload(500, 50000, 250000);
 
     // 1. Memory Measurement Before Operations
     const memBefore = process.memoryUsage().heapUsed / 1024 / 1024;
 
-    // 2. Projects List Summaries for 500 projects
+    // 2. Single Invoice Settlement among 250,000 allocations
     state.counting = true;
     state.queries = 0;
     let t0 = performance.now();
-    const summaries = await getAllProjectSummaries();
-    const tSummaries = performance.now() - t0;
-    state.counting = false;
-
-    expect(summaries.length).toBe(500);
-    expect(state.queries).toBeLessThanOrEqual(8);
-    expect(tSummaries).toBeLessThan(45000); // Bounded execution under massive 27-suite concurrent test load
-
-    // 3. Single Invoice Settlement among 250,000 allocations
-    state.counting = true;
-    state.queries = 0;
-    t0 = performance.now();
     const settlement = await getInvoiceSettlement("inv-25000", "sales", 15000);
     const tSettlement = performance.now() - t0;
     state.counting = false;
@@ -311,7 +259,7 @@ describe("STAGE 3 — Extreme Stress Workload (500 Projects, 50,000 Invoices, 25
     expect(settlement).toBeDefined();
     expect(tSettlement).toBeLessThan(50); // Direct index lookup must be sub-50ms
 
-    // 4. Receivables aggregation across 50,000 invoices
+    // 3. Receivables aggregation across 50,000 invoices
     state.counting = true;
     state.queries = 0;
     t0 = performance.now();
@@ -321,14 +269,15 @@ describe("STAGE 3 — Extreme Stress Workload (500 Projects, 50,000 Invoices, 25
 
     expect(state.queries).toBe(1);
     expect(tReceivables).toBeLessThan(10000);
+    expect(receivables.invoiced).toBeGreaterThan(0);
 
-    // 5. Memory Measurement After Operations
+    // 4. Memory Measurement After Operations
     const memAfter = process.memoryUsage().heapUsed / 1024 / 1024;
     const memDelta = memAfter - memBefore;
 
-    console.info(`[Stage 3 Latency] Projects: ${tSummaries.toFixed(1)}ms | TargetedSettlement: ${tSettlement.toFixed(1)}ms | Receivables: ${tReceivables.toFixed(1)}ms | HeapDelta: ${memDelta.toFixed(2)}MB`);
+    console.info(`[Stage 3 Latency] TargetedSettlement: ${tSettlement.toFixed(1)}ms | Receivables: ${tReceivables.toFixed(1)}ms | HeapDelta: ${memDelta.toFixed(2)}MB`);
 
-    // Heap delta should be bounded (< 50MB for reading and aggregating)
+    // Heap delta should be bounded (< 60MB for reading and aggregating)
     expect(memDelta).toBeLessThan(60);
   });
 });
@@ -345,9 +294,9 @@ describe("STAGE 4 — Soak & Extended Stability Simulation", () => {
     for (let c = 1; c <= cycles; c++) {
       const t0 = performance.now();
 
-      // Alternate: project summaries, open invoice settlement, receivables check
+      // Alternate: open sales invoices, open invoice settlement, receivables check
       if (c % 3 === 0) {
-        await getAllProjectSummaries();
+        await getOpenSalesInvoices(25);
       } else if (c % 3 === 1) {
         await getInvoiceSettlement(`inv-${(c % 500) + 1}`, "sales", 15000);
       } else {

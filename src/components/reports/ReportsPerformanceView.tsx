@@ -1,18 +1,14 @@
 import React from "react";
-import { TrendingUp, AlertTriangle, CheckCircle2, DollarSign } from "lucide-react";
-import type {
-  FinancialPerformanceReport,
-  IncompleteProjectRow,
-} from "@/lib/repositories/ReportsRepository";
+import { TrendingUp, DollarSign } from "lucide-react";
+import type { FinancialPerformanceReport } from "@/lib/repositories/ReportsRepository";
 import { formatNumber } from "@/lib/printCalculator";
 import { cn } from "@/lib/utils";
 
 interface Props {
   performance: FinancialPerformanceReport | null;
-  incomplete: IncompleteProjectRow[];
 }
 
-export function ReportsPerformanceView({ performance, incomplete }: Props) {
+export function ReportsPerformanceView({ performance }: Props) {
   const money = (val: number | undefined) => `${formatNumber(Number(val) || 0)} ج.س`;
 
   const rows = [
@@ -125,43 +121,6 @@ export function ReportsPerformanceView({ performance, incomplete }: Props) {
           </div>
         )}
       </div>
-
-      {/* تنبيهات المشاريع ذات الأرقام غير المكتملة */}
-      {incomplete.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/5 p-3.5 shadow-2xs space-y-2">
-          <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <h3 className="text-xs font-black">مشاريع تتطلب استكمال بياناتها (PRD §9.6)</h3>
-          </div>
-
-          <div className="space-y-2">
-            {incomplete.map((row) => (
-              <div
-                key={row.projectId}
-                className="rounded-xl border border-amber-500/20 bg-background/80 p-2.5 text-xs space-y-1"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-black text-foreground">
-                    <span className="font-mono text-primary" dir="ltr">
-                      {row.reference}
-                    </span>{" "}
-                    · {row.title}
-                  </p>
-                </div>
-                <p className="text-[10.5px] text-muted-foreground">
-                  متبقي على العميل: {formatNumber(row.customerOutstanding)} ج.س · مستحق للموردين:{" "}
-                  {formatNumber(row.supplierOutstanding)} ج.س
-                </p>
-                <ul className="list-disc pr-4 text-[10px] text-amber-700 dark:text-amber-300">
-                  {row.missing.slice(0, 3).map((note, idx) => (
-                    <li key={idx}>{note}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

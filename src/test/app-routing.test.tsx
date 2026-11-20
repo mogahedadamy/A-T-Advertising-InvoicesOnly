@@ -1,11 +1,10 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createRouter, rootRouteId } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { routeTree } from "@/routeTree.gen";
 
 const lastMatchedId = (path: string) => {
-  const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+  const router = createRouter({ routeTree });
   return router.matchRoutes(path).at(-1)?.routeId;
 };
 
@@ -24,8 +23,7 @@ describe("App routing", () => {
     expect(lastMatchedId("/reports")).toBe("/reports");
   });
 
-  it("renders the projects workspace at /projects and /customers", () => {
-    expect(lastMatchedId("/projects")).toBe("/projects");
+  it("renders the customers workspace at /customers", () => {
     expect(lastMatchedId("/customers")).toBe("/customers");
   });
 
@@ -38,10 +36,11 @@ describe("App routing", () => {
   it("never falls back to the bare root route for valid pages", () => {
     expect(lastMatchedId("/billing")).not.toBe(rootRouteId);
     expect(lastMatchedId("/settings")).not.toBe(rootRouteId);
-    expect(lastMatchedId("/projects")).not.toBe(rootRouteId);
+    expect(lastMatchedId("/customers")).not.toBe(rootRouteId);
   });
 
-  it("removes legacy printing press and calculator routes", () => {
+  it("removes legacy printing press, calculator, and projects routes", () => {
+    expect(lastMatchedId("/projects")).not.toBe("/projects");
     expect(lastMatchedId("/calculator")).not.toBe("/calculator");
     expect(lastMatchedId("/materials")).not.toBe("/materials");
     expect(lastMatchedId("/production")).not.toBe("/production");

@@ -1,5 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { BillingPage } from "@/components/billing/BillingPage";
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/billing")({
   head: () => ({
@@ -10,5 +9,5 @@ export const Route = createFileRoute("/billing")({
       { property: "og:description", content: "إصدار وإدارة فواتير المبيعات، المشتريات، والفواتير المبدئية بنموذج T.A الرسمي" },
     ],
   }),
-  component: BillingPage,
+  component: lazyRouteComponent(() => import("@/components/billing/BillingPage"), "BillingPage"),
 });

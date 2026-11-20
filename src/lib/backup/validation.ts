@@ -124,13 +124,15 @@ export function evaluateBackupFile(input: VerifyInput): BackupFileInfo {
     };
   }
 
-  if (input.payloadSha256 != null) {
-    const match = input.payloadSha256.toLowerCase() === input.manifest.sha256.toLowerCase();
-    if (!match) {
-      return { ...base, status: "corrupt", issue: "فشل التحقق من البصمة SHA-256 — الملف تالف." };
-    }
-    base.sha256Ok = true;
+  if (input.payloadSha256 == null) {
+    return { ...base, status: "unreadable", issue: "لم يتم التحقق من بصمة SHA-256 للنسخة." };
   }
+
+  const match = input.payloadSha256.toLowerCase() === input.manifest.sha256.toLowerCase();
+  if (!match) {
+    return { ...base, status: "corrupt", issue: "فشل التحقق من البصمة SHA-256 — الملف تالف." };
+  }
+  base.sha256Ok = true;
 
   if (input.quickCheckOk === false) {
     return { ...base, status: "corrupt", issue: "فحص سلامة قاعدة البيانات داخلها فشل." };
@@ -149,7 +151,7 @@ export function isRestorable(info: BackupFileInfo | null | undefined): boolean {
 export function newestVerified(backups: BackupFileInfo[]): BackupFileInfo | null {
   let best: BackupFileInfo | null = null;
   for (const b of backups) {
-    if (b.status !== "verified" || !b.manifest) continue;
+    if (b.status !== "verified" || !b.sha256Ok || !b.manifest) continue;
     if (!best || Date.parse(b.manifest.createdAt) > Date.parse(best.manifest!.createdAt)) best = b;
   }
   return best;
@@ -161,7 +163,7 @@ export function newestVerified(backups: BackupFileInfo[]): BackupFileInfo | null
  * This prevents picking an empty pre-update safety backup over real historical backups.
  */
 export function newestWithData(backups: BackupFileInfo[]): BackupFileInfo | null {
-  const verified = backups.filter((b) => b.status === "verified" && b.manifest);
+  const verified = backups.filter((b) => b.status === "verified" && b.sha256Ok && b.manifest);
   if (verified.length === 0) return null;
 
   const withData = verified.filter((b) => {

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { KeyRound, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   changePassword,
   isValidPasswordFormat,
@@ -9,7 +9,6 @@ import {
 } from "@/lib/passwordStore";
 
 export const PasswordChangeCard: React.FC = () => {
-  const { toast } = useToast();
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -40,8 +39,7 @@ export const PasswordChangeCard: React.FC = () => {
     setPwBusy(true);
     try {
       await changePassword(currentPw, newPw);
-      toast({
-        title: "تم تغيير كلمة المرور",
+      toast.success("تم تغيير كلمة المرور", {
         description: "ستُستخدم كلمة المرور الجديدة في المرة القادمة.",
       });
       setCurrentPw("");

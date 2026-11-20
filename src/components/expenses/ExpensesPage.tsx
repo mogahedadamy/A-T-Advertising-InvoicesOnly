@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Calendar, FolderKanban, Layers, Plus, Receipt, RefreshCw, Wallet } from "lucide-react";
+import { ArrowRight, Calendar, Layers, Plus, Receipt, RefreshCw, Wallet } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
@@ -13,15 +13,13 @@ import {
 } from "@/lib/repositories/ExpenseRepository";
 import { SETTLEMENT_STATUS_LABELS, SETTLEMENT_STATUS_TONES } from "@/lib/domain/finance";
 import { formatNumber } from "@/lib/printCalculator";
-import { useProjects } from "@/lib/projectsStore";
 import { ExpenseDialog } from "@/components/finance/ExpenseDialog";
 
 /**
- * المصروفات (PRD §7.4، §7.5): تكاليف مباشرة للمشاريع ومصروفات تشغيلية،
+ * المصروفات (PRD §7.4، §7.5): تكاليف تنفيذ وإنتاج مباشرة ومصروفات تشغيلية،
  * مع تمييز واضح بين «مسجّل» و«مسدَّد».
  */
 export function ExpensesPage() {
-  const projects = useProjects();
   const [rows, setRows] = useState<ExpenseWithSettlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,11 +44,6 @@ export function ExpensesPage() {
     window.addEventListener("native-storage-ready", onReady);
     return () => window.removeEventListener("native-storage-ready", onReady);
   }, [load]);
-
-  const projectTitle = useCallback(
-    (projectId?: string) => (projectId ? projects.find((p) => p.id === projectId)?.title ?? "مشروع" : ""),
-    [projects]
-  );
 
   const direct = rows.filter((row) => row.kind === "direct");
   const operating = rows.filter((row) => row.kind === "operating");
@@ -90,7 +83,7 @@ export function ExpensesPage() {
                   </span>
                 </div>
                 <p className="text-[11px] sm:text-xs text-muted-foreground font-medium mt-1">
-                  الفصل بين التكاليف المباشرة للمشاريع والمصروفات التشغيلية للشركة وحالة سدادها
+                  الفصل بين تكاليف التنفيذ والإنتاج المباشرة والمصروفات التشغيلية للشركة وحالة سدادها
                 </p>
               </div>
             </div>
@@ -120,7 +113,7 @@ export function ExpensesPage() {
 
           {/* 2. مؤشرات المصروفات */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            <Metric label="تكاليف مباشرة للمشاريع" value={formatNumber(totalDirect)} tone="primary" />
+            <Metric label="تكاليف تنفيذ وإنتاج مباشرة" value={formatNumber(totalDirect)} tone="primary" />
             <Metric label="مصروفات تشغيلية" value={formatNumber(totalOperating)} tone="muted" />
             <Metric label="غير مسدَّد حتى الآن" value={formatNumber(unpaidTotal)} tone="warn" className="col-span-2 sm:col-span-1" />
           </div>
@@ -132,14 +125,14 @@ export function ExpensesPage() {
                 <Wallet className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm font-black text-foreground">لا توجد مصروفات مسجّلة بعد</p>
                 <p className="text-xs leading-relaxed text-muted-foreground max-w-md">
-                  التكلفة المباشرة تُنسب لمشروع محدد، والمصروف التشغيلي يخص تشغيل الشركة. تسجيل المصروف يثبت التكلفة ولا يعني دفعها إلا عند السداد.
+                  التكلفة المباشرة تخص التنفيذ والإنتاج، والمصروف التشغيلي يخص تشغيل الشركة العام. تسجيل المصروف يثبت التكلفة ولا يعني دفعها إلا عند السداد.
                 </p>
               </div>
             ) : (
               <Tabs defaultValue="direct" dir="rtl" className="space-y-3">
                 <TabsList className="grid w-full grid-cols-2 gap-1.5 rounded-xl bg-muted/60 p-1 h-auto">
                   {[
-                    { value: "direct", label: `تكاليف مباشرة (${direct.length})` },
+                    { value: "direct", label: `تكاليف تنفيذ وإنتاج مباشرة (${direct.length})` },
                     { value: "operating", label: `مصروفات تشغيلية (${operating.length})` },
                   ].map((tab) => (
                     <TabsTrigger
@@ -190,12 +183,6 @@ export function ExpensesPage() {
                                       <Calendar className="h-3 w-3 text-primary/70" />
                                       <bdi dir="ltr" className="font-mono">{row.expenseDate}</bdi>
                                     </span>
-                                    {row.projectId && (
-                                      <span className="inline-flex items-center gap-1 text-primary font-bold truncate">
-                                        <FolderKanban className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">{projectTitle(row.projectId)}</span>
-                                      </span>
-                                    )}
                                     {row.category && row.beneficiary && (
                                       <span className="inline-flex items-center gap-1">
                                         <Layers className="h-3 w-3 text-muted-foreground" />

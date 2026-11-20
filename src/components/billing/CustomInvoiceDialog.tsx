@@ -26,7 +26,6 @@ interface Props {
   initialItems?: CustomInvoiceItem[];
   invoiceToEdit?: CustomInvoice | null;
   onSaved?: (invoice: CustomInvoice) => void;
-  initialProjectId?: string | null;
   initialCustomerId?: string | null;
   initialCustomer?: CustomerRecord | null;
 }
@@ -44,7 +43,6 @@ export function CustomInvoiceDialog({
   initialItems,
   invoiceToEdit,
   onSaved,
-  initialProjectId,
   initialCustomerId,
   initialCustomer,
 }: Props) {
@@ -64,7 +62,6 @@ export function CustomInvoiceDialog({
     initialItems,
     invoiceToEdit,
     onSaved,
-    initialProjectId,
     initialCustomerId,
     initialCustomer,
   });
@@ -121,8 +118,6 @@ export function CustomInvoiceDialog({
               setCurrency={form.setCurrency}
               customerId={form.customerId}
               setCustomerId={form.setCustomerId}
-              projectId={form.projectId}
-              setProjectId={form.setProjectId}
               supplierId={form.supplierId}
               setSupplierId={form.setSupplierId}
               supplierInvoiceNumber={form.supplierInvoiceNumber}

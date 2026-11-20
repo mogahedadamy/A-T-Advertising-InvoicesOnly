@@ -1,5 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
-import Settings from "@/components/SettingsPage";
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -12,5 +11,5 @@ export const Route = createFileRoute("/settings")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Settings,
+  component: lazyRouteComponent(() => import("@/components/SettingsPage")),
 });

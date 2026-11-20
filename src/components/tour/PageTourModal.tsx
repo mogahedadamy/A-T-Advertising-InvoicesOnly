@@ -130,7 +130,7 @@ export function PageTourModal({
               }`}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
-              <span>أدلة باقي الصفحات (10)</span>
+              <span>أدلة باقي الصفحات ({ALL_PAGE_GUIDES_LIST.length})</span>
             </button>
           </div>
         </div>

@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════
  * Verifies that the offline storage engine and financial repositories
  * maintain:
- *  1. Bounded O(1) query counts regardless of project/invoice scale.
+ *  1. Bounded O(1) query counts regardless of invoice scale.
  *  2. Predictable, sub-millisecond execution times on aggregation queries.
  *  3. 100% mathematical accuracy across Revenue, Collections, and Liquidity.
  *  4. Atomic numbering and zero collisions under rapid sequential allocations.
@@ -34,7 +34,6 @@ vi.mock("@/lib/backup/notify", () => ({ notifyDataChanged: () => {} }));
 import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
-import { getAllProjectSummaries } from "@/lib/repositories/ProjectRepository";
 import { getInvoiceSettlement, getOpenSalesInvoices, getReceivablesSummary } from "@/lib/repositories/LedgerRepository";
 import { getCustomerCollectionsReport } from "@/lib/repositories/ReportsRepository";
 import { allocateInvoiceReference } from "@/lib/repositories/DocumentSequenceRepository";
@@ -43,8 +42,8 @@ import { getStoredJsonSync, setMemoryCacheJson, clearSQLiteMemoryCache } from "@
 const NOW = "2026-11-12T10:00:00.000Z";
 const TODAY = "2026-11-12";
 
-const PROJECT_COUNT = 100;
-const INVOICES_PER_PROJECT = 5;
+const BATCH_COUNT = 100;
+const INVOICES_PER_BATCH = 5;
 
 let db: FixtureDatabase;
 
@@ -82,16 +81,13 @@ function seedLargeScaleDataset() {
   rawDb.prepare("INSERT INTO customers (id, name, phone, type, created_at) VALUES (?,?,?,?,?)").run("c-1", "عميل رئيسي", "0911", "company", NOW);
   rawDb.prepare("INSERT INTO financial_accounts (id, name, kind, opening_balance, is_active, created_at) VALUES (?,?,?,?,?,?)").run("acc-1", "الخزينة", "cash", 0, 1, NOW);
 
-  const insertProject = rawDb.prepare(
-    "INSERT INTO projects (id, reference, customer_id, title, execution_status, financial_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
-  );
   const insertInvoice = rawDb.prepare(
     `INSERT INTO custom_invoices
-       (id, serial, type, date, due_date, party_name, customer_id, language, total_amount, created_at, updated_at, reference, project_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (id, serial, type, date, due_date, party_name, customer_id, language, total_amount, created_at, updated_at, reference)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertPayment = rawDb.prepare(
-    "INSERT INTO customer_payments (id, reference, customer_id, project_id, amount, paid_at, method, account_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)"
+    "INSERT INTO customer_payments (id, reference, customer_id, amount, paid_at, method, account_id, created_at) VALUES (?,?,?,?,?,?,?,?)"
   );
   const insertAlloc = rawDb.prepare(
     "INSERT INTO customer_payment_allocations (id, payment_id, invoice_id, amount, created_at) VALUES (?,?,?,?,?)"
@@ -101,11 +97,8 @@ function seedLargeScaleDataset() {
   let invSeq = 1;
   let paySeq = 1;
 
-  for (let p = 1; p <= PROJECT_COUNT; p++) {
-    const prjId = `prj-${p}`;
-    insertProject.run(prjId, `PRJ-2026-${String(p).padStart(3, "0")}`, "c-1", `مشروع ${p}`, "in_progress", "partially_paid", NOW, NOW);
-
-    for (let i = 1; i <= INVOICES_PER_PROJECT; i++) {
+  for (let p = 1; p <= BATCH_COUNT; p++) {
+    for (let i = 1; i <= INVOICES_PER_BATCH; i++) {
       const invId = `inv-${invSeq}`;
       const amount = 10000;
 
@@ -121,20 +114,19 @@ function seedLargeScaleDataset() {
         amount,
         NOW,
         NOW,
-        `INV-12112026-${String(invSeq).padStart(3, "0")}`,
-        prjId
+        `INV-12112026-${String(invSeq).padStart(3, "0")}`
       );
 
       if (i <= 2) {
         // fully paid
         const payId = `pay-${paySeq}`;
-        insertPayment.run(payId, `RCV-12112026-${String(paySeq).padStart(3, "0")}`, "c-1", prjId, amount, TODAY, "cash", "acc-1", NOW);
+        insertPayment.run(payId, `RCV-12112026-${String(paySeq).padStart(3, "0")}`, "c-1", amount, TODAY, "cash", "acc-1", NOW);
         insertAlloc.run(`alloc-${paySeq}`, payId, invId, amount, NOW);
         paySeq++;
       } else if (i === 3) {
         // partially paid (4,000 paid out of 10,000)
         const payId = `pay-${paySeq}`;
-        insertPayment.run(payId, `RCV-12112026-${String(paySeq).padStart(3, "0")}`, "c-1", prjId, 4000, TODAY, "cash", "acc-1", NOW);
+        insertPayment.run(payId, `RCV-12112026-${String(paySeq).padStart(3, "0")}`, "c-1", 4000, TODAY, "cash", "acc-1", NOW);
         insertAlloc.run(`alloc-${paySeq}`, payId, invId, 4000, NOW);
         paySeq++;
       }
@@ -145,11 +137,11 @@ function seedLargeScaleDataset() {
 }
 
 describe("Database Scalability & Query Bounding (Phases 4 & 5)", () => {
-  it("scales getReceivablesSummary in a single O(1) query across 100 projects and 500 invoices", async () => {
+  it("scales getReceivablesSummary in a single O(1) query across 500 invoices", async () => {
     seedLargeScaleDataset();
 
-    const expectedInvoiced = PROJECT_COUNT * INVOICES_PER_PROJECT * 10000;
-    const expectedCollected = PROJECT_COUNT * (10000 * 2 + 4000);
+    const expectedInvoiced = BATCH_COUNT * INVOICES_PER_BATCH * 10000;
+    const expectedCollected = BATCH_COUNT * (10000 * 2 + 4000);
 
     state.counting = true;
     state.queries = 0;
@@ -166,8 +158,8 @@ describe("Database Scalability & Query Bounding (Phases 4 & 5)", () => {
     expect(summary.invoiced).toBe(expectedInvoiced);
     expect(summary.collected).toBe(expectedCollected);
     expect(summary.outstanding).toBe(expectedInvoiced - expectedCollected);
-    expect(summary.partialCount).toBe(PROJECT_COUNT); // 1 per project
-    expect(summary.unpaidCount).toBe(PROJECT_COUNT * 2); // 2 per project
+    expect(summary.partialCount).toBe(BATCH_COUNT); // 1 per batch
+    expect(summary.unpaidCount).toBe(BATCH_COUNT * 2); // 2 per batch
   });
 
   it("calculates single invoice settlement with targeted O(1) query instead of scanning all allocations", async () => {
@@ -215,19 +207,6 @@ describe("Database Scalability & Query Bounding (Phases 4 & 5)", () => {
     for (const inv of report.openInvoices) {
       expect(inv.settlement.outstanding).toBeGreaterThan(0);
     }
-  });
-
-  it("getAllProjectSummaries executes in 6 fixed queries for 100 projects", async () => {
-    seedLargeScaleDataset();
-
-    state.counting = true;
-    state.queries = 0;
-    const summaries = await getAllProjectSummaries();
-    state.counting = false;
-
-    expect(summaries.length).toBe(PROJECT_COUNT);
-    // Fixed number of queries regardless of project count (<= 8 queries)
-    expect(state.queries).toBeLessThanOrEqual(8);
   });
 });
 

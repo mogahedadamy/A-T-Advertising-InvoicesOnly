@@ -49,8 +49,7 @@ export interface CustomInvoice {
    */
   reference?: string | undefined;
   referenceAssignedAt?: string | undefined;
-  /** ربط المشروع/العميل/المورد (PRD §4, §7.2) */
-  projectId?: string | undefined;
+  /** ربط العميل/المورد (PRD §4, §7.2) */
   customerId?: string | undefined;
   supplierId?: string | undefined;
   /** رقم فاتورة المورد الأصلية — لا يُستبدل أبداً بالمرجع الداخلي (PRD §5.3.8) */

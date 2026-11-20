@@ -29,7 +29,6 @@ function rowToProforma(row: any, lines: any[]): ProformaInvoice {
     lines: lines.map(rowToLine),
     status: row.status || "draft",
     convertedOrderId: row.converted_order_id || undefined,
-    projectId: row.project_id || undefined,
     totalArea: row.total_area || 0,
     totalQty: row.total_qty || 0,
     totalAmount: row.total_amount || 0,
@@ -48,6 +47,7 @@ function rowToLine(row: any): ProformaLine {
     width: row.width || 0,
     height: row.height || 0,
     qty: row.qty || 1,
+    rollUsed: row.roll_used ?? "",
     area: row.area || 0,
     unitPrice: row.unit_price || 0,
     total: row.total || 0,
@@ -101,9 +101,8 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
       statement: `INSERT INTO proforma_invoices
         (id, serial, date, customer_name, customer_en_name, attn, phone, branch,
          notes, validity_days, account_name, language, currency, status, converted_order_id,
-         total_area, total_qty, total_amount, total_in_words, created_at, updated_at,
-         project_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         total_area, total_qty, total_amount, total_in_words, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          serial             = excluded.serial,
          date               = excluded.date,
@@ -123,7 +122,6 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
          total_qty          = excluded.total_qty,
          total_amount       = excluded.total_amount,
          total_in_words     = excluded.total_in_words,
-         project_id         = excluded.project_id,
          updated_at         = excluded.updated_at`,
       values: [
         proforma.id,
@@ -147,7 +145,6 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
         proforma.totalInWords ?? "",
         proforma.createdAt || now,
         now,
-        proforma.projectId ?? null,
       ],
     },
     {
@@ -167,7 +164,7 @@ export async function upsertProforma(proforma: ProformaInvoice): Promise<void> {
         l.width,
         l.height,
         l.qty,
-        null,
+        l.rollUsed ?? null,
         l.area,
         l.unitPrice,
         l.total,

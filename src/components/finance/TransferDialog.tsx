@@ -20,8 +20,10 @@ import { toast } from "sonner";
 import { getAccountBalances } from "@/lib/repositories/FinancialAccountRepository";
 import { recordTransfer } from "@/lib/repositories/PaymentRepository";
 import { notifyFinanceUpdated } from "@/lib/financeStore";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import type { AccountBalanceReport } from "@/lib/domain/finance";
 import { formatNumber } from "@/lib/printCalculator";
+import { sanitizePositiveDecimal } from "./shared/numericInput";
 
 interface Props {
   open: boolean;
@@ -38,21 +40,33 @@ export function TransferDialog({ open, onOpenChange, onRecorded }: Props) {
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [amount, setAmount] = useState("");
-  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 10));
+  const [occurredAt, setOccurredAt] = useState(() => getLocalIsoDate());
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     void (async () => {
-      const reports = await getAccountBalances();
-      setAccounts(reports);
-      setFromAccountId(reports[0]?.account.id ?? "");
-      setToAccountId(reports[1]?.account.id ?? "");
-      setAmount("");
-      setNotes("");
-      setOccurredAt(new Date().toISOString().slice(0, 10));
+      try {
+        const reports = await getAccountBalances();
+        if (cancelled) return;
+        setAccounts(reports);
+        setFromAccountId(reports[0]?.account.id ?? "");
+        setToAccountId(reports[1]?.account.id ?? "");
+        setAmount("");
+        setNotes("");
+        setOccurredAt(getLocalIsoDate());
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[TransferDialog] init failed:", err);
+          toast.error("تعذّر تحميل الحسابات المالية.");
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const handleSave = async () => {
@@ -69,12 +83,14 @@ export function TransferDialog({ open, onOpenChange, onRecorded }: Props) {
       toast.error("مبلغ التحويل يجب أن يكون أكبر من صفر");
       return;
     }
+    const fromAccount = accounts.find((r) => r.account.id === fromAccountId)?.account;
     setBusy(true);
     try {
       await recordTransfer({
         fromAccountId,
         toAccountId,
         amount: value,
+        currency: fromAccount?.currency,
         occurredAt,
         notes: notes.trim() || undefined,
       });
@@ -116,7 +132,7 @@ export function TransferDialog({ open, onOpenChange, onRecorded }: Props) {
                 <SelectContent dir="rtl">
                   {accounts.map((report) => (
                     <SelectItem key={report.account.id} value={report.account.id}>
-                      {report.account.name} ({formatNumber(report.balance)})
+                      {report.account.name} ({formatNumber(report.balance)} {report.account.currency || "SDG"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -132,7 +148,7 @@ export function TransferDialog({ open, onOpenChange, onRecorded }: Props) {
                 <SelectContent dir="rtl">
                   {accounts.map((report) => (
                     <SelectItem key={report.account.id} value={report.account.id}>
-                      {report.account.name} ({formatNumber(report.balance)})
+                      {report.account.name} ({formatNumber(report.balance)} {report.account.currency || "SDG"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -145,7 +161,7 @@ export function TransferDialog({ open, onOpenChange, onRecorded }: Props) {
                 <Input
                   inputMode="decimal"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                  onChange={(e) => setAmount(sanitizePositiveDecimal(e.target.value))}
                   className="h-10 rounded-xl text-xs font-bold bg-background text-center tabular-nums"
                   placeholder="0"
                 />

@@ -6,8 +6,10 @@ import android.util.Base64;
 import android.util.Log;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 
 /**
  * Owns the AES-256 backup key.
@@ -69,7 +71,15 @@ final class BackupKeyStore {
         String plain = p.getString(KEY_PLAIN, null);
         if (plain != null) {
             try {
-                return Base64.decode(plain, Base64.NO_WRAP);
+                byte[] legacy = Base64.decode(plain, Base64.NO_WRAP);
+                if (legacy.length != BackupArchive.KEY_LEN) return null;
+                // Transparently migrate legacy plaintext key to AndroidKeyStore wrapping and delete KEY_PLAIN.
+                try {
+                    storeKey(legacy);
+                } catch (Exception migrateErr) {
+                    Log.w(TAG, "Failed to re-wrap legacy backup key with AndroidKeyStore", migrateErr);
+                }
+                return legacy;
             } catch (Exception e) {
                 return null;
             }
@@ -77,18 +87,19 @@ final class BackupKeyStore {
         return null;
     }
 
-    /** Wraps `key` with the Android Keystore key and persists it atomically. */
+    /** Wraps `key` with the Android Keystore key and persists it atomically. Fails closed if Keystore is unavailable. */
     synchronized String storeKey(byte[] key) {
         if (key == null || key.length != BackupArchive.KEY_LEN) throw new IllegalArgumentException("backup key must be 32 bytes");
         String keyId = BackupArchive.deriveKeyId(key);
-        SharedPreferences.Editor editor = prefs().edit();
+        byte[] sealed;
         try {
-            byte[] sealed = wrap(key);
-            editor.putString(KEY_WRAPPED, Base64.encodeToString(sealed, Base64.NO_WRAP)).remove(KEY_PLAIN);
+            sealed = wrap(key);
         } catch (Exception e) {
-            Log.w(TAG, "Keystore wrapping unavailable, storing key in private prefs", e);
-            editor.putString(KEY_PLAIN, Base64.encodeToString(key, Base64.NO_WRAP)).remove(KEY_WRAPPED);
+            Log.e(TAG, "AndroidKeyStore wrapping failed; refusing plaintext fallback", e);
+            throw new SecurityException("AndroidKeyStore wrapping unavailable", e);
         }
+        SharedPreferences.Editor editor = prefs().edit();
+        editor.putString(KEY_WRAPPED, Base64.encodeToString(sealed, Base64.NO_WRAP)).remove(KEY_PLAIN);
         editor.putString(KEY_ID, keyId);
         if (!editor.commit()) throw new IllegalStateException("تعذّر حفظ مفتاح التشفير.");
         return keyId;
@@ -127,10 +138,14 @@ final class BackupKeyStore {
 
     private byte[] wrap(byte[] key) throws Exception {
         SecretKey wrappingKey = getOrCreateWrappingKey();
-        byte[] iv = new byte[BackupArchive.GCM_IV_LEN];
-        random.nextBytes(iv);
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, wrappingKey, new javax.crypto.spec.GCMParameterSpec(128, iv));
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+        // Do NOT pass a caller-generated IV: AndroidKeyStore AES-GCM keys enforce
+        // randomizedEncryptionRequired=true and generate their own fresh IV.
+        cipher.init(Cipher.ENCRYPT_MODE, wrappingKey);
+        byte[] iv = cipher.getIV();
+        if (iv == null || iv.length != BackupArchive.GCM_IV_LEN) {
+            throw new GeneralSecurityException("Unexpected GCM IV length from AndroidKeyStore");
+        }
         byte[] body = cipher.doFinal(key);
         byte[] out = new byte[iv.length + body.length];
         System.arraycopy(iv, 0, out, 0, iv.length);
@@ -139,22 +154,29 @@ final class BackupKeyStore {
     }
 
     private byte[] unwrap(byte[] wrapped) throws Exception {
+        if (wrapped == null || wrapped.length <= BackupArchive.GCM_IV_LEN + BackupArchive.GCM_TAG_LEN) {
+            throw new GeneralSecurityException("Wrapped backup key is truncated or malformed");
+        }
         SecretKey wrappingKey = getOrCreateWrappingKey();
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION);
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(
-            javax.crypto.Cipher.DECRYPT_MODE,
+            Cipher.DECRYPT_MODE,
             wrappingKey,
-            new javax.crypto.spec.GCMParameterSpec(128, wrapped, 0, BackupArchive.GCM_IV_LEN)
+            new GCMParameterSpec(128, wrapped, 0, BackupArchive.GCM_IV_LEN)
         );
         return cipher.doFinal(wrapped, BackupArchive.GCM_IV_LEN, wrapped.length - BackupArchive.GCM_IV_LEN);
     }
 
-    /** True when the platform Keystore can wrap keys (drives the UI capability flag). */
+    /** True when the platform Keystore can actually initialize a GCM cipher with the wrapping key. */
     boolean isKeystoreAvailable() {
         try {
-            getOrCreateWrappingKey();
-            return true;
+            SecretKey wrappingKey = getOrCreateWrappingKey();
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, wrappingKey);
+            byte[] iv = cipher.getIV();
+            return iv != null && iv.length == BackupArchive.GCM_IV_LEN;
         } catch (Exception e) {
+            Log.w(TAG, "AndroidKeyStore cipher verification failed", e);
             return false;
         }
     }

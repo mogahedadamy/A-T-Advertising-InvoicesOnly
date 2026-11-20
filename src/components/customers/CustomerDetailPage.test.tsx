@@ -88,10 +88,6 @@ vi.mock("@/lib/repositories/ReportsRepository", () => ({
   }),
 }));
 
-vi.mock("@/lib/repositories/ProjectRepository", () => ({
-  getProjectsByCustomer: vi.fn().mockResolvedValue([]),
-}));
-
 const mockCustomer: CustomerRecord = {
   id: "cust-test-1",
   name: "شركة الفجر الجديد للتجارة",
@@ -117,12 +113,11 @@ describe("CustomerDetailPage — Full Standalone Page Architecture (CEO Benchmar
     expect(handleBack).toHaveBeenCalledTimes(1);
   });
 
-  it("renders all four primary workspace tabs", async () => {
+  it("renders all three primary workspace tabs", async () => {
     render(<CustomerDetailPage customer={mockCustomer} onBack={vi.fn()} />);
 
     expect(screen.getAllByRole("button", { name: /سجل الفواتير/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: /كشف الحساب المالي/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole("button", { name: /المشاريع المرتبطة/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: /بيانات العميل والافتتاحي/i }).length).toBeGreaterThanOrEqual(1);
   });
 

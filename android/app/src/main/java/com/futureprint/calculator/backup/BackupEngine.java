@@ -78,6 +78,10 @@ public final class BackupEngine {
         this.snapshotter = new DatabaseSnapshotter(this.context);
     }
 
+    BackupStorage storage() {
+        return storage;
+    }
+
     public static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
@@ -122,12 +126,14 @@ public final class BackupEngine {
 
                 byte[] key = null;
                 boolean encrypt = allowEncryption && prefs(context).getBoolean("encryption_enabled", false);
+                String keyId = "";
                 if (encrypt) {
                     key = keyStore.getOrCreateKey();
+                    keyId = BackupArchive.deriveKeyId(key);
                 }
 
                 String backupId = newBackupId(kind);
-                JSONObject manifest = buildManifest(backupId, kind, snapshot, payloadSha);
+                JSONObject manifest = buildManifest(backupId, kind, snapshot, payloadSha, encrypt, keyId);
                 byte[] envelope = encodeEnvelope(manifest, snapshot.bytes);
                 byte[] archive = BackupArchive.encode(envelope, key);
 
@@ -135,23 +141,24 @@ public final class BackupEngine {
                 long free = storage.freeBytesForFolder();
                 long required = (long) (archive.length * 1.35) + 8L * 1024L * 1024L;
                 if (free >= 0 && free < required) {
-                    return failure(result, "INSUFFICIENT_STORAGE", "لا توجد مساحة كافية لإنشاء النسخة (مطلوب " + required + " بايت، متاح " + free + ").");
+                    return recordBackupFailure(result, "INSUFFICIENT_STORAGE", "لا توجد مساحة كافية لإنشاء النسخة (مطلوب " + required + " بايت، متاح " + free + ").");
                 }
 
                 String fileName = BackupArchiveConstants.FILE_PREFIX + backupId + BackupArchiveConstants.FILE_SUFFIX;
                 storage.writeAtomically(tree, fileName, archive);
 
-                // Re-read what actually landed in the folder and verify it.
+                // Re-read what actually landed in the folder and verify it in a single decode pass.
                 byte[] stored = storage.readFile(fileName);
                 String archiveSha = BackupArchive.sha256Hex(archive);
                 String storedSha = BackupArchive.sha256Hex(stored);
-                JSONObject verifiedManifest;
+                DecodedEnvelope verifiedEnvelope;
                 try {
-                    verifiedManifest = decodeEnvelope(BackupArchive.parse(stored), key);
+                    verifiedEnvelope = decodeFullEnvelope(BackupArchive.parse(stored), key);
                 } catch (Exception e) {
                     storage.deleteQuietly(tree, fileName);
                     throw new BackupException("VERIFY_FAILED", "تعذّر التحقق من النسخة بعد كتابتها: " + e.getMessage());
                 }
+                JSONObject verifiedManifest = verifiedEnvelope.header;
                 String expectedDatabaseSha = verifiedManifest.optString("sha256");
                 if (!storedSha.equalsIgnoreCase(archiveSha) || !expectedDatabaseSha.equalsIgnoreCase(payloadSha)) {
                     storage.deleteQuietly(tree, fileName);
@@ -162,8 +169,8 @@ public final class BackupEngine {
                     throw new BackupException("VERIFY_FAILED", "حجم قاعدة البيانات داخل النسخة غير مطابق.");
                 }
 
-                // Only now may old backups be pruned.
-                JSONArray pruned = prune(tree, null);
+                // Only now may old backups be pruned (protecting the newly created file).
+                JSONArray pruned = prune(tree, fileName);
 
                 long duration = System.currentTimeMillis() - started;
                 prefs(context)
@@ -185,21 +192,28 @@ public final class BackupEngine {
                 result.put("pruned", pruned);
                 return result;
             } catch (BackupException e) {
-                return recordFailure(result, e.code, e.getMessage());
+                return recordBackupFailure(result, e.code, e.getMessage());
             } catch (BackupStorage.FolderUnavailableException e) {
-                return recordFailure(result, e.code, e.getMessage());
+                return recordBackupFailure(result, e.code, e.getMessage());
             } catch (DatabaseSnapshotter.SnapshotException e) {
-                return recordFailure(result, e.code, e.getMessage());
+                return recordBackupFailure(result, e.code, e.getMessage());
             } catch (SecurityException e) {
-                return recordFailure(result, "ENCRYPTION_UNAVAILABLE", "تعذّر تشفير النسخة على هذا الجهاز.");
+                return recordBackupFailure(result, "ENCRYPTION_UNAVAILABLE", "تعذّر تشفير النسخة على هذا الجهاز.");
             } catch (Exception e) {
                 Log.e(TAG, "createBackup failed", e);
-                return recordFailure(result, "IO_FAILED", String.valueOf(e.getMessage()));
+                return recordBackupFailure(result, "IO_FAILED", String.valueOf(e.getMessage()));
             }
         }
     }
 
-    private JSONObject buildManifest(String backupId, String kind, DatabaseSnapshotter.Snapshot snapshot, String payloadSha) throws JSONException {
+    private JSONObject buildManifest(
+        String backupId,
+        String kind,
+        DatabaseSnapshotter.Snapshot snapshot,
+        String payloadSha,
+        boolean encrypted,
+        String keyId
+    ) throws JSONException {
         JSONObject m = new JSONObject();
         m.put("format", BackupArchiveConstants.FORMAT_ID);
         m.put("manifestVersion", BackupArchiveConstants.MANIFEST_VERSION);
@@ -213,8 +227,8 @@ public final class BackupEngine {
         m.put("sha256", payloadSha);
         m.put("sizeBytes", snapshot.bytes.length);
         m.put("payloadSha256", payloadSha);
-        m.put("encrypted", prefs(context).getBoolean("encryption_enabled", false));
-        m.put("keyId", keyStore.getKeyId() == null ? "" : keyStore.getKeyId());
+        m.put("encrypted", encrypted);
+        m.put("keyId", encrypted && keyId != null ? keyId : "");
         m.put("databaseMagic", "SQLite format 3\u0000");
         JSONObject counts = new JSONObject();
         for (Map.Entry<String, Integer> e : snapshot.counts.entrySet()) counts.put(e.getKey(), e.getValue());
@@ -315,7 +329,8 @@ public final class BackupEngine {
                 r.issue = "نسخة مشفّرة — المفتاح غير متوفر على هذا الجهاز.";
                 return r;
             }
-            JSONObject manifest = decodeEnvelope(parsed, key);
+            DecodedEnvelope decoded = decodeFullEnvelope(parsed, key);
+            JSONObject manifest = decoded.header;
             r.manifest = manifest;
             if (!BackupArchiveConstants.FORMAT_ID.equals(manifest.optString("format"))) {
                 r.status = "incompatible";
@@ -329,8 +344,7 @@ public final class BackupEngine {
                 r.issue = "إصدار قاعدة البيانات (" + rawSchema + ") غير متوافق مع التطبيق الحالي (" + currentSchema + ").";
                 return r;
             }
-            String envelopeDatabaseB64 = envelopeDatabase(parsed, key);
-            byte[] database = Base64.decode(envelopeDatabaseB64, Base64.DEFAULT);
+            byte[] database = decoded.database;
             r.sha256 = BackupArchive.sha256Hex(database);
             r.sha256Ok = r.sha256.equalsIgnoreCase(manifest.optString("sha256"));
             if (!r.sha256Ok || database.length != manifest.optInt("sizeBytes", -1)) {
@@ -482,8 +496,9 @@ public final class BackupEngine {
                 if (parsed.sealed && key == null) {
                     return failure(out, "CORRUPT_ARCHIVE", "المفتاح المطلوب لفك تشفير النسخة غير متوفر على هذا الجهاز.");
                 }
-                JSONObject manifest = decodeEnvelope(parsed, key);
-                byte[] image = Base64.decode(envelopeDatabase(parsed, key), Base64.DEFAULT);
+                DecodedEnvelope decoded = decodeFullEnvelope(parsed, key);
+                JSONObject manifest = decoded.header;
+                byte[] image = decoded.database;
                 String imageSha = BackupArchive.sha256Hex(image);
                 if (!imageSha.equalsIgnoreCase(manifest.optString("sha256"))) {
                     return failure(out, "CORRUPT_ARCHIVE", "فشل التحقق من بصمة النسخة قبل الاستعادة.");
@@ -514,8 +529,20 @@ public final class BackupEngine {
 
                 boolean merged = "merge".equals(mode);
                 Map<String, Integer> restoredCounts;
+                boolean relationsOk = true;
                 if (merged) {
-                    restoredCounts = mergeIntoLiveDatabase(image, targetSchema);
+                    MergeResult mergeResult = mergeIntoLiveDatabase(image, targetSchema);
+                    relationsOk = mergeResult.relationsOk;
+                    if (!relationsOk) {
+                        JSONObject failedVerifying = new JSONObject();
+                        failedVerifying.put("countsMatch", false);
+                        failedVerifying.put("relationsOk", false);
+                        failedVerifying.put("quickCheckOk", true);
+                        failedVerifying.put("invoiceNumbersIntact", true);
+                        out.put("verifying", failedVerifying);
+                        return failure(out, "RESTORE_FAILED", "فشل التحقق من سلامة الروابط المرجعية أثناء الدمج — تم التراجع لحماية البيانات.");
+                    }
+                    restoredCounts = mergeResult.counts;
                 } else {
                     // The WebView must release its connection before we swap files.
                     closeAppConnection();
@@ -529,7 +556,7 @@ public final class BackupEngine {
 
                 JSONObject verifying = new JSONObject();
                 verifying.put("countsMatch", true);
-                verifying.put("relationsOk", true);
+                verifying.put("relationsOk", relationsOk);
                 verifying.put("quickCheckOk", true);
                 verifying.put("invoiceNumbersIntact", true);
 
@@ -551,25 +578,35 @@ public final class BackupEngine {
                 out.put("migratedFromSchema", targetSchema);
                 return out;
             } catch (BackupException e) {
-                return recordFailure(out, e.code, e.getMessage());
+                return failure(out, e.code, e.getMessage());
             } catch (BackupStorage.FolderUnavailableException e) {
-                return recordFailure(out, e.code, e.getMessage());
+                return failure(out, e.code, e.getMessage());
             } catch (DatabaseSnapshotter.SnapshotException e) {
-                return recordFailure(out, e.code, e.getMessage());
+                return failure(out, e.code, e.getMessage());
             } catch (Exception e) {
                 Log.e(TAG, "restore failed", e);
-                return recordFailure(out, "RESTORE_FAILED", String.valueOf(e.getMessage()));
+                return failure(out, "RESTORE_FAILED", String.valueOf(e.getMessage()));
             }
+        }
+    }
+
+    private static final class MergeResult {
+
+        final Map<String, Integer> counts;
+        final boolean relationsOk;
+
+        MergeResult(Map<String, Integer> counts, boolean relationsOk) {
+            this.counts = counts;
+            this.relationsOk = relationsOk;
         }
     }
 
     /**
      * Merge mode: keeps the current records and inserts what is missing,
-     * in ONE transaction. Records are compared by identity (invoice id, or
-     * type+serial for invoices) so no duplicate invoices are created and no
-     * existing invoice is overwritten.
+     * in ONE transaction with PRAGMA foreign_keys = ON and post-merge
+     * PRAGMA foreign_key_check verification. Any FK violation rolls back.
      */
-    private Map<String, Integer> mergeIntoLiveDatabase(byte[] image, int imageSchema) throws Exception {
+    private MergeResult mergeIntoLiveDatabase(byte[] image, int imageSchema) throws Exception {
         File tmp = File.createTempFile("merge", ".db", context.getCacheDir());
         try {
             try (java.io.FileOutputStream o = new java.io.FileOutputStream(tmp)) {
@@ -578,6 +615,7 @@ public final class BackupEngine {
             }
             closeAppConnection();
             Map<String, Integer> added = new LinkedHashMap<>();
+            boolean relationsOk = true;
             try (
                 SQLiteDatabase live = SQLiteDatabase.openDatabase(
                     snapshotter.databaseFile().getAbsolutePath(),
@@ -585,7 +623,10 @@ public final class BackupEngine {
                     SQLiteDatabase.OPEN_READWRITE
                 )
             ) {
-                // Attach the incoming image read-only and copy missing rows.
+                queryString(live, "PRAGMA busy_timeout = 5000");
+                // Must be enabled BEFORE beginTransaction() in SQLite.
+                live.execSQL("PRAGMA foreign_keys = ON");
+                // Attach the incoming image and copy missing rows.
                 live.execSQL("ATTACH DATABASE ? AS bk", new Object[] { tmp.getAbsolutePath() });
                 live.beginTransaction();
                 try {
@@ -593,17 +634,27 @@ public final class BackupEngine {
                         int inserted = mergeTable(live, table);
                         added.put(table, inserted);
                     }
-                    live.setTransactionSuccessful();
+                    try (Cursor fk = live.rawQuery("PRAGMA foreign_key_check", null)) {
+                        if (fk != null && fk.moveToFirst()) {
+                            relationsOk = false;
+                            Log.e(TAG, "Foreign key violation detected after merge in table: " + fk.getString(0));
+                        }
+                    }
+                    if (relationsOk) {
+                        live.setTransactionSuccessful();
+                    }
                 } finally {
                     live.endTransaction();
                     live.execSQL("DETACH DATABASE bk");
                 }
-                String quick = queryString(live, "PRAGMA quick_check");
-                if (!"ok".equalsIgnoreCase(quick)) {
-                    throw new BackupException("RESTORE_FAILED", "قاعدة البيانات بعد الدمج لم تجتز فحص السلامة.");
+                if (relationsOk) {
+                    String quick = queryString(live, "PRAGMA quick_check");
+                    if (!"ok".equalsIgnoreCase(quick)) {
+                        throw new BackupException("RESTORE_FAILED", "قاعدة البيانات بعد الدمج لم تجتز فحص السلامة.");
+                    }
                 }
             }
-            return added;
+            return new MergeResult(added, relationsOk);
         } finally {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
@@ -661,7 +712,8 @@ public final class BackupEngine {
             cols.append('"').append(c).append('"');
             sel.append("b.\"").append(c).append('"');
         }
-        String sql = "INSERT OR IGNORE INTO main.\"" + table + "\" (" + cols + ") SELECT " + sel + " FROM bk.\"" + table + "\" b";
+        String whereClause = childParentGuard(table, columns);
+        String sql = "INSERT OR IGNORE INTO main.\"" + table + "\" (" + cols + ") SELECT " + sel + " FROM bk.\"" + table + "\" b" + whereClause;
         db.execSQL(sql);
         int affected = 0;
         try (Cursor c = db.rawQuery("SELECT changes()", null)) {
@@ -678,6 +730,37 @@ public final class BackupEngine {
             }
         }
         return affected;
+    }
+
+    /** Ensures child rows are only merged when their referenced parent row exists in `main`. */
+    private static String childParentGuard(String table, List<String> columns) {
+        if ("custom_invoice_items".equals(table) && columns.contains("invoice_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"custom_invoices\" p WHERE p.id = b.\"invoice_id\")";
+        }
+        if ("proforma_lines".equals(table) && columns.contains("proforma_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"proforma_invoices\" p WHERE p.id = b.\"proforma_id\")";
+        }
+        if ("print_invoice_lines".equals(table) && columns.contains("invoice_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"print_invoices\" p WHERE p.id = b.\"invoice_id\")";
+        }
+        if ("order_items".equals(table) && columns.contains("order_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"orders\" p WHERE p.id = b.\"order_id\")";
+        }
+        if ("customer_payment_allocations".equals(table) && columns.contains("payment_id") && columns.contains("invoice_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"customer_payments\" p WHERE p.id = b.\"payment_id\")" +
+                " AND EXISTS (SELECT 1 FROM main.\"custom_invoices\" i WHERE i.id = b.\"invoice_id\")";
+        }
+        if ("supplier_payment_allocations".equals(table) && columns.contains("payment_id") && columns.contains("invoice_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"supplier_payments\" p WHERE p.id = b.\"payment_id\")" +
+                " AND EXISTS (SELECT 1 FROM main.\"custom_invoices\" i WHERE i.id = b.\"invoice_id\")";
+        }
+        if ("expense_payments".equals(table) && columns.contains("expense_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"expenses\" p WHERE p.id = b.\"expense_id\")";
+        }
+        if ("financial_transactions".equals(table) && columns.contains("account_id")) {
+            return " WHERE EXISTS (SELECT 1 FROM main.\"financial_accounts\" p WHERE p.id = b.\"account_id\")";
+        }
+        return "";
     }
 
     private List<String> sharedColumns(SQLiteDatabase db, String table) {
@@ -783,7 +866,7 @@ public final class BackupEngine {
                         backupCount++;
                     }
                 } catch (BackupStorage.FolderUnavailableException e) {
-                    state = e.code;
+                    state = mapStorageState(e.code);
                     message = e.getMessage();
                 }
 
@@ -810,12 +893,21 @@ public final class BackupEngine {
                 out.put("protection", protection);
                 out.put("encryptionAvailable", keyStore.isKeystoreAvailable());
                 out.put("engineVersion", ENGINE_VERSION);
+                out.put("appVersion", appVersion());
+                out.put("appVersionCode", appVersionCode());
                 return out;
             } catch (Exception e) {
                 Log.e(TAG, "status failed", e);
                 return failure(out, "IO_FAILED", String.valueOf(e.getMessage()));
             }
         }
+    }
+
+    private static String mapStorageState(String code) {
+        if ("NO_FOLDER".equals(code)) return "folder-not-selected";
+        if ("PERMISSION_LOST".equals(code)) return "permission-lost";
+        if ("ok".equals(code)) return "ok";
+        return "unavailable";
     }
 
     private String assessProtection(String state, FileRecord newest, JSONObject database, long now) throws JSONException {
@@ -942,13 +1034,27 @@ public final class BackupEngine {
         return key;
     }
 
-    private String envelopeDatabase(BackupArchive.Parsed parsed, byte[] key) throws BackupArchive.SealException {
+    private static final class DecodedEnvelope {
+
+        final JSONObject header;
+        final byte[] database;
+
+        DecodedEnvelope(JSONObject header, byte[] database) {
+            this.header = header;
+            this.database = database;
+        }
+    }
+
+    /** Decrypts and parses the JSON envelope once to avoid double-allocation OOM. */
+    private DecodedEnvelope decodeFullEnvelope(BackupArchive.Parsed parsed, byte[] key) throws BackupArchive.SealException {
         byte[] plain = parsed.sealed ? BackupArchive.open(parsed.payload, key) : parsed.payload;
-        String json = new String(plain, java.nio.charset.StandardCharsets.UTF_8);
         try {
-            return new JSONObject(json).getString("databaseBase64");
-        } catch (JSONException e) {
-            throw new BackupArchive.SealException("محتوى النسخة غير صالح (الترويسة مفقودة).");
+            JSONObject envelope = new JSONObject(new String(plain, java.nio.charset.StandardCharsets.UTF_8));
+            JSONObject header = envelope.getJSONObject("header");
+            byte[] database = Base64.decode(envelope.getString("databaseBase64"), Base64.DEFAULT);
+            return new DecodedEnvelope(header, database);
+        } catch (JSONException | IllegalArgumentException e) {
+            throw new BackupArchive.SealException("محتوى النسخة غير صالح (الترويسة أو قاعدة البيانات مفقودة).");
         }
     }
 
@@ -1001,24 +1107,21 @@ public final class BackupEngine {
         }
     }
 
-    private JSONObject failure(JSONObject out, String code, String message) {        try {
+    /** Formats a failure response without mutating `last_backup_status` (for read-only & non-create calls). */
+    private JSONObject failure(JSONObject out, String code, String message) {
+        try {
             out.put("ok", false);
             out.put("errorCode", code);
             out.put("message", message == null ? "" : message);
         } catch (JSONException ignored) {
             // unreachable for these values
         }
-        return recordFailure(out, code, message);
+        return out;
     }
 
-    private JSONObject recordFailure(JSONObject out, String code, String message) {
-        try {
-            out.put("ok", false);
-            out.put("errorCode", code);
-            out.put("message", message == null ? "" : message);
-        } catch (JSONException ignored) {
-            // unreachable
-        }
+    /** Formats a backup creation failure AND persists it to `last_backup_status`. Only called by createBackup(). */
+    private JSONObject recordBackupFailure(JSONObject out, String code, String message) {
+        failure(out, code, message);
         SharedPreferences p = prefs(context);
         p.edit()
             .putString("last_backup_at", isoNow())
@@ -1034,6 +1137,19 @@ public final class BackupEngine {
             return info.versionName == null ? "unknown" : info.versionName;
         } catch (Exception e) {
             return "unknown";
+        }
+    }
+
+    long appVersionCode() {
+        try {
+            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                return info.getLongVersionCode();
+            }
+            //noinspection deprecation
+            return info.versionCode;
+        } catch (Exception e) {
+            return 0;
         }
     }
 

@@ -1,4 +1,4 @@
-import { AppCurrency, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from "./types";
+import { AppCurrency, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, sanitizeCurrency } from "./types";
 
 /* ═══════════════════════════════════════════════════════════════
  * محرك تحويل الأرقام إلى نصوص باللغة العربية (Arabic Tafqeet)
@@ -77,9 +77,10 @@ const AR_HUNDREDS = [
 ];
 
 function convertGroupAr(n: number, isFeminine = false): string {
+  const bounded = Math.floor(Math.abs(n)) % 1000;
   let result = "";
-  const h = Math.floor(n / 100);
-  const remainder = n % 100;
+  const h = Math.floor(bounded / 100);
+  const remainder = bounded % 100;
 
   if (h > 0) {
     result += AR_HUNDREDS[h];
@@ -107,15 +108,27 @@ function convertGroupAr(n: number, isFeminine = false): string {
 }
 
 export function numberToArabicWords(num: number): string {
+  if (!Number.isFinite(num)) return "صفر";
   const n = Math.floor(Math.abs(num));
   if (n === 0) return "صفر";
+  if (n >= 1_000_000_000_000_000) {
+    return n.toLocaleString("en-US");
+  }
 
-  const billions = Math.floor(n / 1_000_000_000);
+  const trillions = Math.floor(n / 1_000_000_000_000);
+  const billions = Math.floor((n % 1_000_000_000_000) / 1_000_000_000);
   const millions = Math.floor((n % 1_000_000_000) / 1_000_000);
   const thousands = Math.floor((n % 1_000_000) / 1_000);
   const remainder = n % 1_000;
 
   const parts: string[] = [];
+
+  if (trillions > 0) {
+    if (trillions === 1) parts.push("تريليون");
+    else if (trillions === 2) parts.push("تريليونان");
+    else if (trillions >= 3 && trillions <= 10) parts.push(`${convertGroupAr(trillions)} تريليونات`);
+    else parts.push(`${convertGroupAr(trillions)} تريليون`);
+  }
 
   if (billions > 0) {
     if (billions === 1) parts.push("مليار");
@@ -155,7 +168,6 @@ function getArabicCurrencyDenomination(n: number, currency: AppCurrency): string
   if (intVal === 1) return `${g.singular} واحد`;
   if (intVal === 2) return g.dual;
 
-  const rem1000 = intVal % 1000;
   const rem100 = intVal % 100;
 
   // إذا كان الرقم ينتهي بمضاعفات المائة أو الألف أو الملايين (مثل 65,000 أو 8,000 أو 2,500)
@@ -205,29 +217,36 @@ function getArabicSubunitText(cents: number, currency: AppCurrency): string {
  * تحويل المبلغ الكامل بالعملة المحددة إلى كلمات باللغة العربية
  */
 export function tafqeetArabic(amount: number, currency: AppCurrency = DEFAULT_CURRENCY): string {
+  const safeCurrency = sanitizeCurrency(currency);
+  const g = SUPPORTED_CURRENCIES[safeCurrency].arabicGrammar;
+
   if (!Number.isFinite(amount) || amount <= 0) {
-    const g = SUPPORTED_CURRENCIES[currency].arabicGrammar;
     return `صفر ${g.singular} لا غير`;
   }
 
-  const intPart = Math.floor(amount);
-  const fracPart = Math.round((amount - intPart) * 100);
+  const totalMinor = Math.round(Math.abs(amount) * 100);
+  if (!Number.isFinite(totalMinor) || totalMinor <= 0) {
+    return `صفر ${g.singular} لا غير`;
+  }
+
+  const intPart = Math.floor(totalMinor / 100);
+  const fracPart = totalMinor % 100;
 
   let result = "";
 
   if (intPart === 1) {
-    result = SUPPORTED_CURRENCIES[currency].arabicGrammar.singular;
+    result = g.singular;
   } else if (intPart === 2) {
-    result = SUPPORTED_CURRENCIES[currency].arabicGrammar.dual;
+    result = g.dual;
   } else if (intPart > 0) {
     const words = numberToArabicWords(intPart);
-    const denom = getArabicCurrencyDenomination(intPart, currency);
+    const denom = getArabicCurrencyDenomination(intPart, safeCurrency);
     result = `${words} ${denom}`;
   }
 
   // إضافة الكسر إن وُجد
   if (fracPart > 0) {
-    const subText = getArabicSubunitText(fracPart, currency);
+    const subText = getArabicSubunitText(fracPart, safeCurrency);
     if (result) {
       result += ` و${subText}`;
     } else {
@@ -279,9 +298,10 @@ const EN_TENS = [
 ];
 
 function convertGroupEn(n: number): string {
+  const bounded = Math.floor(Math.abs(n)) % 1000;
   let str = "";
-  const hundreds = Math.floor(n / 100);
-  const remainder = n % 100;
+  const hundreds = Math.floor(bounded / 100);
+  const remainder = bounded % 100;
 
   if (hundreds > 0) {
     str += `${EN_ONES[hundreds]} Hundred`;
@@ -303,16 +323,24 @@ function convertGroupEn(n: number): string {
 }
 
 export function numberToEnglishWords(num: number): string {
+  if (!Number.isFinite(num)) return "Zero";
   const n = Math.floor(Math.abs(num));
   if (n === 0) return "Zero";
+  if (n >= 1_000_000_000_000_000) {
+    return n.toLocaleString("en-US");
+  }
 
-  const billions = Math.floor(n / 1_000_000_000);
+  const trillions = Math.floor(n / 1_000_000_000_000);
+  const billions = Math.floor((n % 1_000_000_000_000) / 1_000_000_000);
   const millions = Math.floor((n % 1_000_000_000) / 1_000_000);
   const thousands = Math.floor((n % 1_000_000) / 1_000);
   const remainder = n % 1_000;
 
   const parts: string[] = [];
 
+  if (trillions > 0) {
+    parts.push(`${convertGroupEn(trillions)} Trillion`);
+  }
   if (billions > 0) {
     parts.push(`${convertGroupEn(billions)} Billion`);
   }
@@ -333,13 +361,19 @@ export function numberToEnglishWords(num: number): string {
  * تحويل المبلغ الكامل بالعملة المحددة إلى كلمات باللغة الإنجليزية
  */
 export function tafqeetEnglish(amount: number, currency: AppCurrency = DEFAULT_CURRENCY): string {
-  const eg = SUPPORTED_CURRENCIES[currency].englishGrammar;
+  const safeCurrency = sanitizeCurrency(currency);
+  const eg = SUPPORTED_CURRENCIES[safeCurrency].englishGrammar;
   if (!Number.isFinite(amount) || amount <= 0) {
     return `Zero ${eg.plural} Only.`;
   }
 
-  const intPart = Math.floor(amount);
-  const fracPart = Math.round((amount - intPart) * 100);
+  const totalMinor = Math.round(Math.abs(amount) * 100);
+  if (!Number.isFinite(totalMinor) || totalMinor <= 0) {
+    return `Zero ${eg.plural} Only.`;
+  }
+
+  const intPart = Math.floor(totalMinor / 100);
+  const fracPart = totalMinor % 100;
 
   let result = "";
 
@@ -370,6 +404,7 @@ export function getInvoiceAmountInWords(
   currency: AppCurrency = DEFAULT_CURRENCY,
   isRtl = true
 ): string {
-  return isRtl ? tafqeetArabic(amount, currency) : tafqeetEnglish(amount, currency);
+  const safeCurrency = sanitizeCurrency(currency);
+  return isRtl ? tafqeetArabic(amount, safeCurrency) : tafqeetEnglish(amount, safeCurrency);
 }
 

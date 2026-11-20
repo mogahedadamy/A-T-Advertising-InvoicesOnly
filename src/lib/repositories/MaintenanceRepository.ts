@@ -35,7 +35,7 @@ export interface IntegrityReport {
  * Runs the full storage check.
  * `quick_check` scans the b-trees for corruption without the cost of a full
  * integrity_check, and `foreign_key_check` catches orphaned rows that would make
- * an invoice point at a project or payment that no longer exists.
+ * an allocation point at an invoice or payment that no longer exists.
  */
 export async function runIntegrityCheck(): Promise<IntegrityReport> {
   const db = await getDb();
@@ -71,6 +71,54 @@ export async function runIntegrityCheck(): Promise<IntegrityReport> {
     }));
   } catch (err) {
     console.warn("[Integrity] foreign_key_check failed:", err);
+  }
+
+  // Explicit referential orphan checks for logical (non-FK-constrained) entity links.
+  const logicalLinks: ReadonlyArray<{ table: string; column: string; parent: string }> = [
+    { table: "custom_invoices", column: "customer_id", parent: "customers" },
+    { table: "custom_invoices", column: "supplier_id", parent: "suppliers" },
+    { table: "customer_payments", column: "customer_id", parent: "customers" },
+    { table: "customer_payments", column: "account_id", parent: "financial_accounts" },
+    { table: "supplier_payments", column: "supplier_id", parent: "suppliers" },
+    { table: "supplier_payments", column: "account_id", parent: "financial_accounts" },
+    { table: "expenses", column: "supplier_id", parent: "suppliers" },
+    { table: "expense_payments", column: "account_id", parent: "financial_accounts" },
+  ];
+
+  for (const link of logicalLinks) {
+    try {
+      const orphans = await db.query(
+        `SELECT rowid AS rid
+           FROM "${link.table}"
+          WHERE "${link.column}" IS NOT NULL
+            AND TRIM("${link.column}") <> ''
+            AND NOT EXISTS (
+              SELECT 1 FROM "${link.parent}" p WHERE p.id = "${link.table}"."${link.column}"
+            )`
+      );
+      for (const row of orphans.values ?? []) {
+        report.foreignKeyViolations.push({
+          table: link.table,
+          parent: link.parent,
+          rowid: row?.rid != null ? Number(row.rid) : null,
+          constraint: -1,
+        });
+      }
+    } catch {
+      // Table or column may not exist on very old/unmigrated databases; schemaVersion check flags that.
+    }
+  }
+
+  try {
+    const pageCountRes = await db.query("PRAGMA page_count");
+    const pageSizeRes = await db.query("PRAGMA page_size");
+    const pcRow = pageCountRes.values?.[0];
+    const psRow = pageSizeRes.values?.[0];
+    const pageCount = Number(pcRow?.page_count ?? (pcRow ? Object.values(pcRow)[0] : 0)) || 0;
+    const pageSize = Number(psRow?.page_size ?? (psRow ? Object.values(psRow)[0] : 0)) || 0;
+    report.databaseBytes = pageCount > 0 && pageSize > 0 ? pageCount * pageSize : 0;
+  } catch {
+    report.databaseBytes = 0;
   }
 
   try {

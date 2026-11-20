@@ -91,10 +91,19 @@ export async function reconcileOrphanInvoicesToCustomers(db: MigrationDatabase):
   }
   try {
     const res = await db.query(
-      `SELECT i.id, i.party_name, c.id AS matched_customer_id
+      `SELECT i.id, i.party_name, c.matched_customer_id
          FROM custom_invoices i
-         JOIN customers c ON LOWER(TRIM(c.name)) = LOWER(TRIM(i.party_name))
-        WHERE i.customer_id IS NULL AND i.cancelled_at IS NULL`
+         JOIN (
+           SELECT LOWER(TRIM(name)) AS norm_name, MIN(id) AS matched_customer_id
+             FROM customers
+            WHERE TRIM(COALESCE(name, '')) <> ''
+            GROUP BY LOWER(TRIM(name))
+           HAVING COUNT(*) = 1
+         ) c ON c.norm_name = LOWER(TRIM(i.party_name))
+        WHERE i.customer_id IS NULL
+          AND i.cancelled_at IS NULL
+          AND i.type = 'sales'
+          AND TRIM(COALESCE(i.party_name, '')) <> ''`
     );
     const matches = res?.values ?? [];
     let updatedCount = 0;

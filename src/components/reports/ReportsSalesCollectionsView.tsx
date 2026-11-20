@@ -1,5 +1,5 @@
 import React from "react";
-import { Receipt, Wallet, AlertCircle, CheckCircle2, User, Folder } from "lucide-react";
+import { Receipt, Wallet, AlertCircle, CheckCircle2, User } from "lucide-react";
 import type {
   SalesPerformance,
   CustomerCollectionsReport,
@@ -59,33 +59,6 @@ export function ReportsSalesCollectionsView({ type, sales, collections }: Props)
                 >
                   <span className="font-bold text-foreground">
                     {row.name}{" "}
-                    <span className="text-[10px] text-muted-foreground">({row.count} فواتير)</span>
-                  </span>
-                  <span className="font-black tabular-nums text-foreground">{money(row.total)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* المبيعات حسب المشروع */}
-        <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs space-y-2.5">
-          <div className="flex items-center gap-1.5">
-            <Folder className="h-4 w-4 text-primary" />
-            <h3 className="text-xs font-black text-foreground">المبيعات حسب المشروع</h3>
-          </div>
-
-          {!sales?.byProject?.length ? (
-            <p className="py-3 text-center text-xs text-muted-foreground">لا توجد مشاريع مرتبطة في هذه الفترة.</p>
-          ) : (
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {sales.byProject.map((row) => (
-                <div
-                  key={row.projectId ?? "none"}
-                  className="flex items-center justify-between rounded-xl bg-muted/30 p-2 text-xs border border-border/40"
-                >
-                  <span className="font-bold text-foreground">
-                    {row.title}{" "}
                     <span className="text-[10px] text-muted-foreground">({row.count} فواتير)</span>
                   </span>
                   <span className="font-black tabular-nums text-foreground">{money(row.total)}</span>

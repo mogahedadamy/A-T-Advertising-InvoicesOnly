@@ -13,6 +13,7 @@ import type { CustomerRecord } from "@/lib/customersStore";
 import { formatNumber } from "@/lib/printCalculator";
 import { triggerPrintWithElement, shareInvoiceViaWhatsApp } from "@/lib/pdfExport";
 import { TA_LOGO_GREEN_BASE64, TA_SIGNATURE_TARIG_BASE64, TA_QR_CODE_BASE64 } from "@/assets/invoiceImagesBase64";
+import { escapeHtml } from "@/lib/security/htmlEscape";
 import { toast } from "sonner";
 
 const MIN_LEDGER_TABLE_ROWS = 12;
@@ -65,29 +66,41 @@ export function buildStatementDomElement(
       ? "زبون"
       : "أفراد";
 
+  const safeCurrencyLabel = escapeHtml(currencyLabel);
+  const safeCurrencySymbol = escapeHtml(currencySymbol);
+  const safeCustomerId = escapeHtml(customer.id);
+  const safeCustomerName = escapeHtml(statement.customerName);
+  const safeCustomerTypeLabel = escapeHtml(customerTypeLabel);
+  const safeCustomerPhone = customer.phone ? escapeHtml(customer.phone) : "";
+  const safeCustomerAddress = customer.address ? escapeHtml(customer.address) : "";
+  const safeTodayStr = escapeHtml(todayStr);
+
   // بناء صفوف القيود المحاسبية
   const rowsHtml = statement.lines.map((line, idx) => {
-    const isOpening = line.kind === "opening_balance";
     const bg = idx % 2 === 0 ? "#ffffff" : "#fbfdfc";
     const balanceColor = line.runningBalance > 0 ? "#b91c1c" : line.runningBalance < 0 ? "#047857" : "#0f172a";
+    const safeDate = escapeHtml(line.date);
+    const safeLabel = escapeHtml(line.label);
+    const safeNotes = line.notes ? escapeHtml(line.notes) : "";
+    const safeReference = line.reference ? escapeHtml(line.reference) : "—";
 
     return `
       <tr style="background: ${bg}; border-bottom: 1px solid #e2e8f0; height: 32px;">
         <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; color: #475569; text-align: center; border-left: 1px solid #e2e8f0;">${idx + 1}</td>
-        <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; font-family: monospace; direction: ltr; text-align: center; border-left: 1px solid #e2e8f0;">${line.date}</td>
+        <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; font-family: monospace; direction: ltr; text-align: center; border-left: 1px solid #e2e8f0;">${safeDate}</td>
         <td style="padding: 6px 12px; font-size: 11px; font-weight: 800; color: #0f172a; border-left: 1px solid #e2e8f0;">
-          ${line.label}
-          ${line.notes ? `<span style="font-size: 10px; font-weight: normal; color: #64748b; margin-right: 6px;">(${line.notes})</span>` : ""}
+          ${safeLabel}
+          ${safeNotes ? `<span style="font-size: 10px; font-weight: normal; color: #64748b; margin-right: 6px;">(${safeNotes})</span>` : ""}
         </td>
-        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 700; color: #0D4A39; text-align: center; border-left: 1px solid #e2e8f0;" dir="ltr">${line.reference || "—"}</td>
+        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 700; color: #0D4A39; text-align: center; border-left: 1px solid #e2e8f0;" dir="ltr">${safeReference}</td>
         <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 800; color: #b91c1c; text-align: left; border-left: 1px solid #e2e8f0;" dir="ltr">
-          ${line.debit > 0 ? formatNumber(line.debit) : "—"}
+          ${line.debit > 0 ? escapeHtml(formatNumber(line.debit)) : "—"}
         </td>
         <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 800; color: #047857; text-align: left; border-left: 1px solid #e2e8f0;" dir="ltr">
-          ${line.credit > 0 ? formatNumber(line.credit) : "—"}
+          ${line.credit > 0 ? escapeHtml(formatNumber(line.credit)) : "—"}
         </td>
         <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 900; color: ${balanceColor}; text-align: left;" dir="ltr">
-          ${formatNumber(line.runningBalance)}
+          ${escapeHtml(formatNumber(line.runningBalance))}
         </td>
       </tr>
     `;
@@ -111,10 +124,11 @@ export function buildStatementDomElement(
     `;
   }
 
-  const netBalanceText = statement.outstanding > 0
-    ? `<span style="color: #b91c1c; font-weight: 900;">${formatNumber(statement.outstanding)} ${currencySymbol} (مديونية مستحقة على العميل)</span>`
-    : statement.outstanding < 0
-    ? `<span style="color: #047857; font-weight: 900;">${formatNumber(Math.abs(statement.outstanding))} ${currencySymbol} (رصيد دائن / دفعة مقدمة لصالح العميل)</span>`
+  const netBal = statement.netBalance ?? statement.outstanding;
+  const netBalanceText = netBal > 0
+    ? `<span style="color: #b91c1c; font-weight: 900;">${escapeHtml(formatNumber(netBal))} ${safeCurrencySymbol} (مديونية مستحقة على العميل)</span>`
+    : netBal < 0
+    ? `<span style="color: #047857; font-weight: 900;">${escapeHtml(formatNumber(Math.abs(netBal)))} ${safeCurrencySymbol} (رصيد دائن / دفعة مقدمة لصالح العميل)</span>`
     : `<span style="color: #059669; font-weight: 900;">0.00 (الحساب متزن بالكامل ومسدد)</span>`;
 
   container.innerHTML = `
@@ -156,19 +170,19 @@ export function buildStatementDomElement(
       <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 14px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 5px;">
           <span style="color: #475569; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">بيانات العميل / CLIENT DETAILS</span>
-          <span style="font-family: monospace; font-size: 10px; font-weight: 700; color: #0D4A39;" dir="ltr">${customer.id}</span>
+          <span style="font-family: monospace; font-size: 10px; font-weight: 700; color: #0D4A39;" dir="ltr">${safeCustomerId}</span>
         </div>
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 900; font-size: 14px; color: #0f172a;">${statement.customerName}</span>
+            <span style="font-weight: 900; font-size: 14px; color: #0f172a;">${safeCustomerName}</span>
             <span style="font-size: 10px; font-weight: 800; background: #0D4A39; color: #ffffff; padding: 2px 8px; border-radius: 6px;">
-              ${customerTypeLabel}
+              ${safeCustomerTypeLabel}
             </span>
           </div>
-          ${customer.phone ? `<div style="font-family: monospace; font-size: 11px; font-weight: 700; color: #334155;" dir="ltr">هاتف: ${customer.phone}</div>` : ""}
+          ${safeCustomerPhone ? `<div style="font-family: monospace; font-size: 11px; font-weight: 700; color: #334155;" dir="ltr">هاتف: ${safeCustomerPhone}</div>` : ""}
         </div>
         <div style="font-size: 10.5px; color: #64748b;">
-          ${customer.address ? `العنوان: ${customer.address}` : "الخرطوم - السودان"}
+          ${safeCustomerAddress ? `العنوان: ${safeCustomerAddress}` : "الخرطوم - السودان"}
         </div>
       </div>
 
@@ -176,11 +190,11 @@ export function buildStatementDomElement(
       <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 14px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 5px;">
           <span style="color: #475569; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">تفاصيل الكشف / STATEMENT METRICS</span>
-          <span style="font-family: monospace; font-size: 10px; font-weight: 800; color: #0f172a;" dir="ltr">${todayStr}</span>
+          <span style="font-family: monospace; font-size: 10px; font-weight: 800; color: #0f172a;" dir="ltr">${safeTodayStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
           <span style="color: #475569; font-weight: 700; font-size: 11px;">العملة المحاسبية:</span>
-          <span style="font-weight: 900; font-size: 12px; color: #0D4A39;">${currencyLabel}</span>
+          <span style="font-weight: 900; font-size: 12px; color: #0D4A39;">${safeCurrencyLabel}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="color: #475569; font-weight: 700; font-size: 11px;">إجمالي القيود المسجلة:</span>
@@ -197,7 +211,7 @@ export function buildStatementDomElement(
       <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 12px; text-align: center;">
         <div style="font-size: 10px; font-weight: 800; color: #64748b;">إجمالي المطالبات والفواتير (مدين +)</div>
         <div style="font-size: 15px; font-weight: 900; font-family: monospace; color: #b91c1c; margin-top: 2px;" dir="ltr">
-          ${formatNumber(statement.totalInvoiced)} <span style="font-size: 11px; font-weight: 700;">${currencySymbol}</span>
+          ${escapeHtml(formatNumber(statement.totalInvoiced))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
         </div>
       </div>
 
@@ -205,17 +219,17 @@ export function buildStatementDomElement(
       <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 7px 12px; text-align: center;">
         <div style="font-size: 10px; font-weight: 800; color: #047857;">إجمالي التحصيلات والمدفوعات (دائن -)</div>
         <div style="font-size: 15px; font-weight: 900; font-family: monospace; color: #047857; margin-top: 2px;" dir="ltr">
-          ${formatNumber(statement.totalCollected)} <span style="font-size: 11px; font-weight: 700;">${currencySymbol}</span>
+          ${escapeHtml(formatNumber(statement.totalCollected))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
         </div>
       </div>
 
       <!-- الرصيد الصافي المتبقي -->
-      <div style="background: ${statement.outstanding > 0 ? "#fef2f2" : statement.outstanding < 0 ? "#ecfdf5" : "#f8fafc"}; border: 1.5px solid ${statement.outstanding > 0 ? "#ef4444" : statement.outstanding < 0 ? "#10b981" : "#cbd5e1"}; border-radius: 8px; padding: 7px 12px; text-align: center;">
-        <div style="font-size: 10px; font-weight: 800; color: ${statement.outstanding > 0 ? "#b91c1c" : statement.outstanding < 0 ? "#047857" : "#334155"};">
-          ${statement.outstanding > 0 ? "صافي الرصيد المستحق على العميل" : statement.outstanding < 0 ? "صافي الرصيد الدائن للعميل (مقدم)" : "صافي الرصيد (الحساب متزن)"}
+      <div style="background: ${netBal > 0 ? "#fef2f2" : netBal < 0 ? "#ecfdf5" : "#f8fafc"}; border: 1.5px solid ${netBal > 0 ? "#ef4444" : netBal < 0 ? "#10b981" : "#cbd5e1"}; border-radius: 8px; padding: 7px 12px; text-align: center;">
+        <div style="font-size: 10px; font-weight: 800; color: ${netBal > 0 ? "#b91c1c" : netBal < 0 ? "#047857" : "#334155"};">
+          ${netBal > 0 ? "صافي الرصيد المستحق على العميل" : netBal < 0 ? "صافي الرصيد الدائن للعميل (مقدم)" : "صافي الرصيد (الحساب متزن)"}
         </div>
-        <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: ${statement.outstanding > 0 ? "#b91c1c" : statement.outstanding < 0 ? "#047857" : "#0f172a"}; margin-top: 2px;" dir="ltr">
-          ${formatNumber(Math.abs(statement.outstanding))} <span style="font-size: 11px; font-weight: 700;">${currencySymbol}</span>
+        <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: ${netBal > 0 ? "#b91c1c" : netBal < 0 ? "#047857" : "#0f172a"}; margin-top: 2px;" dir="ltr">
+          ${escapeHtml(formatNumber(Math.abs(netBal)))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
         </div>
       </div>
     </div>
@@ -242,10 +256,10 @@ export function buildStatementDomElement(
         </tbody>
         <tfoot>
           <tr style="background: #F1F5F4; border-top: 2px solid #0D4A39; height: 38px; font-weight: 900; font-size: 11.5px;">
-            <td colspan="4" style="padding: 6px 12px; text-align: right; color: #0D4A39; border-left: 1px solid #cbd5e1;">الإجماليات الكلية للفترة (${currencySymbol}):</td>
-            <td style="padding: 6px 8px; color: #b91c1c; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${formatNumber(statement.totalInvoiced)}</td>
-            <td style="padding: 6px 8px; color: #047857; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${formatNumber(statement.totalCollected)}</td>
-            <td style="padding: 6px 8px; color: #0f172a; text-align: left; font-family: monospace;" dir="ltr">${formatNumber(statement.outstanding)}</td>
+            <td colspan="4" style="padding: 6px 12px; text-align: right; color: #0D4A39; border-left: 1px solid #cbd5e1;">الإجماليات الكلية للفترة (${safeCurrencySymbol}):</td>
+            <td style="padding: 6px 8px; color: #b91c1c; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${escapeHtml(formatNumber(statement.totalInvoiced))}</td>
+            <td style="padding: 6px 8px; color: #047857; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${escapeHtml(formatNumber(statement.totalCollected))}</td>
+            <td style="padding: 6px 8px; color: #0f172a; text-align: left; font-family: monospace;" dir="ltr">${escapeHtml(formatNumber(netBal))}</td>
           </tr>
         </tfoot>
       </table>

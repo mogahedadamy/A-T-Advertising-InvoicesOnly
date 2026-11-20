@@ -9,8 +9,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.json.JSONObject;
 
 /**
@@ -63,6 +68,13 @@ final class DatabaseSnapshotter {
         "settings",
         "db_meta",
     };
+    private static final Set<String> ALLOWED_TABLES;
+
+    static {
+        Set<String> allowed = new HashSet<>(Arrays.asList(TABLES));
+        allowed.add("android_metadata");
+        ALLOWED_TABLES = Collections.unmodifiableSet(allowed);
+    }
 
     public static final class SnapshotException extends Exception {
 
@@ -126,7 +138,7 @@ final class DatabaseSnapshotter {
                 status.put("journalMode", "");
                 return status;
             }
-            try (SQLiteDatabase db = openLive()) {
+            try (SQLiteDatabase db = openLiveReadOnly()) {
                 status.put("exists", true);
                 status.put("schemaVersion", db.getVersion());
                 String journalMode = "";
@@ -162,21 +174,10 @@ final class DatabaseSnapshotter {
     /** Seeds PRAGMA user_version from the logical schema marker on first run. */
     int ensureSchemaVersion() {
         if (!exists()) return 0;
-        try (SQLiteDatabase db = SQLiteDatabase.openDatabase(databaseFile().getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+        try (SQLiteDatabase db = openLive()) {
             int version = db.getVersion();
             if (version > 0) return version;
-            String logical = null;
-            if (tableExists(db, "db_meta")) {
-                try (Cursor c = db.rawQuery("SELECT value FROM db_meta WHERE key = 'schema_version' LIMIT 1", null)) {
-                    if (c.moveToFirst()) logical = c.getString(0);
-                }
-            }
-            int parsed;
-            try {
-                parsed = logical == null ? 1 : Math.max(1, Integer.parseInt(logical.trim()));
-            } catch (NumberFormatException ignored) {
-                parsed = 1;
-            }
+            int parsed = readLogicalSchemaVersion(db);
             db.setVersion(parsed);
             return parsed;
         } catch (Exception e) {
@@ -185,30 +186,69 @@ final class DatabaseSnapshotter {
         }
     }
 
+    private int readLogicalSchemaVersion(SQLiteDatabase db) {
+        String logical = null;
+        if (tableExists(db, "db_meta")) {
+            try (Cursor c = db.rawQuery("SELECT value FROM db_meta WHERE key = 'schema_version' LIMIT 1", null)) {
+                if (c.moveToFirst()) logical = c.getString(0);
+            }
+        }
+        try {
+            return logical == null ? 1 : Math.max(1, Integer.parseInt(logical.trim()));
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
+    }
+
+    /** Reads schema version read-only to avoid OPEN_READWRITE lock contention with libsqlcipher. */
     int currentSchemaVersion() {
         try {
             if (!exists()) return 1;
-            return ensureSchemaVersion();
+            try (SQLiteDatabase db = openLiveReadOnly()) {
+                int version = db.getVersion();
+                return version > 0 ? version : readLogicalSchemaVersion(db);
+            }
         } catch (Exception e) {
             return 1;
         }
     }
 
     /**
-     * Opens the live application database for reading.
+     * Opens the live application database READ-ONLY with a busy timeout for
+     * inspection/status calls so POSIX lock interference with libsqlcipher.so is minimized.
+     */
+    private SQLiteDatabase openLiveReadOnly() throws Exception {
+        SQLiteDatabase db = SQLiteDatabase.openDatabase(
+            databaseFile().getAbsolutePath(),
+            null,
+            SQLiteDatabase.OPEN_READONLY
+        );
+        applyBusyTimeout(db);
+        return db;
+    }
+
+    /**
+     * Opens the live application database for snapshotting.
      *
-     * MUST NOT be OPEN_READONLY: on Android a read-only connection cannot use the
-     * -wal file, so it sees only the main .db file. For a WAL database that has
-     * not been checkpointed the main file is just a 4096-byte header page with NO
-     * tables — which produced an "empty" snapshot and the failure
-     * "the snapshot does not contain the application schema".
+     * MUST be OPEN_READWRITE for capture/checkpoint: on Android a read-only
+     * connection cannot checkpoint or create -shm for a WAL database.
      */
     private SQLiteDatabase openLive() throws Exception {
-        return SQLiteDatabase.openDatabase(
+        SQLiteDatabase db = SQLiteDatabase.openDatabase(
             databaseFile().getAbsolutePath(),
             null,
             SQLiteDatabase.OPEN_READWRITE
         );
+        applyBusyTimeout(db);
+        return db;
+    }
+
+    private static void applyBusyTimeout(SQLiteDatabase db) {
+        try {
+            queryString(db, "PRAGMA busy_timeout = 5000");
+        } catch (Exception ignored) {
+            // best effort
+        }
     }
 
     /**
@@ -414,10 +454,12 @@ final class DatabaseSnapshotter {
             } catch (Exception ignored) {
                 // default below
             }
+            applyBusyTimeout(dst);
             // The output must be a single self-contained file: a rollback journal
-            // keeps every page readable by any later reader.
+            // keeps every page readable by any later reader. Use rawQuery via queryString
+            // because execSQL throws on PRAGMAs that return rows on Android < 11.
             try {
-                dst.execSQL("PRAGMA journal_mode=DELETE");
+                queryString(dst, "PRAGMA journal_mode=DELETE");
             } catch (Exception ignored) {
                 // keep the default mode; the verification step below still checks
             }
@@ -436,7 +478,7 @@ final class DatabaseSnapshotter {
                         String sql = c.getString(2);
                         if (sql == null || sql.trim().isEmpty()) continue;
                         if ("table".equals(type)) tableDdl.add(sql);
-                        else if ("index".equals(type) || "trigger".equals(type) || "view".equals(type)) indexDdl.add(sql);
+                        else if ("index".equals(type)) indexDdl.add(sql);
                     }
                 }
 
@@ -500,6 +542,16 @@ final class DatabaseSnapshotter {
                 out.flush();
             }
             try (SQLiteDatabase db = SQLiteDatabase.openDatabase(tmp.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY)) {
+                // Defend against malicious untrusted SQLite archives (SEC-12):
+                // disable trusted_schema and reject triggers, views, virtual tables,
+                // and unknown tables before running any further queries.
+                try {
+                    queryString(db, "PRAGMA trusted_schema = OFF");
+                } catch (Exception ignored) {
+                    // SQLite < 3.31 does not support trusted_schema
+                }
+                validateUntrustedSchema(db);
+
                 String quick = queryString(db, "PRAGMA quick_check");
                 if (!"ok".equalsIgnoreCase(quick)) {
                     throw new SnapshotException("INTEGRITY_FAILED", "فحص سلامة قاعدة البيانات داخل النسخة فشل: " + quick);
@@ -527,6 +579,35 @@ final class DatabaseSnapshotter {
         }
     }
 
+    /** Rejects triggers, views, virtual tables, or tables outside the application allowlist. */
+    private static void validateUntrustedSchema(SQLiteDatabase db) throws SnapshotException {
+        try (
+            Cursor c = db.rawQuery(
+                "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name <> 'android_metadata'",
+                null
+            )
+        ) {
+            while (c.moveToNext()) {
+                String type = c.getString(0) == null ? "" : c.getString(0).toLowerCase(Locale.ROOT);
+                String name = c.getString(1) == null ? "" : c.getString(1);
+                String sql = c.getString(2) == null ? "" : c.getString(2);
+                if ("trigger".equals(type) || "view".equals(type)) {
+                    throw new SnapshotException("INCOMPATIBLE_BACKUP", "النسخة تحتوي على كائن SQL غير مسموح (" + type + ").");
+                }
+                if (sql.toUpperCase(Locale.ROOT).contains("VIRTUAL TABLE")) {
+                    throw new SnapshotException("INCOMPATIBLE_BACKUP", "النسخة تحتوي على جدول افتراضي غير مسموح.");
+                }
+                if ("table".equals(type)) {
+                    if (!ALLOWED_TABLES.contains(name)) {
+                        throw new SnapshotException("INCOMPATIBLE_BACKUP", "النسخة تحتوي على جدول غير معروف (" + name + ").");
+                    }
+                } else if (!"index".equals(type)) {
+                    throw new SnapshotException("INCOMPATIBLE_BACKUP", "النسخة تحتوي على نوع مخطط غير مدعوم (" + type + ").");
+                }
+            }
+        }
+    }
+
     /**
      * Replaces the live database with `image` atomically at the file-system
      * level: the new content is written beside the database and renamed over it,
@@ -540,6 +621,7 @@ final class DatabaseSnapshotter {
         File dir = target.getParentFile();
         File staging = new File(dir, BackupArchiveConstants.DB_FILE_NAME + ".restore-new");
         File rollback = new File(dir, BackupArchiveConstants.DB_FILE_NAME + ".restore-old");
+        boolean movedToRollback = false;
         try {
             try (java.io.FileOutputStream out = new java.io.FileOutputStream(staging)) {
                 out.write(image);
@@ -550,21 +632,34 @@ final class DatabaseSnapshotter {
                 //noinspection ResultOfMethodCallIgnored
                 rollback.delete();
             }
-            if (target.exists() && !target.renameTo(rollback)) {
-                throw new SnapshotException("RESTORE_FAILED", "تعذّر تنحية قاعدة البيانات الحالية جانباً.");
+            if (target.exists()) {
+                if (!target.renameTo(rollback)) {
+                    throw new SnapshotException("RESTORE_FAILED", "تعذّر تنحية قاعدة البيانات الحالية جانباً.");
+                }
+                movedToRollback = true;
             }
             if (!staging.renameTo(target)) {
-                if (rollback.exists()) rollback.renameTo(target);
+                restoreRollback(rollback, target, dir);
                 throw new SnapshotException("RESTORE_FAILED", "تعذّر تفعيل قاعدة البيانات المستعادة.");
             }
             deleteSidecars(dir, target.getName());
-            //noinspection ResultOfMethodCallIgnored
-            rollback.delete();
+            // Verify target BEFORE deleting rollback so a failed quick_check can cleanly revert.
             try (SQLiteDatabase verifyDb = SQLiteDatabase.openDatabase(target.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+                applyBusyTimeout(verifyDb);
                 String quick = queryString(verifyDb, "PRAGMA quick_check");
                 if (!"ok".equalsIgnoreCase(quick)) {
                     throw new SnapshotException("RESTORE_FAILED", "قاعدة البيانات المستعادة لم تجتز فحص السلامة: " + quick);
                 }
+            } catch (Exception verifyErr) {
+                if (movedToRollback) {
+                    restoreRollback(rollback, target, dir);
+                }
+                if (verifyErr instanceof SnapshotException) throw (SnapshotException) verifyErr;
+                throw new SnapshotException("RESTORE_FAILED", "فشل التحقق من قاعدة البيانات المستعادة: " + verifyErr.getMessage());
+            }
+            if (rollback.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                rollback.delete();
             }
         } catch (SnapshotException e) {
             throw e;
@@ -573,6 +668,22 @@ final class DatabaseSnapshotter {
         } finally {
             //noinspection ResultOfMethodCallIgnored
             staging.delete();
+        }
+    }
+
+    private void restoreRollback(File rollback, File target, File dir) {
+        try {
+            if (target.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+            }
+            deleteSidecars(dir, target.getName());
+            if (rollback.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                rollback.renameTo(target);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "failed to restore rollback database", e);
         }
     }
 

@@ -18,20 +18,46 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import { getDb } from "./database";
+import * as dbModule from "./database";
 import { notifyDataChanged } from "./backup/notify";
 
 const PROFILE_FAILSAFE_KEYS = new Set(["future_print_user_name", "future_print_onboarded"]);
+const RESTORE_CLEAR_LOCALSTORAGE_KEYS = [
+  "future_print_user_name",
+  "future_print_onboarded",
+  "future_calc_app_password_hash",
+  "company_email",
+  "company_phone",
+  "company_address_ar",
+  "company_address_en",
+];
+
+function runWithWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (typeof dbModule.withDbWriteLock === "function") {
+    return dbModule.withDbWriteLock(fn);
+  }
+  return fn();
+}
 
 // In-memory cache for synchronous reads (useSyncExternalStore requirement)
 const memoryCache = new Map<string, string>();
 // Structured object cache to eliminate redundant JSON.stringify / JSON.parse cycles
 const parsedCache = new Map<string, any>();
 let _ready = false;
+let _sqliteReady = false;
+let _sqliteInitError = false;
 const _readyListeners: (() => void)[] = [];
 
 export function isStorageReady(): boolean {
   return _ready;
+}
+
+export function isSQLiteReady(): boolean {
+  return _sqliteReady;
+}
+
+export function hasSQLiteInitError(): boolean {
+  return _sqliteInitError;
 }
 
 /** Clear all cached rows in memory so restored/reloaded snapshots start cleanly. */
@@ -39,9 +65,11 @@ export function clearSQLiteMemoryCache(): void {
   memoryCache.clear();
   parsedCache.clear();
   _ready = false;
+  _sqliteReady = false;
+  _sqliteInitError = false;
 }
 
-/** Remove device profile failsafes before a full-replace restore so old Preferences never shadow the restored snapshot. */
+/** Remove device profile failsafes and stale localStorage entries before a full-replace restore so old values never shadow the restored snapshot. */
 export async function clearProfileFailsafePreferences(): Promise<void> {
   for (const key of PROFILE_FAILSAFE_KEYS) {
     memoryCache.delete(key);
@@ -49,6 +77,32 @@ export async function clearProfileFailsafePreferences(): Promise<void> {
     if (Capacitor.isNativePlatform()) {
       await Preferences.remove({ key }).catch(() => {});
     }
+  }
+
+  for (const key of RESTORE_CLEAR_LOCALSTORAGE_KEYS) {
+    memoryCache.delete(key);
+    parsedCache.delete(key);
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      for (const key of RESTORE_CLEAR_LOCALSTORAGE_KEYS) {
+        localStorage.removeItem(key);
+      }
+      // Also clear any company_* keys that may have been written previously
+      const companyKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("company_")) {
+          companyKeys.push(k);
+        }
+      }
+      for (const k of companyKeys) {
+        localStorage.removeItem(k);
+        memoryCache.delete(k);
+        parsedCache.delete(k);
+      }
+    } catch {}
   }
 }
 
@@ -86,11 +140,13 @@ function markReady() {
 /**
  * Synchronous read from memory cache (required by useSyncExternalStore).
  * Returns fallback if key not yet loaded.
+ * On native Android, never falls back to WebView localStorage so deleted or
+ * restored SQLite state cannot be shadowed by stale localStorage entries.
  */
 export function getStoredSync(key: string, defaultValue: string = ""): string {
   if (memoryCache.has(key)) return memoryCache.get(key)!;
-  // Browser or Native localStorage fast cache
-  if (typeof window !== "undefined") {
+  // Browser-only localStorage fallback (never shadow SQLite on native Android)
+  if (!Capacitor.isNativePlatform() && typeof window !== "undefined") {
     try {
       const val = localStorage.getItem(key);
       if (val !== null) {
@@ -152,11 +208,13 @@ export async function setStoredItem(key: string, value: string): Promise<void> {
   }
 
   try {
-    const db = await getDb();
-    if (isSequenceKey(key)) {
-      await db.run("INSERT OR REPLACE INTO sequences(key, value) VALUES(?,?)", [key, value]);
-    }
-    await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, value]);
+    await runWithWriteLock(async () => {
+      const db = await dbModule.getDb();
+      if (isSequenceKey(key)) {
+        await db.run("INSERT OR REPLACE INTO sequences(key, value) VALUES(?,?)", [key, value]);
+      }
+      await db.run("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", [key, value]);
+    });
     notifyDataChanged();
   } catch (err) {
     // Roll back in-memory cache to maintain durability & consistency
@@ -172,7 +230,12 @@ export async function setStoredItem(key: string, value: string): Promise<void> {
 
 /** Keys mirrored into the `sequences` table. */
 export function isSequenceKey(key: string): boolean {
-  return key === "future_invoice_seq" || key === "future_proforma_seq";
+  return (
+    key === "future_invoice_seq" ||
+    key === "future_proforma_seq" ||
+    key.startsWith("future_invoice_seq_") ||
+    key.startsWith("future_proforma_seq_")
+  );
 }
 
 /** JSON serialize and persist */
@@ -180,25 +243,35 @@ export async function setStoredJson<T>(key: string, data: T): Promise<void> {
   await setStoredItem(key, JSON.stringify(data));
 }
 
-/** Remove a key from cache and DB */
+/** Remove a key from cache, localStorage, Preferences, and DB */
 export async function removeStoredItem(key: string): Promise<void> {
   memoryCache.delete(key);
   parsedCache.delete(key);
 
-  if (!Capacitor.isNativePlatform()) {
+  if (typeof window !== "undefined") {
     try {
       localStorage.removeItem(key);
     } catch {}
+  }
+
+  if (!Capacitor.isNativePlatform()) {
     return;
   }
 
+  await Preferences.remove({ key }).catch(() => {});
+
   try {
-    const db = await getDb();
-    await db.run("DELETE FROM settings WHERE key = ?", [key]);
-    if (isSequenceKey(key)) {
-      await db.run("DELETE FROM sequences WHERE key = ?", [key]);
-    }
-  } catch {}
+    await runWithWriteLock(async () => {
+      const db = await dbModule.getDb();
+      await db.run("DELETE FROM settings WHERE key = ?", [key]);
+      if (isSequenceKey(key)) {
+        await db.run("DELETE FROM sequences WHERE key = ?", [key]);
+      }
+    });
+    notifyDataChanged();
+  } catch (err) {
+    console.warn(`[SQLiteStorage] removeStoredItem failed for key ${key}:`, err);
+  }
 }
 
 /**
@@ -246,26 +319,21 @@ async function preloadEntityCaches(): Promise<void> {
       { getAllOrders },
       { getAllPrintInvoices },
       { getAllProformaInvoices },
-      { getAllProjects },
-      { getSequence },
     ] = await Promise.all([
       import("./repositories/CustomInvoiceRepository"),
       import("./repositories/CustomerRepository"),
       import("./repositories/OrderRepository"),
       import("./repositories/PrintInvoiceRepository"),
       import("./repositories/ProformaRepository"),
-      import("./repositories/ProjectRepository"),
-      import("./repositories/SettingsRepository"),
     ]);
 
-    const [customInvoices, customers, orders, printInvoices, proformaInvoices, projects] =
+    const [customInvoices, customers, orders, printInvoices, proformaInvoices] =
       await Promise.all([
         getAllCustomInvoices().catch(() => []),
-        getAllCustomers().catch(() => []),
+        getAllCustomers({ includeArchived: true }).catch(() => []),
         getAllOrders().catch(() => []),
         getAllPrintInvoices().catch(() => []),
         getAllProformaInvoices().catch(() => []),
-        getAllProjects().catch(() => []),
       ]);
 
     parsedCache.set("future_custom_invoices_v2", customInvoices);
@@ -273,46 +341,38 @@ async function preloadEntityCaches(): Promise<void> {
     parsedCache.set("future_print_orders_v2", orders);
     parsedCache.set("future_print_invoices_v2", printInvoices);
     parsedCache.set("future_proforma_invoices_v2", proformaInvoices);
-    parsedCache.set("future_print_projects_v1", projects);
 
-    // Load sequences, falling back to the settings mirror written by older builds
-    const db = await getDb();
-    const [invSeq, proformaSeq] = await Promise.all([
-      getSequence("future_invoice_seq").catch(() => ""),
-      getSequence("future_proforma_seq").catch(() => ""),
-    ]);
-    const lookupSequenceInSettings = async (key: string): Promise<string> => {
-      try {
-        const res = await db.query("SELECT value FROM settings WHERE key = ?", [key]);
-        return String(res.values?.[0]?.value ?? "");
-      } catch {
-        return "";
-      }
-    };
-    const [invSeqFromSettings, proformaSeqFromSettings] = await Promise.all([
-      invSeq ? Promise.resolve("") : lookupSequenceInSettings("future_invoice_seq"),
-      proformaSeq ? Promise.resolve("") : lookupSequenceInSettings("future_proforma_seq"),
-    ]);
+    const db = await dbModule.getDb();
 
-    const resolvedInvSeq = invSeq || invSeqFromSettings;
-    const resolvedProformaSeq = proformaSeq || proformaSeqFromSettings;
-
-    if (resolvedInvSeq) memoryCache.set("future_invoice_seq", resolvedInvSeq);
-    if (resolvedProformaSeq) memoryCache.set("future_proforma_seq", resolvedProformaSeq);
-
-    // Repair the sequences table for installs affected by the old writer.
-    if (!invSeq && resolvedInvSeq) {
-      await db.run("INSERT OR REPLACE INTO sequences(key, value) VALUES(?,?)", ["future_invoice_seq", resolvedInvSeq]).catch(() => undefined);
-    }
-    if (!proformaSeq && resolvedProformaSeq) {
-      await db.run("INSERT OR REPLACE INTO sequences(key, value) VALUES(?,?)", ["future_proforma_seq", resolvedProformaSeq]).catch(() => undefined);
-    }
-
-    // Load ALL settings rows into memoryCache (password hash, profile, license, sound, session, etc.)
+    // Load ALL settings rows into memoryCache first (password hash, profile, license, sound, session, company_*, etc.)
     const settingsRes = await db.query("SELECT key, value FROM settings");
     for (const row of settingsRes.values || []) {
       if (row?.key && row?.value !== undefined && row?.value !== null) {
         memoryCache.set(String(row.key), String(row.value));
+      }
+    }
+
+    // Preload ALL rows from sequences (including year-suffixed keys!) into memoryCache
+    const seqRes = await db.query("SELECT key, value FROM sequences");
+    const seqKeysInTable = new Set<string>();
+    for (const row of seqRes.values || []) {
+      if (row?.key && row?.value !== undefined && row?.value !== null) {
+        const key = String(row.key);
+        const val = String(row.value);
+        seqKeysInTable.add(key);
+        memoryCache.set(key, val);
+      }
+    }
+
+    // Repair the sequences table for installs affected by the old settings-only writer.
+    for (const legacySeqKey of ["future_invoice_seq", "future_proforma_seq"] as const) {
+      if (!seqKeysInTable.has(legacySeqKey)) {
+        const fromSettings = memoryCache.get(legacySeqKey);
+        if (fromSettings) {
+          await db
+            .run("INSERT OR REPLACE INTO sequences(key, value) VALUES(?,?)", [legacySeqKey, fromSettings])
+            .catch(() => undefined);
+        }
       }
     }
 
@@ -333,7 +393,7 @@ async function preloadEntityCaches(): Promise<void> {
       }
     }
   } catch (err) {
-    console.warn("[SQLiteStorage] Preload error:", err);
+    console.error("[SQLiteStorage] Preload error:", err);
     // Keep onboarding state alive even if SQLite failed to preload
     for (const key of PROFILE_FAILSAFE_KEYS) {
       try {
@@ -341,6 +401,7 @@ async function preloadEntityCaches(): Promise<void> {
         if (pref.value) memoryCache.set(key, pref.value);
       } catch {}
     }
+    throw err;
   }
 }
 
@@ -350,11 +411,11 @@ async function preloadEntityCaches(): Promise<void> {
  * Replaces the old initNativeStorage() call in main.tsx.
  */
 export async function initSQLiteStorage(): Promise<void> {
+  _sqliteInitError = false;
   try {
     if (Capacitor.isNativePlatform()) {
       // 1. Initialize DB connection + schema
-      const { getDb } = await import("./database");
-      await getDb();
+      await dbModule.getDb();
 
       // 2. Run one-time migration from localStorage → SQLite
       const { runMigration, isMigrationDone } = await import("./database/migration");
@@ -368,11 +429,17 @@ export async function initSQLiteStorage(): Promise<void> {
     // 3. Pre-load all entity data into memory cache
     await preloadEntityCaches();
 
+    if (Capacitor.isNativePlatform()) {
+      _sqliteReady = true;
+    }
+
     // 4. Signal readiness
     markReady();
   } catch (err) {
     console.error("[Storage] Init error:", err);
-    // Still mark ready so app can function in degraded mode
+    _sqliteReady = false;
+    _sqliteInitError = true;
+    // Still signal storage ready so UI can detect hasSQLiteInitError() and handle fail-closed
     markReady();
   }
 }

@@ -10,6 +10,15 @@ import { notifyDataChanged } from "@/lib/backup/notify";
 import type { InvoiceRecord } from "@/lib/invoicesStore";
 import type { InvoiceLine } from "@/lib/invoice/types";
 
+function parseClientTypes(raw: unknown): InvoiceRecord["clientTypes"] {
+  try {
+    const parsed = JSON.parse(typeof raw === "string" && raw ? raw : "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function rowToInvoiceRecord(row: any, lines: any[]): InvoiceRecord {
   return {
     id: row.id,
@@ -19,7 +28,7 @@ function rowToInvoiceRecord(row: any, lines: any[]): InvoiceRecord {
     phone: row.phone || "",
     branch: row.branch || "",
     shipTo: row.ship_to || "",
-    clientTypes: JSON.parse(row.client_types || "[]"),
+    clientTypes: parseClientTypes(row.client_types),
     lines: lines.map(rowToLine),
     total: row.total || 0,
     paidAmount: row.paid_amount || 0,

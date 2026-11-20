@@ -99,7 +99,6 @@ final class BackupStorage {
         Uri uri = Uri.parse(treeUriString);
         if (hasGrant(uri)) {
             prefs().edit().putString(KEY_TREE, treeUriString).putString(KEY_LABEL, describe(uri)).commit();
-            grantedCache = uri;
         }
     }
 
@@ -111,8 +110,6 @@ final class BackupStorage {
         return prefs().getString(KEY_LABEL, "");
     }
 
-    private Uri grantedCache;
-
     /** True when the persisted grants still include this tree URI. */
     boolean hasGrant(Uri uri) {
         if (uri == null) return false;
@@ -122,9 +119,8 @@ final class BackupStorage {
         return false;
     }
 
-    /** Returns the folder URI, or throws with a user-actionable code. */
+    /** Returns the folder URI after live verification of persisted URI & grant, or throws with a user-actionable code. */
     Uri requireFolder() throws FolderUnavailableException {
-        if (grantedCache != null) return grantedCache;
         String stored = getFolderUri();
         if (stored == null || stored.isEmpty()) {
             throw new FolderUnavailableException("NO_FOLDER", "لم يتم تحديد مجلد النسخ الاحتياطي بعد.");
@@ -134,18 +130,23 @@ final class BackupStorage {
             throw new FolderUnavailableException("PERMISSION_LOST", "يجب إعادة منح الوصول إلى مجلد النسخ الاحتياطي.");
         }
         // Probe that the tree is still reachable (folder may have been deleted).
-        try {
-            context.getContentResolver().query(
+        try (
+            Cursor c = context.getContentResolver().query(
                 DocumentsContract.buildChildDocumentsUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri)),
                 new String[] { Document.COLUMN_DOCUMENT_ID },
                 null,
                 null,
                 null
-            ).close();
+            )
+        ) {
+            if (c == null) {
+                throw new FolderUnavailableException("PERMISSION_LOST", "مجلد النسخ الاحتياطي لم يعد متاحاً.");
+            }
+        } catch (FolderUnavailableException e) {
+            throw e;
         } catch (Exception e) {
             throw new FolderUnavailableException("PERMISSION_LOST", "مجلد النسخ الاحتياطي لم يعد متاحاً.");
         }
-        grantedCache = uri;
         return uri;
     }
 
@@ -161,7 +162,6 @@ final class BackupStorage {
                 // grant may already be gone
             }
         }
-        grantedCache = null;
         prefs().edit().remove(KEY_TREE).remove(KEY_LABEL).commit();
     }
 

@@ -138,4 +138,51 @@ describe("customerStatementExport - Professional Enterprise A4 Redesign", () => 
     expect(el.innerHTML).toContain("مؤسسة");
     expect(el.innerHTML).toContain("الحساب متزن بالكامل ومسدد");
   });
+
+  it("escapes XSS payloads across all dynamic customer and ledger fields (SEC-03)", () => {
+    const xssPayload = '<img src=x onerror=alert(1)>';
+    const scriptPayload = '<script>window.__xss=1</script>';
+
+    const xssCustomer: CustomerRecord = {
+      ...mockCustomer,
+      id: `cust-${xssPayload}`,
+      name: `عميل ${xssPayload}`,
+      phone: `0912${xssPayload}`,
+      address: `الخرطوم ${scriptPayload}`,
+    };
+
+    const xssStatement: CustomerStatement = {
+      ...mockStatement,
+      customerId: xssCustomer.id,
+      customerName: xssCustomer.name,
+      lines: [
+        {
+          id: "line-xss",
+          date: `2026-03-01${xssPayload}`,
+          kind: "invoice",
+          label: `فاتورة ${xssPayload}`,
+          notes: `ملاحظة ${scriptPayload}`,
+          reference: `INV-${xssPayload}`,
+          debit: 1000,
+          credit: 0,
+          runningBalance: 1000,
+        },
+      ],
+    };
+
+    const el = buildStatementDomElement(xssStatement, xssCustomer, "SDG");
+
+    // Must not inject any live <script> or malicious <img src="x"> DOM elements
+    expect(el.querySelectorAll("script").length).toBe(0);
+    expect(el.querySelectorAll('img[src="x"]').length).toBe(0);
+
+    // Raw payload must be HTML-escaped in innerHTML
+    expect(el.innerHTML).not.toContain(xssPayload);
+    expect(el.innerHTML).not.toContain(scriptPayload);
+    expect(el.innerHTML).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(el.innerHTML).toContain("&lt;script&gt;window.__xss=1&lt;/script&gt;");
+
+    // Literal text remains readable to the user
+    expect(el.textContent).toContain("عميل <img src=x onerror=alert(1)>");
+  });
 });

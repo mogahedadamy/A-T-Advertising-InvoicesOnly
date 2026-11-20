@@ -3,6 +3,7 @@ import type { CustomInvoice, CustomInvoiceItem, CustomInvoiceType } from "./type
 import type { ProformaInvoice } from "@/lib/proforma/types";
 import { getInvoiceAmountInWords } from "@/lib/currency/amountToWords";
 import { AppCurrency, sanitizeCurrency } from "@/lib/currency/types";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 
 import { Capacitor } from "@capacitor/core";
 import { getStoredJsonSync, setMemoryCacheJson } from "@/lib/sqliteStorage";
@@ -18,13 +19,17 @@ const STORAGE_KEY = "future_custom_invoices_v2";
 export function calculateCustomInvoiceTotals(
   items: CustomInvoiceItem[],
   currency: AppCurrency = "SDG",
-  isRtl = true
+  isRtl = true,
+  discount = 0
 ) {
   const safeItems = Array.isArray(items) ? items : [];
   const totalQty = safeItems.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0);
-  const totalAmount = safeItems.reduce((sum, item) => sum + (Number(item?.total) || 0), 0);
+  const rawSubtotal = safeItems.reduce((sum, item) => sum + (Number(item?.total) || 0), 0);
+  const subtotal = Math.round(rawSubtotal * 100) / 100;
+  const safeDiscount = Math.max(0, Math.round((Number(discount) || 0) * 100) / 100);
+  const totalAmount = Math.max(0, Math.round((subtotal - safeDiscount) * 100) / 100);
   const totalInWords = getInvoiceAmountInWords(totalAmount, currency, isRtl);
-  return { totalQty, totalAmount, totalInWords };
+  return { totalQty, subtotal, totalAmount, totalInWords };
 }
 
 const INITIAL_DEMO_INVOICES: CustomInvoice[] = [];
@@ -51,7 +56,7 @@ function sanitizeCustomInvoice(raw: any): CustomInvoice {
   const meta = {
     serial: String(raw?.meta?.serial || "001"),
     type: (raw?.meta?.type as CustomInvoiceType) || "proforma",
-    date: String(raw?.meta?.date || new Date().toISOString().slice(0, 10)),
+    date: String(raw?.meta?.date || getLocalIsoDate()),
     partyName: String(raw?.meta?.partyName || "عميل غير محدد"),
     partyEnName: raw?.meta?.partyEnName ? String(raw.meta.partyEnName) : undefined,
     attn: raw?.meta?.attn ? String(raw.meta.attn) : undefined,
@@ -79,7 +84,6 @@ function sanitizeCustomInvoice(raw: any): CustomInvoice {
     // The official reference is owned by the repository; the store only mirrors it.
     reference: raw?.reference ? String(raw.reference) : undefined,
     referenceAssignedAt: raw?.referenceAssignedAt ? String(raw.referenceAssignedAt) : undefined,
-    projectId: raw?.projectId ? String(raw.projectId) : undefined,
     customerId: raw?.customerId ? String(raw.customerId) : undefined,
     supplierId: raw?.supplierId ? String(raw.supplierId) : undefined,
     supplierInvoiceNumber: raw?.supplierInvoiceNumber ? String(raw.supplierInvoiceNumber) : undefined,
@@ -194,10 +198,6 @@ async function executeSaveCustomInvoice(invoice: CustomInvoice): Promise<CustomI
   }
   notify();
 
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("project-relations-changed"));
-  }
-
   return record;
 }
 
@@ -237,7 +237,7 @@ export async function deleteCustomInvoice(id: string): Promise<void> {
   snapshot = snapshot.filter((inv) => inv.id !== id);
   notify();
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("project-relations-changed"));
+    window.dispatchEvent(new Event("finance-changed"));
   }
 }
 
@@ -258,7 +258,7 @@ function isConvertedMatchFor(sourceId: string, candidateId: string): boolean {
 
 async function executeConvertProformaToSales(
   source: CustomInvoice | ProformaInvoice,
-  options?: { projectId?: string | null; customerId?: string | null }
+  options?: { customerId?: string | null }
 ): Promise<ConvertToSalesResult> {
   // 1. التحقق من عدم تحويل نفس الفاتورة المبدئية سابقاً إلى فاتورة مبيعات فعّالة
   const activeInMemory = snapshot.find(
@@ -283,7 +283,7 @@ async function executeConvertProformaToSales(
     }
   }
 
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = getLocalIsoDate();
   const now = new Date().toISOString();
   const isCustomProforma = "items" in source;
 
@@ -318,7 +318,6 @@ async function executeConvertProformaToSales(
       totalAmount,
       totalInWords,
       currency,
-      projectId: source.projectId ?? options?.projectId ?? undefined,
       customerId: source.customerId ?? options?.customerId ?? undefined,
       reference: undefined,
       referenceAssignedAt: undefined,
@@ -369,7 +368,6 @@ async function executeConvertProformaToSales(
       totalAmount,
       totalInWords,
       currency,
-      projectId: legacy.projectId ?? options?.projectId ?? undefined,
       customerId: options?.customerId ?? undefined,
       reference: undefined,
       referenceAssignedAt: undefined,
@@ -387,11 +385,11 @@ async function executeConvertProformaToSales(
 
 /**
  * تحويل فاتورة مبدئية (عرض سعر) مباشرة إلى فاتورة مبيعات معتمدة
- * محفوظة في سجل فواتير المبيعات ومربوطة بنفس المشروع والعميل.
+ * محفوظة في سجل فواتير المبيعات ومربوطة بنفس العميل.
  */
 export function convertProformaToSalesInvoice(
   source: CustomInvoice | ProformaInvoice,
-  options?: { projectId?: string | null; customerId?: string | null }
+  options?: { customerId?: string | null }
 ): Promise<ConvertToSalesResult> {
   const existing = inFlightConversions.get(source.id);
   if (existing) return existing;
@@ -417,6 +415,9 @@ export function resetCustomInvoicesStoreForTests(): void {
  * الحفظ لأن المستند يمنع إسناده من حالة واجهة مؤقتة (§5.3.1).
  */
 export function describeReferenceForType(type: CustomInvoiceType): string {
-  const prefix = type === "purchase" ? "PINV" : type === "sales" ? "INV" : "";
-  return prefix ? `${prefix}-DDMMYYYY-NNN` : "—";
+  if (type === "sales" || type === "purchase") {
+    const yy = String(new Date().getFullYear()).slice(-2);
+    return `${yy}-NNNN`;
+  }
+  return "—";
 }

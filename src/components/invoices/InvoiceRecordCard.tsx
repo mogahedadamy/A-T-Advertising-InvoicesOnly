@@ -55,7 +55,7 @@ export const InvoiceRecordCard: React.FC<InvoiceRecordCardProps> = ({
       <div className="flex items-center justify-between border-b border-border/50 pb-2">
         <div className="flex items-center gap-2">
           <span className="font-mono font-black text-foreground text-xs" dir="ltr">
-            {/^(INV|PINV|PRJ|RCV|PAY)-/.test(item.serial) ? item.serial : `#${item.serial}`}
+            {/^(INV|PINV|RCV|PAY)-/.test(item.serial) ? item.serial : `#${item.serial}`}
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-black border ${item.badgeColor}`}

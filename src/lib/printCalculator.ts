@@ -62,11 +62,22 @@ export type CalcOutcome =
   | { ok: true; result: CalcResult }
   | { ok: false; error: string };
 
+function roundMoney(val: number): number {
+  return Math.round(val * 100) / 100;
+}
+
 export function calculate(input: CalcInput): CalcOutcome {
   const { width: w, height: h, qty: q, unitPrice: p, material: mat } = input;
 
-  if (!w || !h) return { ok: false, error: "أدخل العرض والارتفاع" };
-  if (q < 1) return { ok: false, error: "الكمية غير صحيحة" };
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    return { ok: false, error: "أدخل العرض والارتفاع" };
+  }
+  if (!Number.isFinite(q) || q < 1) {
+    return { ok: false, error: "الكمية غير صحيحة" };
+  }
+  if (!Number.isFinite(p) || p < 0) {
+    return { ok: false, error: "السعر غير صحيح" };
+  }
 
   // 1. استيكر إن دور (حساب المتر الصافي المباشر بدون هدر رول)
   if (mat === "indoor_sticker") {
@@ -78,7 +89,7 @@ export function calculate(input: CalcInput): CalcOutcome {
       ok: true,
       result: {
         area,
-        cost: area * p,
+        cost: roundMoney(area * p),
         displayRoll: "صافي طباعة",
         type: "استيكر ان دور",
         material: mat,
@@ -114,7 +125,7 @@ export function calculate(input: CalcInput): CalcOutcome {
       ok: true,
       result: {
         area: best.a,
-        cost: best.a * p,
+        cost: roundMoney(best.a * p),
         displayRoll: `${best.r} سم`,
         type: "رولة استيكر",
         material: mat,
@@ -136,7 +147,7 @@ export function calculate(input: CalcInput): CalcOutcome {
       ok: true,
       result: {
         area,
-        cost: area * p,
+        cost: roundMoney(area * p),
         displayRoll: isWelded ? "لحام مباشر" : "أمتار صافية",
         type: isWelded ? "كوتيد (لحام)" : "كوتيد",
         material: mat,
@@ -177,7 +188,7 @@ export function calculate(input: CalcInput): CalcOutcome {
     ok: true,
     result: {
       area: best.a,
-      cost: best.a * p,
+      cost: roundMoney(best.a * p),
       displayRoll: displayRollName,
       type: "رولة",
       material: mat,
@@ -191,8 +202,10 @@ export function calculate(input: CalcInput): CalcOutcome {
 
 const integerNumberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
-export const formatNumber = (n: number) =>
-  integerNumberFormatter.format(Math.round(Number(n) || 0));
+export const formatNumber = (n: number) => {
+  const val = Number(n);
+  return integerNumberFormatter.format(Number.isFinite(val) ? Math.round(val) : 0);
+};
 
 export const materialLabel = (key: MaterialKey) =>
   MATERIALS.find((m) => m.key === key)?.label ?? key;

@@ -1,7 +1,6 @@
 import type { PageTourGuide } from "../types";
 import { homeGuide } from "./homeGuide";
 import { billingGuide } from "./billingGuide";
-import { projectsGuide } from "./projectsGuide";
 import { ordersGuide } from "./ordersGuide";
 import { reportsGuide } from "./reportsGuide";
 import { financeGuide } from "./financeGuide";
@@ -13,7 +12,6 @@ import { settingsGuide } from "./settingsGuide";
 export const PAGE_GUIDES: Record<string, PageTourGuide> = {
   home: homeGuide,
   billing: billingGuide,
-  projects: projectsGuide,
   orders: ordersGuide,
   reports: reportsGuide,
   finance: financeGuide,
@@ -26,7 +24,6 @@ export const PAGE_GUIDES: Record<string, PageTourGuide> = {
 export const ALL_PAGE_GUIDES_LIST: PageTourGuide[] = [
   homeGuide,
   billingGuide,
-  projectsGuide,
   ordersGuide,
   reportsGuide,
   financeGuide,

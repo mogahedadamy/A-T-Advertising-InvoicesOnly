@@ -244,6 +244,16 @@ describe("PRD §17 — invoice reference acceptance", () => {
     expect(purchase.reference).toBe("26-0002");
   });
 
+  it("saves a purchase invoice without crashing after 70 sales invoices in the same year (FIN-05)", async () => {
+    const { saveCustomInvoice } = await import("@/lib/billing/store");
+    for (let i = 1; i <= 70; i++) {
+      const saved = await saveCustomInvoice(buildInvoice({ id: `sale-70-${i}`, type: "sales", date: "2026-11-11" }));
+      expect(saved.reference).toBe(`26-${String(i).padStart(4, "0")}`);
+    }
+    const purchase = await saveCustomInvoice(buildInvoice({ id: "buy-after-70", type: "purchase", date: "2026-11-11" }));
+    expect(purchase.reference).toBe("26-0071");
+  });
+
   it("does not assign a reference to proforma/billing rows", async () => {
     const { saveCustomInvoice } = await import("@/lib/billing/store");
     const proforma = await saveCustomInvoice(buildInvoice({ id: "pro-1", type: "proforma" }));

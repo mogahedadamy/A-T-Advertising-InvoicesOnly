@@ -5,6 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { CustomerRecord } from "@/lib/customersStore";
 import type { Supplier } from "@/lib/repositories/SupplierRepository";
 import type { CustomerStatement, SupplierStatement } from "@/lib/repositories/ReportsRepository";
+import type { AppCurrency } from "@/lib/currency/types";
+import { CurrencySelector } from "@/components/currency/CurrencySelector";
 import { formatNumber } from "@/lib/printCalculator";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +17,8 @@ interface Props {
   statementSupplierId: string | null;
   statement: CustomerStatement | null;
   supplierStatement: SupplierStatement | null;
+  currency?: AppCurrency;
+  onCurrencyChange?: (c: AppCurrency) => void;
   onSelectCustomer: (id: string | null) => void;
   onSelectSupplier: (id: string | null) => void;
 }
@@ -26,13 +30,22 @@ export function ReportsStatementsView({
   statementSupplierId,
   statement,
   supplierStatement,
+  currency = "SDG",
+  onCurrencyChange,
   onSelectCustomer,
   onSelectSupplier,
 }: Props) {
-  const money = (val: number | undefined) => `${formatNumber(Number(val) || 0)} ج.س`;
+  const curLabel = currency === "SDG" ? "ج.س" : currency;
 
   return (
     <div className="space-y-3.5" dir="rtl">
+      {onCurrencyChange && (
+        <div className="flex items-center justify-between gap-2 rounded-2xl border border-border/80 bg-card p-3 shadow-2xs">
+          <span className="text-xs font-black text-foreground">عملة كشوفات الحساب:</span>
+          <CurrencySelector value={currency} onChange={onCurrencyChange} locale="ar" />
+        </div>
+      )}
+
       {/* كشف حساب العميل */}
       <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs space-y-3">
         <div className="flex items-center gap-1.5 border-b border-border/60 pb-2">
@@ -102,11 +115,12 @@ export function ReportsStatementsView({
         open={Boolean(statementCustomerId)}
         onOpenChange={(open) => !open && onSelectCustomer(null)}
         title={`كشف حساب: ${statement?.customerName ?? ""}`}
+        currencyLabel={curLabel}
         lines={statement?.lines ?? []}
         summary={[
           { label: "إجمالي الفواتير", value: statement?.totalInvoiced ?? 0 },
           { label: "إجمالي التحصيل", value: statement?.totalCollected ?? 0 },
-          { label: "الرصيد المتبقي", value: statement?.outstanding ?? 0 },
+          { label: "الرصيد المتبقي", value: statement?.netBalance ?? statement?.outstanding ?? 0 },
         ]}
       />
 
@@ -115,11 +129,12 @@ export function ReportsStatementsView({
         open={Boolean(statementSupplierId)}
         onOpenChange={(open) => !open && onSelectSupplier(null)}
         title={`كشف حساب المورد: ${supplierStatement?.supplierName ?? ""}`}
+        currencyLabel={curLabel}
         lines={supplierStatement?.lines ?? []}
         summary={[
           { label: "إجمالي المشتريات", value: supplierStatement?.totalPurchased ?? 0 },
           { label: "إجمالي المدفوع", value: supplierStatement?.totalPaid ?? 0 },
-          { label: "المستحق القائم", value: supplierStatement?.outstanding ?? 0 },
+          { label: "المستحق القائم", value: supplierStatement?.netBalance ?? supplierStatement?.outstanding ?? 0 },
         ]}
       />
     </div>
@@ -130,12 +145,14 @@ function StatementModal({
   open,
   onOpenChange,
   title,
+  currencyLabel,
   lines,
   summary,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  currencyLabel: string;
   lines: {
     id: string;
     kind: string;
@@ -158,7 +175,6 @@ function StatementModal({
           </DialogTitle>
         </DialogHeader>
 
-        {/* كروت ملخص الرصيد */}
         <div className="grid grid-cols-3 gap-2 my-2">
           {summary.map((row) => (
             <div
@@ -167,13 +183,12 @@ function StatementModal({
             >
               <p className="text-[10px] text-muted-foreground">{row.label}</p>
               <p className="text-xs font-black tabular-nums text-foreground">
-                {formatNumber(row.value)} ج.س
+                {formatNumber(row.value)} {currencyLabel}
               </p>
             </div>
           ))}
         </div>
 
-        {/* جدول الحركات */}
         {lines.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">لا توجد حركات مسجلة لهذا الحساب.</p>
         ) : (
@@ -201,7 +216,7 @@ function StatementModal({
                     {line.debit > 0 ? `+${formatNumber(line.debit)}` : `-${formatNumber(line.credit)}`}
                   </p>
                   <p className="text-[9.5px] text-muted-foreground tabular-nums">
-                    رصيد: {formatNumber(line.runningBalance)} ج.س
+                    رصيد: {formatNumber(line.runningBalance)} {currencyLabel}
                   </p>
                 </div>
               </div>

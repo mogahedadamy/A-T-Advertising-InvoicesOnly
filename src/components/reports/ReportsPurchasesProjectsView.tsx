@@ -1,24 +1,21 @@
 import React from "react";
-import { Truck, FolderKanban, ArrowLeftRight, CreditCard, DollarSign } from "lucide-react";
+import { Truck, ArrowLeftRight, CreditCard, DollarSign } from "lucide-react";
 import type {
   PurchasesReport,
-  ProjectProfitabilityRow,
   CashMovementReport,
 } from "@/lib/repositories/ReportsRepository";
 import { formatNumber } from "@/lib/printCalculator";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  type: "purchases" | "projects" | "cash";
+  type: "purchases" | "cash";
   purchases: PurchasesReport | null;
-  profitability: ProjectProfitabilityRow[];
   cash: CashMovementReport | null;
 }
 
 export function ReportsPurchasesProjectsView({
   type,
   purchases,
-  profitability,
   cash,
 }: Props) {
   const money = (val: number | undefined) => `${formatNumber(Number(val) || 0)} ج.س`;
@@ -164,87 +161,6 @@ export function ReportsPurchasesProjectsView({
                   <span className="shrink-0 font-black tabular-nums text-foreground">
                     {money(exp.amount)}
                   </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (type === "projects") {
-    return (
-      <div className="space-y-3.5" dir="rtl">
-        <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs space-y-2.5">
-          <div className="flex items-center justify-between border-b border-border/60 pb-2">
-            <div className="flex items-center gap-1.5">
-              <FolderKanban className="h-4 w-4 text-primary" />
-              <h3 className="text-xs sm:text-sm font-black text-foreground">
-                تحليل هوامش وربحية المشاريع
-              </h3>
-            </div>
-            <span className="text-xs font-bold text-muted-foreground">
-              {profitability.length} مشروع
-            </span>
-          </div>
-
-          {profitability.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/70 p-6 text-center">
-              <p className="text-xs text-muted-foreground">لا توجد مشاريع مسجلة في هذه الفترة.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
-              {profitability.map((row) => (
-                <div
-                  key={row.projectId}
-                  className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs space-y-1.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="min-w-0 truncate font-black text-foreground text-[12.5px]">
-                      <span className="font-mono text-primary" dir="ltr">
-                        {row.reference}
-                      </span>{" "}
-                      · {row.title}
-                    </p>
-                    <span
-                      className={cn(
-                        "shrink-0 text-xs font-black tabular-nums px-2 py-0.5 rounded-lg border",
-                        row.margin < 0
-                          ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
-                          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                      )}
-                    >
-                      الهامش: {money(row.margin)}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-                    <div>
-                      <span>العميل: </span>
-                      <span className="font-bold text-foreground">{row.customerName}</span>
-                    </div>
-                    <div>
-                      <span>الإيراد: </span>
-                      <span className="font-bold text-foreground">{formatNumber(row.revenue)}</span>
-                    </div>
-                    <div>
-                      <span>التكاليف: </span>
-                      <span className="font-bold text-foreground">{formatNumber(row.directCosts)}</span>
-                    </div>
-                    <div>
-                      <span>المحصل: </span>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                        {formatNumber(row.collected)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {!row.isComplete && (
-                    <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2 py-0.5">
-                      ⚠️ هامش غير مكتمل — {row.missing[0]}
-                    </p>
-                  )}
                 </div>
               ))}
             </div>

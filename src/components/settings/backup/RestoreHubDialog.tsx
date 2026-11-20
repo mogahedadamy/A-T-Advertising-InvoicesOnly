@@ -15,8 +15,6 @@ import {
   AlertTriangle,
   UploadCloud,
   Loader2,
-  ChevronDown,
-  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { playTapSound } from "@/lib/soundEffects";
@@ -30,6 +28,7 @@ import {
   formatRelative,
   STATUS_LABEL,
 } from "./types";
+import { RestoreArchiveSelector, RestoreSuccessView } from "./RestoreHubParts";
 
 interface RestoreHubDialogProps {
   open: boolean;
@@ -50,7 +49,6 @@ export function RestoreHubDialog({
   onOpenChange,
   backups,
   currentInvoiceCount,
-  currentSchemaVersion,
   busy,
   onRestore,
   onImportExternal,
@@ -62,33 +60,34 @@ export function RestoreHubDialog({
   const [restoreMode, setRestoreMode] = useState<RestoreMode>("replace");
   const [showOtherBackups, setShowOtherBackups] = useState(false);
 
-  // Auto-select the best backup on open, giving priority to initialSelected
+  // Auto-select the best backup on open without overriding manual user selections
   useEffect(() => {
-    if (open) {
-      if (initialSelected) {
-        setSelectedFile(initialSelected);
-        return;
-      }
-      if (backups.length > 0 && !selectedFile) {
-        // Find newest backup with data, or fallback to first verified
-        const best =
-          backups.find((b) => {
-            const invCount =
-              b.manifest?.invoiceCount ?? countInvoices(b.manifest?.counts);
-            return b.status === "verified" && invCount > 0;
-          }) ||
-          backups.find((b) => b.status === "verified") ||
-          backups[0];
-
-        if (best) {
-          setSelectedFile(best);
-        }
-      }
-    } else {
+    if (!open) {
       setSelectedFile(null);
       setShowOtherBackups(false);
+      return;
     }
-  }, [open, backups, selectedFile, initialSelected]);
+    if (initialSelected) {
+      setSelectedFile(initialSelected);
+      return;
+    }
+    setSelectedFile((prev) => {
+      if (prev && backups.some((b) => b.fileName === prev.fileName)) {
+        return prev;
+      }
+      if (backups.length === 0) return null;
+      return (
+        backups.find((b) => {
+          const invCount =
+            b.manifest?.invoiceCount ?? countInvoices(b.manifest?.counts);
+          return b.status === "verified" && invCount > 0;
+        }) ||
+        backups.find((b) => b.status === "verified") ||
+        backups[0] ||
+        null
+      );
+    });
+  }, [open, backups, initialSelected]);
 
   const handleSelectFile = (file: BackupFileInfo) => {
     playTapSound();
@@ -131,52 +130,12 @@ export function RestoreHubDialog({
         </DialogHeader>
 
         {successResult ? (
-          /* Success state */
-          <div className="py-4 space-y-4 text-center">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-              <CheckCircle2 className="h-8 w-8" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-black text-foreground">
-                تمت استعادة البيانات بنجاح!
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                تم تحديث جميع السجلات والفواتير المحفوظة في قاعدة البيانات.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border/80 bg-muted/30 p-3 text-xs space-y-1.5 text-right font-medium">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">الفواتير المستعادة:</span>
-                <span className="font-bold text-foreground font-mono">
-                  {successResult.counts.custom_invoices ?? 0}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">العروض المبدئية:</span>
-                <span className="font-bold text-foreground font-mono">
-                  {successResult.counts.proforma_invoices ?? 0}
-                </span>
-              </div>
-              {successResult.safetyBackupId && (
-                <p className="text-[11px] text-emerald-700 dark:text-emerald-300 pt-1 border-t border-border/40 font-bold">
-                  ✓ تم حفظ نسخة أمان تلقائية للبيانات السابقة قبل التطبيق.
-                </p>
-              )}
-            </div>
-
-            <Button
-              type="button"
-              onClick={onCloseSuccess}
-              className="w-full h-11 rounded-2xl font-black text-xs bg-primary text-primary-foreground shadow-sm active:scale-[0.98] touch-manipulation"
-            >
-              إتمام والعودة للتطبيق
-            </Button>
-          </div>
+          <RestoreSuccessView
+            successResult={successResult}
+            onCloseSuccess={onCloseSuccess}
+          />
         ) : (
-          /* Normal restore view */
           <div className="py-2 space-y-4">
-            {/* 1. Main Selected Backup Card */}
             {selectedFile ? (
               <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-card to-amber-500/5 p-4 space-y-3 relative overflow-hidden shadow-sm">
                 <div className="flex items-center justify-between gap-2">
@@ -229,63 +188,14 @@ export function RestoreHubDialog({
               </div>
             )}
 
-            {/* 2. Switch backup dropdown / selector */}
-            {backups.length > 1 && (
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowOtherBackups((prev) => !prev)}
-                  className="flex items-center justify-between w-full text-xs font-bold text-primary hover:underline px-1 py-0.5"
-                >
-                  <span className="flex items-center gap-1">
-                    <span>اختيار نسخة أخرى من الأرشيف ({backups.length} نسخة متوفرة)</span>
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 transition-transform duration-200",
-                      showOtherBackups ? "rotate-180" : ""
-                    )}
-                  />
-                </button>
+            <RestoreArchiveSelector
+              backups={backups}
+              selectedFile={selectedFile}
+              showOtherBackups={showOtherBackups}
+              onToggleShowOther={() => setShowOtherBackups((prev) => !prev)}
+              onSelectFile={handleSelectFile}
+            />
 
-                {showOtherBackups && (
-                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-2 space-y-1 max-h-48 overflow-y-auto">
-                    {backups.map((b) => {
-                      const count =
-                        b.manifest?.invoiceCount ?? countInvoices(b.manifest?.counts);
-                      const isSelected = selectedFile?.fileName === b.fileName;
-                      return (
-                        <button
-                          key={b.fileName}
-                          type="button"
-                          onClick={() => handleSelectFile(b)}
-                          className={cn(
-                            "w-full text-right p-2 rounded-xl text-xs flex items-center justify-between transition-colors",
-                            isSelected
-                              ? "bg-primary text-primary-foreground font-black"
-                              : "hover:bg-muted text-foreground font-medium"
-                          )}
-                        >
-                          <div className="min-w-0 flex-1 truncate pl-2">
-                            <p className="truncate text-xs font-bold">
-                              {formatDateTime(b.manifest?.createdAt)}
-                            </p>
-                            <p className="text-[10px] opacity-80" dir="ltr">
-                              {b.fileName}
-                            </p>
-                          </div>
-                          <span className="text-[10px] font-mono shrink-0">
-                            {count} فاتورة
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* External File Button */}
             <Button
               type="button"
               variant="outline"
@@ -297,7 +207,6 @@ export function RestoreHubDialog({
               <span>استعراض واستيراد ملف خارجي (.tabk / .json)</span>
             </Button>
 
-            {/* 3. Restore Mode Selection */}
             <div className="space-y-2 pt-1 border-t border-border/50">
               <label className="text-xs font-black text-foreground block">
                 طريقة الاستعادة:
@@ -357,7 +266,6 @@ export function RestoreHubDialog({
               </div>
             </div>
 
-            {/* 4. Action Buttons */}
             <DialogFooter className="gap-2 pt-3 border-t border-border/50 flex-col sm:flex-row">
               <Button
                 type="button"

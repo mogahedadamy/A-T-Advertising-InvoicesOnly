@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { X, Calendar, User, ChevronDown, ChevronUp, FolderGit2, Building, Users, Link2, Unlink } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { X, Calendar, User, Users, Link2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,10 +7,9 @@ import type { CustomInvoiceType } from "@/lib/billing/types";
 import { AppCurrency } from "@/lib/currency/types";
 import { CurrencySelector } from "@/components/currency/CurrencySelector";
 import { useCustomers, type CustomerRecord } from "@/lib/customersStore";
-import { getProjectsSnapshot } from "@/lib/projectsStore";
 import { CustomerPickerModal } from "@/components/customers/CustomerPickerModal";
-import { ProjectPicker } from "@/components/projects/ProjectPicker";
-import { SupplierPicker } from "@/components/suppliers/SupplierPicker";
+import { CustomInvoiceAdvancedFields } from "./CustomInvoiceAdvancedFields";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import { playTapSound } from "@/lib/soundEffects";
 
 interface Props {
@@ -31,20 +30,12 @@ interface Props {
   setCurrency: (v: AppCurrency) => void;
   customerId?: string | null;
   setCustomerId?: (id: string | null) => void;
-  projectId?: string | null;
-  setProjectId?: (id: string | null) => void;
   supplierId?: string | null;
   setSupplierId?: (id: string | null) => void;
   supplierInvoiceNumber?: string;
   setSupplierInvoiceNumber?: (v: string) => void;
 }
 
-/**
- * قسم البيانات الأساسية الموحد للفاتورة (الخطوة 1):
- * - إدخال سلس وسريع لاسم العميل والتاريخ والعملة واللغة
- * - إكمال تلقائي فوري ورقاقات سريعة للعملاء المتكررين
- * - تجميع كافة البيانات المتقدمة (المشروع، Attn، الاسم بالإنجليزية) في قسم اختياري قابل للطي
- */
 export function CustomInvoiceMetaSection({
   type,
   partyName,
@@ -63,8 +54,6 @@ export function CustomInvoiceMetaSection({
   setCurrency,
   customerId,
   setCustomerId,
-  projectId,
-  setProjectId,
   supplierId,
   setSupplierId,
   supplierInvoiceNumber,
@@ -75,8 +64,20 @@ export function CustomInvoiceMetaSection({
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(
-    Boolean(attn.trim() || partyEnName.trim() || projectId || (isPurchase && (supplierId || supplierInvoiceNumber?.trim())))
+    Boolean(attn.trim() || partyEnName.trim() || (isPurchase && (supplierId || supplierInvoiceNumber?.trim())))
   );
+  const suggestionsWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showSuggestions) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (suggestionsWrapRef.current && !suggestionsWrapRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showSuggestions]);
 
   const linkedCustomer = !isPurchase && customerId ? customers.find((c) => c.id === customerId) : null;
 
@@ -92,8 +93,6 @@ export function CustomInvoiceMetaSection({
           .slice(0, 5)
       : [];
 
-  const quickCustomers = !isPurchase ? customers.slice(0, 4) : [];
-
   const handleSelectCustomer = (customer: CustomerRecord) => {
     playTapSound();
     setPartyName(customer.name);
@@ -105,10 +104,10 @@ export function CustomInvoiceMetaSection({
     playTapSound();
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    setDate(d.toISOString().split("T")[0]);
+    setDate(getLocalIsoDate(d));
   };
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalIsoDate();
 
   return (
     <div
@@ -131,9 +130,7 @@ export function CustomInvoiceMetaSection({
           </p>
         </div>
 
-        {/* محدد لغة الفاتورة والعملة */}
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          {/* محدد لغة القالب */}
           <div className="inline-flex rounded-xl border border-border/80 bg-secondary/60 p-0.5 shadow-2xs">
             {(["ar", "auto", "en"] as const).map((l) => (
               <button
@@ -151,7 +148,6 @@ export function CustomInvoiceMetaSection({
             ))}
           </div>
 
-          {/* محدد العملة */}
           <CurrencySelector
             value={currency}
             onChange={setCurrency}
@@ -169,7 +165,6 @@ export function CustomInvoiceMetaSection({
             <span className="text-rose-500 font-bold">*</span>
           </Label>
 
-          {/* شارة الربط بملف العميل عند اختياره */}
           {!isPurchase && linkedCustomer && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black animate-in fade-in">
               <Link2 className="h-3 w-3" />
@@ -190,15 +185,13 @@ export function CustomInvoiceMetaSection({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* حقل اسم العميل للكتابة اليدوية الحرة */}
-          <div className="relative flex-1">
+          <div ref={suggestionsWrapRef} className="relative flex-1">
             <Input
               value={partyName}
               onChange={(e) => {
                 const val = e.target.value;
                 setPartyName(val);
                 setShowSuggestions(true);
-                // إذا كان هناك ربط سابق بعميل وعدل المستخدم الاسم يدوياً:
                 if (customerId && setCustomerId) {
                   const currentLinked = customers.find((c) => c.id === customerId);
                   if (currentLinked && currentLinked.name.trim().toLowerCase() !== val.trim().toLowerCase()) {
@@ -207,6 +200,9 @@ export function CustomInvoiceMetaSection({
                 }
               }}
               onFocus={() => setShowSuggestions(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setShowSuggestions(false);
+              }}
               placeholder={
                 isPurchase
                   ? "اكتب اسم المورد أو المحل التجاري..."
@@ -222,6 +218,7 @@ export function CustomInvoiceMetaSection({
                 onClick={() => {
                   setPartyName("");
                   if (setCustomerId) setCustomerId(null);
+                  setShowSuggestions(false);
                 }}
                 aria-label="مسح الاسم"
                 className="absolute left-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
@@ -254,7 +251,6 @@ export function CustomInvoiceMetaSection({
             )}
           </div>
 
-          {/* زر العملاء المستقل الواضح في القسم الرئيسي */}
           {!isPurchase && (
             <Button
               type="button"
@@ -327,101 +323,22 @@ export function CustomInvoiceMetaSection({
         </div>
       </div>
 
-      {/* 4. قسم الخيارات الإضافية القابل للطي (المشروع، Attn، الإنجليزية، رقم المورد) */}
-      <div className="pt-1">
-        <button
-          type="button"
-          onClick={() => {
-            playTapSound();
-            setShowAdvanced(!showAdvanced);
-          }}
-          className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition cursor-pointer py-1"
-        >
-          {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          <span>{showAdvanced ? "إخفاء الخيارات الإضافية" : "خيارات إضافية (ربط بمشروع، عناية المسؤول Attn، الاسم بالإنجليزية)"}</span>
-        </button>
+      {/* 4. قسم الخيارات الإضافية القابل للطي */}
+      <CustomInvoiceAdvancedFields
+        isPurchase={isPurchase}
+        showAdvanced={showAdvanced}
+        onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
+        attn={attn}
+        setAttn={setAttn}
+        partyEnName={partyEnName}
+        setPartyEnName={setPartyEnName}
+        supplierId={supplierId}
+        setSupplierId={setSupplierId}
+        supplierInvoiceNumber={supplierInvoiceNumber}
+        setSupplierInvoiceNumber={setSupplierInvoiceNumber}
+        onSupplierSelectedName={setPartyName}
+      />
 
-        {showAdvanced && (
-          <div className="space-y-3 pt-2.5 animate-in fade-in duration-150 border-t border-border/40 mt-1">
-            {setProjectId && (
-              <ProjectPicker
-                value={projectId ?? null}
-                onChange={(nextProjId) => {
-                  setProjectId(nextProjId);
-                  if (!isPurchase && nextProjId && setCustomerId) {
-                    const linkedProj = getProjectsSnapshot().find((p) => p.id === nextProjId);
-                    if (linkedProj?.customerId) {
-                      const linkedCust = customers.find((c) => c.id === linkedProj.customerId);
-                      if (linkedCust) {
-                        setCustomerId(linkedCust.id);
-                        if (!partyName.trim()) {
-                          setPartyName(linkedCust.name);
-                        }
-                      }
-                    }
-                  }
-                }}
-                label="المشروع المرتبط (اختياري)"
-                hint="ربط الفاتورة بمشروع معين لربط إيراداتها وحساباتها مع مساحة عمل المشروع."
-              />
-            )}
-
-            {isPurchase && setSupplierId && (
-              <div className="space-y-2">
-                <SupplierPicker
-                  value={supplierId ?? null}
-                  onChange={(nextId, supplier) => {
-                    setSupplierId(nextId);
-                    if (supplier) setPartyName(supplier.name);
-                  }}
-                />
-                {setSupplierInvoiceNumber && (
-                  <div className="space-y-1">
-                    <Label className="text-[10.5px] font-bold text-muted-foreground block text-right">
-                      رقم فاتورة المورد الأصلي
-                    </Label>
-                    <Input
-                      value={supplierInvoiceNumber || ""}
-                      onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                      placeholder="كما ورد من المورد أو المحل"
-                      className="h-9.5 text-xs rounded-xl font-medium bg-background text-right"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-[10.5px] font-bold text-muted-foreground block text-right">
-                  عناية السيد / المسؤول (Attn)
-                </Label>
-                <Input
-                  value={attn}
-                  onChange={(e) => setAttn(e.target.value)}
-                  placeholder="مثال: مدير المشتريات، المهندس المشرف..."
-                  className="h-9.5 text-xs rounded-xl font-medium bg-background text-right"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-[10.5px] font-bold text-muted-foreground block text-right">
-                  الاسم بالإنجليزية (Customer EN)
-                </Label>
-                <Input
-                  value={partyEnName}
-                  onChange={(e) => setPartyEnName(e.target.value)}
-                  placeholder="e.g. Al-Amal Co."
-                  className="h-9.5 text-xs rounded-xl font-mono bg-background text-left"
-                  dir="ltr"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* نافذة اختيار العميل المنبثقة السريعة */}
       {!isPurchase && (
         <CustomerPickerModal
           open={customerPickerOpen}

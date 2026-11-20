@@ -63,9 +63,9 @@ public class BackupWorker extends Worker {
                     return Result.retry();
                 }
                 return Result.success();
-            } else if ("PERMISSION_LOST".equals(state)) {
+            } else if ("permission-lost".equals(state) || "PERMISSION_LOST".equals(state)) {
                 notifyPermissionLost(ctx);
-            } else if ("NO_FOLDER".equals(state)) {
+            } else if ("folder-not-selected".equals(state) || "NO_FOLDER".equals(state)) {
                 // Nothing to do until the user chooses a folder: success, not retry,
                 // so WorkManager does not spin on a guarantee that cannot be met.
                 return Result.success();

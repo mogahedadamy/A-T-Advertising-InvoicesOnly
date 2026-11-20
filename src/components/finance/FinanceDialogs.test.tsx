@@ -52,12 +52,6 @@ vi.mock("@/lib/customersStore", () => ({
   },
 }));
 
-vi.mock("@/lib/projectsStore", () => ({
-  useProjects: () => [
-    { id: "proj-1", reference: "PRJ-01", title: "مشروع لوحات", customerId: "cust-1", customerName: "شركة النور" },
-  ],
-}));
-
 import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
 import { runPendingMigrations } from "@/lib/database/migrations";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
@@ -86,13 +80,13 @@ function seedCustomer(id: string, name: string) {
   });
 }
 
-function seedSalesInvoice(id: string, reference: string, customerId: string | null, customerName: string, total: number, projectId: string | null = null) {
+function seedSalesInvoice(id: string, reference: string, customerId: string | null, customerName: string, total: number) {
   db.db
     .prepare(
-      `INSERT INTO custom_invoices(id, serial, reference, type, date, customer_id, project_id, party_name, total_amount, created_at, updated_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO custom_invoices(id, serial, reference, type, date, customer_id, party_name, total_amount, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?)`
     )
-    .run(id, reference, reference, "sales", TODAY, customerId, projectId, customerName, total, NOW, NOW);
+    .run(id, reference, reference, "sales", TODAY, customerId, customerName, total, NOW, NOW);
 }
 
 beforeEach(async () => {
@@ -107,11 +101,8 @@ beforeEach(async () => {
   await getDefaultAccountId();
 
   seedCustomer("cust-1", "شركة النور");
-  db.db
-    .prepare("INSERT OR REPLACE INTO projects(id, reference, title, customer_id, created_at, updated_at) VALUES(?,?,?,?,?,?)")
-    .run("proj-1", "PRJ-01", "مشروع لوحات", "cust-1", NOW, NOW);
-  seedSalesInvoice("inv-1", "261112S001", "cust-1", "شركة النور", 1000, "proj-1");
-  seedSalesInvoice("inv-2", "261112S002", "cust-1", "شركة النور", 500, "proj-1");
+  seedSalesInvoice("inv-1", "261112S001", "cust-1", "شركة النور", 1000);
+  seedSalesInvoice("inv-2", "261112S002", "cust-1", "شركة النور", 500);
 });
 
 afterEach(() => {
@@ -120,11 +111,10 @@ afterEach(() => {
 });
 
 describe("ReceiptDialog & FinancePage integration", () => {
-  it("returns customerId and projectId in getOpenSalesInvoices", async () => {
+  it("returns customerId in getOpenSalesInvoices", async () => {
     const open = await getOpenSalesInvoices();
     expect(open).toHaveLength(2);
     expect(open[0].customerId).toBe("cust-1");
-    expect(open[0].projectId).toBe("proj-1");
     expect(open[0].settlement.outstanding).toBeGreaterThan(0);
   });
 

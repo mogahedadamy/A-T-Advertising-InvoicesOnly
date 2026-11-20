@@ -7,6 +7,7 @@
  */
 
 import { getDb } from "@/lib/database";
+import { getLocalIsoDate } from "@/lib/dateUtils";
 import { notifyDataChanged } from "@/lib/backup/notify";
 import { appendAuditEntry } from "@/lib/repositories/AuditLogRepository";
 import type { CustomerRecord, CustomerType } from "@/lib/customersStore";
@@ -145,42 +146,34 @@ export async function upsertCustomer(customer: CustomerRecord): Promise<void> {
 /**
  * Checks if a customer can be safely deleted permanently.
  * STRICT SAFETY RULE: Deletion is forbidden if the customer has ANY historical
- * transactions (invoices, payments, or projects) even if their balance is zero.
+ * transactions (invoices or payments) even if their balance is zero.
  */
 export async function canDeleteCustomer(customerId: string): Promise<{
   allowed: boolean;
   reason?: string;
   invoiceCount: number;
   paymentCount: number;
-  projectCount: number;
 }> {
   const db = await getDb();
 
   const invRes = await db.query(
-    "SELECT COUNT(*) AS c FROM custom_invoices WHERE customer_id = ? AND cancelled_at IS NULL",
+    "SELECT COUNT(*) AS c FROM custom_invoices WHERE customer_id = ?",
     [customerId]
   );
   const invoiceCount = Number(invRes.values?.[0]?.c) || 0;
 
   const payRes = await db.query(
-    "SELECT COUNT(*) AS c FROM customer_payments WHERE customer_id = ? AND cancelled_at IS NULL",
+    "SELECT COUNT(*) AS c FROM customer_payments WHERE customer_id = ?",
     [customerId]
   );
   const paymentCount = Number(payRes.values?.[0]?.c) || 0;
 
-  const prjRes = await db.query(
-    "SELECT COUNT(*) AS c FROM projects WHERE customer_id = ? AND cancelled_at IS NULL",
-    [customerId]
-  );
-  const projectCount = Number(prjRes.values?.[0]?.c) || 0;
-
-  if (invoiceCount > 0 || paymentCount > 0 || projectCount > 0) {
+  if (invoiceCount > 0 || paymentCount > 0) {
     return {
       allowed: false,
-      reason: `لا يمكن حذف هذا العميل لوجود معاملات مالية وتاريخية مسجلة (${invoiceCount} فاتورة، ${paymentCount} دفعة/تحصيل، ${projectCount} مشروع). يُرجى استخدام الأرشفة بدلاً من الحذف للحفاظ على السجلات التاريخية.`,
+      reason: `لا يمكن حذف هذا العميل لوجود معاملات مالية وتاريخية مسجلة (${invoiceCount} فاتورة، ${paymentCount} دفعة/تحصيل). يُرجى استخدام الأرشفة بدلاً من الحذف للحفاظ على السجلات التاريخية.`,
       invoiceCount,
       paymentCount,
-      projectCount,
     };
   }
 
@@ -188,7 +181,6 @@ export async function canDeleteCustomer(customerId: string): Promise<{
     allowed: true,
     invoiceCount: 0,
     paymentCount: 0,
-    projectCount: 0,
   };
 }
 
@@ -247,7 +239,9 @@ export async function reconcileCustomerInvoices(customerId: string, customerName
     const res = await db.query(
       `SELECT id FROM custom_invoices
         WHERE customer_id IS NULL
+          AND type = 'sales'
           AND cancelled_at IS NULL
+          AND TRIM(COALESCE(party_name, '')) <> ''
           AND LOWER(TRIM(party_name)) = LOWER(TRIM(?))`,
       [trimmed]
     );
@@ -285,7 +279,6 @@ export interface CustomerFinancialProfile {
   statusBg: string;
   lastTransactionDate?: string;
   totalInvoicesCount: number;
-  totalProjectsCount: number;
   totalPaidAllCurrencies: number;
   totalOutstandingAllCurrencies: number;
 }
@@ -299,7 +292,7 @@ export async function getCustomerFinancialSummary(customerId: string): Promise<C
   const db = await getDb();
   const customer = await getCustomerById(customerId);
   const customerName = customer?.name || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalIsoDate();
 
   // 1. Fetch all active sales invoices for this customer
   const invoicesRes = await db.query(
@@ -326,9 +319,11 @@ export async function getCustomerFinancialSummary(customerId: string): Promise<C
             COALESCE(alloc_agg.allocated, 0) AS allocated
        FROM customer_payments p
        LEFT JOIN (
-         SELECT payment_id, SUM(amount) AS allocated
-           FROM customer_payment_allocations
-          GROUP BY payment_id
+         SELECT a.payment_id, SUM(a.amount) AS allocated
+           FROM customer_payment_allocations a
+           JOIN custom_invoices i ON i.id = a.invoice_id
+          WHERE i.cancelled_at IS NULL
+          GROUP BY a.payment_id
        ) alloc_agg ON alloc_agg.payment_id = p.id
       WHERE p.customer_id = ? AND p.cancelled_at IS NULL
       ORDER BY p.paid_at DESC`,
@@ -336,14 +331,7 @@ export async function getCustomerFinancialSummary(customerId: string): Promise<C
   );
   const payments = paymentsRes.values || [];
 
-  // 3. Fetch linked projects count
-  const prjRes = await db.query(
-    "SELECT COUNT(*) AS c FROM projects WHERE customer_id = ? AND cancelled_at IS NULL",
-    [customerId]
-  );
-  const totalProjectsCount = Number(prjRes.values?.[0]?.c) || 0;
-
-  // 4. Group by currency
+  // 3. Group by currency
   const currenciesSet = new Set<string>(["SDG"]);
   if (customer?.openingBalanceCurrency) currenciesSet.add(customer.openingBalanceCurrency);
   for (const inv of invoices) {
@@ -415,15 +403,16 @@ export async function getCustomerFinancialSummary(customerId: string): Promise<C
 
     const netOwed = Math.max(0, totalInvoiced + openingDebit - totalAllocatedAmount);
     const unallocatedCash = Math.max(0, totalPaymentsAmount - totalAllocatedAmount);
-    const advanceCredit = round2(unallocatedCash + openingCredit);
-    const outstanding = round2(Math.max(0, netOwed - advanceCredit));
+    const availableCredit = unallocatedCash + openingCredit;
+    const outstanding = round2(Math.max(0, netOwed - availableCredit));
+    const advanceCredit = round2(Math.max(0, availableCredit - netOwed));
 
     summariesByCurrency[cur] = {
       currency: cur,
       totalInvoiced: round2(totalInvoiced + openingDebit),
       totalPaid: round2(totalPaid),
       outstanding,
-      advanceCredit: outstanding === 0 ? advanceCredit : 0,
+      advanceCredit,
       totalInvoicesCount,
       paidInvoicesCount,
       partialInvoicesCount,
@@ -480,7 +469,6 @@ export async function getCustomerFinancialSummary(customerId: string): Promise<C
     statusBg,
     lastTransactionDate,
     totalInvoicesCount: invoices.length,
-    totalProjectsCount,
     totalPaidAllCurrencies: round2(totalPaidAllCurrencies),
     totalOutstandingAllCurrencies: round2(totalOutstandingAllCurrencies),
   };
@@ -499,8 +487,6 @@ export interface CustomerInvoiceItemRow {
   status: "paid" | "partial" | "unpaid" | "overdue";
   statusLabel: string;
   statusBadgeColor: string;
-  projectId?: string;
-  projectReference?: string;
   notes?: string;
 }
 
@@ -520,7 +506,7 @@ export async function getAllCustomerFinancialSummaries(): Promise<
   >
 > {
   const db = await getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalIsoDate();
 
   const invRes = await db.query(
     `SELECT i.customer_id,
@@ -568,12 +554,12 @@ export async function getAllCustomerFinancialSummaries(): Promise<
     const cid = String(r.customer_id);
     const invoiced = Number(r.total_invoiced) || 0;
     const paid = Number(r.total_paid) || 0;
-    const collected = payMap.get(cid) ?? paid;
+    const collected = Math.max(payMap.get(cid) || 0, paid);
     const op = custMap.get(cid);
     const opDebit = op && op.type === "debit" ? op.opening : 0;
     const opCredit = op && op.type === "credit" ? op.opening : 0;
 
-    const outstanding = Math.max(0, invoiced + opDebit - paid - opCredit);
+    const outstanding = Math.max(0, invoiced + opDebit - collected - opCredit);
     map[cid] = {
       invoiced: round2(invoiced + opDebit),
       collected: round2(collected + opCredit),
@@ -582,11 +568,13 @@ export async function getAllCustomerFinancialSummaries(): Promise<
     };
   }
 
-  for (const [cid, op] of custMap.entries()) {
+  const extraCustomerIds = new Set<string>([...custMap.keys(), ...payMap.keys()]);
+  for (const cid of extraCustomerIds) {
     if (!map[cid]) {
+      const op = custMap.get(cid);
       const collected = payMap.get(cid) || 0;
-      const opDebit = op.type === "debit" ? op.opening : 0;
-      const opCredit = op.type === "credit" ? op.opening : 0;
+      const opDebit = op && op.type === "debit" ? op.opening : 0;
+      const opCredit = op && op.type === "credit" ? op.opening : 0;
       map[cid] = {
         invoiced: round2(opDebit),
         collected: round2(collected + opCredit),
@@ -606,15 +594,13 @@ export async function getCustomerInvoicesList(customerId: string): Promise<Custo
   const db = await getDb();
   const customer = await getCustomerById(customerId);
   const customerName = customer?.name || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalIsoDate();
 
   const res = await db.query(
     `SELECT i.id, i.reference, i.serial, i.date, i.due_date, i.total_amount,
-            i.currency, i.project_id, i.notes,
-            p.reference AS project_reference,
+            i.currency, i.notes,
             COALESCE(paid_agg.paid, 0) AS paid
        FROM custom_invoices i
-       LEFT JOIN projects p ON p.id = i.project_id
        LEFT JOIN (
          SELECT a.invoice_id, SUM(a.amount) AS paid
            FROM customer_payment_allocations a
@@ -672,8 +658,6 @@ export async function getCustomerInvoicesList(customerId: string): Promise<Custo
       status,
       statusLabel,
       statusBadgeColor,
-      projectId: row.project_id ? String(row.project_id) : undefined,
-      projectReference: row.project_reference ? String(row.project_reference) : undefined,
       notes: row.notes ? String(row.notes) : undefined,
     };
   });

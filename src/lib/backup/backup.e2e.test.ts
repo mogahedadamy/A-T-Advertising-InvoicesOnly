@@ -23,7 +23,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CREATE_SCHEMA_V1 } from "@/lib/database/schema";
+import { CREATE_SCHEMA_V1, DB_VERSION } from "@/lib/database/schema";
 import { FixtureDatabase, closeAllFixtures } from "@/test/backup/fixtureDb";
 import { NodeBackupEngine } from "@/test/backup/nodeEngine";
 import { dailyKey, localCalendar, planRetention } from "@/lib/backup/retention";
@@ -144,7 +144,7 @@ async function freshWorkspace(options: { wal?: boolean; key?: Uint8Array } = {})
   const engine = new NodeBackupEngine({
     folderDir,
     dbDir,
-    currentSchema: 3,
+    currentSchema: DB_VERSION,
     key: options.key,
     retention: { daily: 7, weekly: 4, monthly: 12, keepMinimum: 2 },
   });
@@ -254,7 +254,7 @@ describe("Scenario: creating invoices, backing up and restoring them", () => {
     state.dirDb = reinstallDir;
     expect(countInvoices()).toBe(0);
 
-    const engineAfterReinstall = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: reinstallDir, currentSchema: 3 });
+    const engineAfterReinstall = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: reinstallDir, currentSchema: DB_VERSION });
     (state as any).engine = engineAfterReinstall;
 
     // 6. Discovery finds the backup.
@@ -370,7 +370,7 @@ describe("Scenario: insufficient storage", () => {
     const starved = new NodeBackupEngine({
       folderDir: ws.folderDir,
       dbDir: ws.dbDir,
-      currentSchema: 3,
+      currentSchema: DB_VERSION,
       freeBytes: 1024, // 1 KiB free
     });
     const result = await starved.create({ kind: "daily" });
@@ -427,14 +427,14 @@ describe("Scenario: database migration", () => {
     const legacyEngine = new NodeBackupEngine({
       folderDir: ws.folderDir,
       dbDir: ws.dbDir,
-      currentSchema: 3,
+      currentSchema: DB_VERSION,
       overrideSchemaVersion: 1,
     });
     const original = await legacyEngine.create({ kind: "manual" });
     expect(original.ok).toBe(true);
     expect(original.manifest?.databaseSchemaVersion).toBe(1);
 
-    const upgradedApp = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: ws.dbDir, currentSchema: 3 });
+    const upgradedApp = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: ws.dbDir, currentSchema: DB_VERSION });
     const listUnderV2 = await upgradedApp.list();
     expect(listUnderV2[0].status).toBe("verified");
     expect(listUnderV2[0].manifest?.databaseSchemaVersion).toBe(1);
@@ -456,16 +456,16 @@ describe("Scenario: database migration", () => {
     const futureEngine = new NodeBackupEngine({
       folderDir: futureWs.folderDir,
       dbDir: futureWs.dbDir,
-      currentSchema: 5,
-      overrideSchemaVersion: 5,
+      currentSchema: DB_VERSION + 2,
+      overrideSchemaVersion: DB_VERSION + 2,
     });
     const futureBackup = await futureEngine.create({ kind: "manual" });
     expect(futureBackup.ok).toBe(true);
-    expect(futureBackup.manifest?.databaseSchemaVersion).toBe(5);
+    expect(futureBackup.manifest?.databaseSchemaVersion).toBe(DB_VERSION + 2);
     releaseHandles();
     state.dirDb = futureWs.dbDir;
 
-    const olderApp = new NodeBackupEngine({ folderDir: futureWs.folderDir, dbDir: futureWs.dbDir, currentSchema: 2 });
+    const olderApp = new NodeBackupEngine({ folderDir: futureWs.folderDir, dbDir: futureWs.dbDir, currentSchema: DB_VERSION });
     const olderList = await olderApp.list();
     expect(olderList[0].status).toBe("incompatible");
     const refused = await olderApp.restore(olderList[0].fileName, "replace");
@@ -502,7 +502,7 @@ describe("Scenario: portable / encrypted backups", () => {
     const other = FixtureDatabase.open({ dir: otherDir });
     other.applySchema(CREATE_SCHEMA_V1);
     other.close();
-    const onNewDevice = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: otherDir, currentSchema: 3, key });
+    const onNewDevice = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: otherDir, currentSchema: DB_VERSION, key });
     expect((await onNewDevice.list())[0].status).toBe("verified");
     const restored = await onNewDevice.restore(created.fileName!, "replace");
     expect(restored.ok).toBe(true);
@@ -513,7 +513,7 @@ describe("Scenario: portable / encrypted backups", () => {
     const noKeyDb = FixtureDatabase.open({ dir: noKeyDir });
     noKeyDb.applySchema(CREATE_SCHEMA_V1);
     noKeyDb.close();
-    const withoutKey = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: noKeyDir, currentSchema: 3 });
+    const withoutKey = new NodeBackupEngine({ folderDir: ws.folderDir, dbDir: noKeyDir, currentSchema: DB_VERSION });
     const blocked = await withoutKey.list();
     expect(blocked[0].status).toBe("encrypted");
     const refused = await withoutKey.restore(created.fileName!, "replace");
