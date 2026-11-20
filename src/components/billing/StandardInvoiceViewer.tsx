@@ -31,10 +31,10 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
     if (!el) return;
 
     const calculateFit = () => {
-      // هوامش أمان للمعاينة
+      // هوامش أمان للمعاينة مع استبعاد ارتفاع شريط التكبير السفلي المستقل (48px)
       const isMobile = window.innerWidth < 768;
       const paddingX = isMobile ? 16 : 32;
-      const paddingY = isMobile ? 24 : 40;
+      const paddingY = isMobile ? 64 : 80;
 
       const availableW = Math.max(120, el.clientWidth - paddingX);
       const availableH = Math.max(120, el.clientHeight - paddingY);
@@ -42,13 +42,10 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
       const scaleW = availableW / INVOICE_A4_WIDTH;
       const scaleH = availableH / INVOICE_A4_HEIGHT;
 
-      // اختيار المقياس الأمثل بحيث تظهر الورقة بشكل مقروء وواضح على الهاتف
-      let optimal: number;
-      if (isMobile) {
-        optimal = Math.max(0.38, Math.min(1.0, scaleW));
-      } else {
-        optimal = Math.max(0.25, Math.min(1.2, Math.min(scaleW, scaleH)));
-      }
+      // ملاءمة كامل صفحة A4 طولاً وعرضاً حتى تظهر التواقيع ورمز QR بلا قص أو تداخل
+      const optimal = isMobile
+        ? Math.max(0.28, Math.min(1.0, Math.min(scaleW, scaleH)))
+        : Math.max(0.25, Math.min(1.2, Math.min(scaleW, scaleH)));
       const rounded = Number(optimal.toFixed(3));
       setFitScale(rounded);
       setCurrentScale(rounded);
@@ -89,9 +86,7 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
           initialScale={fitScale}
           minScale={fitScale * 0.4}
           maxScale={fitScale * 4.5}
-          centerOnInit={false}
-          initialPositionX={0}
-          initialPositionY={0}
+          centerOnInit={true}
           limitToBounds={false}
           doubleClick={{ mode: "reset" }}
           onTransform={(ref) => {
@@ -99,38 +94,37 @@ export function StandardInvoiceViewer({ invoice, className }: Props) {
           }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
-            <>
-              <TransformComponent
-                wrapperStyle={{
-                  width: "100%",
-                  height: "100%",
-                  overflow: "hidden",
-                }}
-                contentStyle={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "flex-start",
-                  width: "100%",
-                  minWidth: "100%",
-                  paddingTop: "10px",
-                  paddingBottom: "56px",
-                  paddingLeft: "8px",
-                  paddingRight: "8px",
-                }}
-              >
-                <div className="rounded-md shadow-2xl ring-1 ring-black/40 overflow-hidden bg-white origin-top">
-                  <StandardInvoiceDocument invoice={invoice} />
-                </div>
-              </TransformComponent>
+            <div className="flex flex-col w-full h-full min-h-0">
+              <div className="flex-1 min-h-0 w-full overflow-hidden">
+                <TransformComponent
+                  wrapperStyle={{
+                    width: "100%",
+                    height: "100%",
+                    overflow: "hidden",
+                  }}
+                  contentStyle={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "8px",
+                  }}
+                >
+                  <div className="rounded-md shadow-2xl ring-1 ring-black/40 overflow-hidden bg-white">
+                    <StandardInvoiceDocument invoice={invoice} />
+                  </div>
+                </TransformComponent>
+              </div>
 
-              <InvoiceZoomControls
-                zoomOut={() => zoomOut(0.15)}
-                reset={() => resetTransform()}
-                zoomIn={() => zoomIn(0.15)}
-                scalePercent={Math.round((currentScale / fitScale) * 100)}
-              />
-            </>
+              <div className="shrink-0 w-full py-2 flex items-center justify-center bg-slate-950/90 border-t border-white/10">
+                <InvoiceZoomControls
+                  inline
+                  zoomOut={() => zoomOut(0.15)}
+                  reset={() => resetTransform()}
+                  zoomIn={() => zoomIn(0.15)}
+                  scalePercent={Math.round((currentScale / fitScale) * 100)}
+                />
+              </div>
+            </div>
           )}
         </TransformWrapper>
       )}

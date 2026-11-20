@@ -483,10 +483,7 @@
   }
 
   .custom-invoice-print-root,
-  #custom-invoice-print-portal,
-  .statement-print-root,
-  #customer-statement-print-mount,
-  .statement-print-document {
+  #custom-invoice-print-portal {
     display: block !important;
     position: static !important;
     left: auto !important;
@@ -501,6 +498,28 @@
     page-break-after: avoid !important;
     break-after: avoid !important;
     page: custom-invoice-page;
+  }
+
+  .statement-print-root,
+  #customer-statement-print-mount,
+  .statement-print-document {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    page: custom-invoice-page;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .custom-invoice-print-root .standard-invoice-sheet,

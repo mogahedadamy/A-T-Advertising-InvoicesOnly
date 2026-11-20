@@ -172,7 +172,7 @@ export function AppHeader() {
               {hasUrgent && (
                 <span
                   aria-hidden="true"
-                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[8px] font-black text-white ring-2 ring-background animate-pulse"
+                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[8px] font-black text-white ring-2 ring-background"
                 >
                   {urgentOrders.length}
                 </span>

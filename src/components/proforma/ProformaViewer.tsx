@@ -24,8 +24,8 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
 
     const measure = () => {
       const isMobile = window.innerWidth < 768;
-      const paddingX = isMobile ? 12 : 32;
-      const paddingY = isMobile ? 16 : 48;
+      const paddingX = isMobile ? 16 : 32;
+      const paddingY = isMobile ? 64 : 80;
       const clientW = el.clientWidth || window.innerWidth;
       const clientH = el.clientHeight || window.innerHeight;
 
@@ -34,13 +34,10 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
       const scaleW = w / PROFORMA_WIDTH;
       const scaleH = h / PROFORMA_HEIGHT;
 
-      // On mobile phones, fit to width so A4 text is readable
-      let optimal: number;
-      if (isMobile) {
-        optimal = Math.max(0.38, Math.min(1.0, scaleW));
-      } else {
-        optimal = Math.max(0.25, Math.min(1.15, Math.min(scaleW, scaleH)));
-      }
+      // Fit full A4 sheet cleanly without clipping signature/QR or overlapping controls
+      const optimal = isMobile
+        ? Math.max(0.28, Math.min(1.0, Math.min(scaleW, scaleH)))
+        : Math.max(0.25, Math.min(1.15, Math.min(scaleW, scaleH)));
 
       const rounded = Number(optimal.toFixed(3));
       setFit(rounded);
@@ -72,9 +69,7 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
           initialScale={fit}
           minScale={fit * 0.4}
           maxScale={fit * 4.0}
-          centerOnInit={false}
-          initialPositionX={0}
-          initialPositionY={0}
+          centerOnInit={true}
           limitToBounds={false}
           doubleClick={{ mode: "reset" }}
           onTransform={(ref) => {
@@ -82,34 +77,33 @@ export function ProformaViewer({ invoice, isVisible = true }: Props) {
           }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
-            <>
-              <TransformComponent
-                wrapperStyle={{ width: "100%", height: "100%" }}
-                contentStyle={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "flex-start",
-                  width: "100%",
-                  minWidth: "100%",
-                  paddingTop: "10px",
-                  paddingBottom: "56px",
-                  paddingLeft: "8px",
-                  paddingRight: "8px",
-                }}
-              >
-                <div className="rounded-md shadow-2xl ring-1 ring-black/30 overflow-hidden bg-white origin-top">
-                  <ProformaDocument invoice={invoice} />
-                </div>
-              </TransformComponent>
+            <div className="flex flex-col w-full h-full min-h-0">
+              <div className="flex-1 min-h-0 w-full overflow-hidden">
+                <TransformComponent
+                  wrapperStyle={{ width: "100%", height: "100%", overflow: "hidden" }}
+                  contentStyle={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "8px",
+                  }}
+                >
+                  <div className="rounded-md shadow-2xl ring-1 ring-black/30 overflow-hidden bg-white">
+                    <ProformaDocument invoice={invoice} />
+                  </div>
+                </TransformComponent>
+              </div>
 
-              <InvoiceZoomControls
-                zoomOut={() => zoomOut(0.15)}
-                reset={() => resetTransform()}
-                zoomIn={() => zoomIn(0.15)}
-                scalePercent={Math.round((currentScale / fit) * 100)}
-              />
-            </>
+              <div className="shrink-0 w-full py-2 flex items-center justify-center bg-slate-950/90 border-t border-white/10">
+                <InvoiceZoomControls
+                  inline
+                  zoomOut={() => zoomOut(0.15)}
+                  reset={() => resetTransform()}
+                  zoomIn={() => zoomIn(0.15)}
+                  scalePercent={Math.round((currentScale / fit) * 100)}
+                />
+              </div>
+            </div>
           )}
         </TransformWrapper>
       )}

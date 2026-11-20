@@ -1,22 +1,37 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- * Professional Account Statement Document Engine (Enterprise A4)
+ * Executive Account Statement Document Engine (Corporate A4)
  * ═══════════════════════════════════════════════════════════════
- * Authoritative, beautifully rendered Arabic RTL customer financial
- * statement engineered to enterprise ERP standards (SAP / Oracle / ERPNext).
- * Formatted specifically for standard A4 (210mm x 297mm) filling the entire page
- * with balanced whitespace, generous cell heights, and clear information hierarchy.
+ * Banking-grade Arabic RTL customer financial statement designed
+ * for T.A Advertising Solution on standard A4 (210mm x 297mm).
+ * Follows strict 3-token corporate palette (#0D4A39, #C5A059, neutrals),
+ * zero metric duplication, full BiDi isolation, and XSS escaping.
  */
 
 import type { CustomerStatement } from "@/lib/repositories/ReportsRepository";
 import type { CustomerRecord } from "@/lib/customersStore";
 import { formatNumber } from "@/lib/printCalculator";
 import { triggerPrintWithElement, shareInvoiceViaWhatsApp } from "@/lib/pdfExport";
-import { TA_LOGO_GREEN_BASE64, TA_SIGNATURE_TARIG_BASE64, TA_QR_CODE_BASE64 } from "@/assets/invoiceImagesBase64";
+import {
+  TA_LOGO_GREEN_BASE64,
+  TA_SIGNATURE_TARIG_BASE64,
+  TA_QR_CODE_BASE64,
+} from "@/assets/invoiceImagesBase64";
 import { escapeHtml } from "@/lib/security/htmlEscape";
+import { getCompanyProfileSnapshot } from "@/lib/settings/companyProfileStore";
+import { getLocalIsoDate } from "@/lib/dateUtils";
+import { getInvoiceTafqeet } from "@/lib/proforma/tafqeet";
+import type { AppCurrency } from "@/lib/currency/types";
 import { toast } from "sonner";
 
 const MIN_LEDGER_TABLE_ROWS = 12;
+
+function toAppCurrency(currency: string): AppCurrency {
+  if (currency === "USD" || currency === "SAR" || currency === "EGP" || currency === "SDG") {
+    return currency;
+  }
+  return "SDG";
+}
 
 export function buildStatementDomElement(
   statement: CustomerStatement,
@@ -24,20 +39,23 @@ export function buildStatementDomElement(
   currency = statement.currency || "SDG"
 ): HTMLElement {
   const container = document.createElement("div");
-  // Remove "invoice-paper" to prevent triggering A5 landscape heuristics in pdfExport.ts
-  container.className = "statement-print-root standard-invoice-sheet statement-print-document font-sans text-right";
+  const isSinglePage = statement.lines.length <= MIN_LEDGER_TABLE_ROWS;
+
+  // Exclude "invoice-paper" so pdfExport.ts never applies A5 landscape heuristics
+  container.className =
+    "statement-print-root standard-invoice-sheet statement-print-document font-sans text-right";
   container.dir = "rtl";
   container.style.cssText = `
     width: 210mm;
     min-height: 297mm;
-    height: 297mm;
-    padding: 10mm 12mm 10mm 12mm;
+    height: ${isSinglePage ? "297mm" : "auto"};
+    padding: 11mm 13mm 10mm 13mm;
     background: #ffffff;
     color: #0f172a;
     box-sizing: border-box;
     position: relative;
     font-family: 'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.3;
+    line-height: 1.35;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     display: flex;
@@ -45,22 +63,31 @@ export function buildStatementDomElement(
     justify-content: space-between;
   `;
 
-  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, " / ");
+  const companyProfile = getCompanyProfileSnapshot();
+  const safeCompanyPhone = escapeHtml(companyProfile.phone);
+  const safeCompanyEmail = escapeHtml(companyProfile.email);
+  const safeCompanyAddress = escapeHtml(companyProfile.addressAr);
+
+  const localIsoDate = getLocalIsoDate();
+  const todayStr = localIsoDate.replace(/-/g, " / ");
+  const resolvedCurrency = toAppCurrency(currency);
+
   const currencyLabel =
-    currency === "USD"
+    resolvedCurrency === "USD"
       ? "دولار أمريكي (USD)"
-      : currency === "SAR"
+      : resolvedCurrency === "SAR"
       ? "ريال سعودي (SAR)"
-      : currency === "EGP"
+      : resolvedCurrency === "EGP"
       ? "جنيه مصري (EGP)"
       : "جنيه سوداني (SDG)";
-  const currencySymbol = currency === "USD" ? "$" : currency;
+  const currencySymbol = resolvedCurrency === "USD" ? "$" : currency;
 
-  // فئة العميل المعتمدة (شركة / مؤسسة / زبون / أفراد)
   const customerTypeLabel =
     customer.type === "company"
       ? "شركة"
-      : customer.type === "institution" || customer.type === "agency" || customer.type === "internal"
+      : customer.type === "institution" ||
+        customer.type === "agency" ||
+        customer.type === "internal"
       ? "مؤسسة"
       : customer.type === "client"
       ? "زبون"
@@ -68,54 +95,98 @@ export function buildStatementDomElement(
 
   const safeCurrencyLabel = escapeHtml(currencyLabel);
   const safeCurrencySymbol = escapeHtml(currencySymbol);
-  const safeCustomerId = escapeHtml(customer.id);
   const safeCustomerName = escapeHtml(statement.customerName);
   const safeCustomerTypeLabel = escapeHtml(customerTypeLabel);
-  const safeCustomerPhone = customer.phone ? escapeHtml(customer.phone) : "";
-  const safeCustomerAddress = customer.address ? escapeHtml(customer.address) : "";
+  const safeCustomerPhone = customer.phone?.trim() ? escapeHtml(customer.phone.trim()) : "";
+  const safeCustomerAddress = customer.address?.trim() ? escapeHtml(customer.address.trim()) : "";
   const safeTodayStr = escapeHtml(todayStr);
 
-  // بناء صفوف القيود المحاسبية
-  const rowsHtml = statement.lines.map((line, idx) => {
-    const bg = idx % 2 === 0 ? "#ffffff" : "#fbfdfc";
-    const balanceColor = line.runningBalance > 0 ? "#b91c1c" : line.runningBalance < 0 ? "#047857" : "#0f172a";
-    const safeDate = escapeHtml(line.date);
-    const safeLabel = escapeHtml(line.label);
-    const safeNotes = line.notes ? escapeHtml(line.notes) : "";
-    const safeReference = line.reference ? escapeHtml(line.reference) : "—";
+  const netBal = statement.netBalance ?? statement.outstanding;
+  const absNetBal = Math.abs(netBal);
+  const tafqeetText =
+    netBal === 0
+      ? "الحساب متزن بالكامل ومسدد"
+      : getInvoiceTafqeet(absNetBal, true, resolvedCurrency);
+  const safeTafqeetText = escapeHtml(tafqeetText);
 
-    return `
-      <tr style="background: ${bg}; border-bottom: 1px solid #e2e8f0; height: 32px;">
-        <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; color: #475569; text-align: center; border-left: 1px solid #e2e8f0;">${idx + 1}</td>
-        <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; font-family: monospace; direction: ltr; text-align: center; border-left: 1px solid #e2e8f0;">${safeDate}</td>
-        <td style="padding: 6px 12px; font-size: 11px; font-weight: 800; color: #0f172a; border-left: 1px solid #e2e8f0;">
-          ${safeLabel}
-          ${safeNotes ? `<span style="font-size: 10px; font-weight: normal; color: #64748b; margin-right: 6px;">(${safeNotes})</span>` : ""}
-        </td>
-        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 700; color: #0D4A39; text-align: center; border-left: 1px solid #e2e8f0;" dir="ltr">${safeReference}</td>
-        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 800; color: #b91c1c; text-align: left; border-left: 1px solid #e2e8f0;" dir="ltr">
-          ${line.debit > 0 ? escapeHtml(formatNumber(line.debit)) : "—"}
-        </td>
-        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 800; color: #047857; text-align: left; border-left: 1px solid #e2e8f0;" dir="ltr">
-          ${line.credit > 0 ? escapeHtml(formatNumber(line.credit)) : "—"}
-        </td>
-        <td style="padding: 6px 8px; font-size: 11px; font-family: monospace; font-weight: 900; color: ${balanceColor}; text-align: left;" dir="ltr">
-          ${escapeHtml(formatNumber(line.runningBalance))}
-        </td>
-      </tr>
-    `;
-  }).join("");
+  const netStatusLabel =
+    netBal > 0
+      ? "صافي الرصيد المستحق"
+      : netBal < 0
+      ? "صافي الرصيد الدائن للعميل"
+      : "حالة الحساب";
+  const netStatusHint =
+    netBal > 0
+      ? "مديونية مستحقة على العميل"
+      : netBal < 0
+      ? "رصيد دائن / دفعة مقدمة لصالح العميل"
+      : "الحساب متزن بالكامل ومسدد";
+  const netAmountColor = netBal > 0 ? "#991b1b" : "#0D4A39";
+  const tafqeetHeading =
+    netBal > 0
+      ? "صافي المستحق بالحروف:"
+      : netBal < 0
+      ? "الرصيد الدائن بالحروف:"
+      : "الوضع المالي للحساب:";
 
-  // تعبئة الصفوف الفارغة للحفاظ على التناسق الهيكلي لصفحة A4 الكاملة (مثل نموذج الفاتورة)
+  const monoStyle =
+    "font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-variant-numeric: tabular-nums;";
+
+  // 1. صفوف القيود المحاسبية الفعلية
+  const rowsHtml = statement.lines
+    .map((line, idx) => {
+      const bg = idx % 2 === 0 ? "#ffffff" : "#f8faf9";
+      const balanceColor =
+        line.runningBalance > 0
+          ? "#991b1b"
+          : line.runningBalance < 0
+          ? "#0D4A39"
+          : "#0f172a";
+      const safeDate = escapeHtml(line.date);
+      const safeLabel = escapeHtml(line.label);
+      const safeNotes = line.notes?.trim() ? escapeHtml(line.notes.trim()) : "";
+      const safeReference = line.reference?.trim() ? escapeHtml(line.reference.trim()) : "—";
+
+      return `
+        <tr style="background: ${bg}; border-bottom: 1px solid #e2e8f0; height: 32px;">
+          <td style="padding: 6px 6px; font-size: 10.5px; font-weight: 700; color: #64748b; text-align: center; border-left: 1px solid #e2e8f0; ${monoStyle}">${idx + 1}</td>
+          <td style="padding: 6px 8px; font-size: 10.5px; font-weight: 700; color: #334155; text-align: center; border-left: 1px solid #e2e8f0; ${monoStyle}"><bdi dir="ltr">${safeDate}</bdi></td>
+          <td style="padding: 6px 10px; font-size: 11px; font-weight: 800; color: #0f172a; text-align: right; border-left: 1px solid #e2e8f0;">
+            <span>${safeLabel}</span>
+            ${
+              safeNotes
+                ? `<bdi dir="auto" style="display: inline-block; font-size: 9.5px; font-weight: 600; color: #64748b; margin-right: 6px;">(${safeNotes})</bdi>`
+                : ""
+            }
+          </td>
+          <td style="padding: 6px 8px; font-size: 10.5px; font-weight: 700; color: #0D4A39; text-align: center; border-left: 1px solid #e2e8f0; ${monoStyle}"><bdi dir="ltr">${safeReference}</bdi></td>
+          <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; color: ${line.debit > 0 ? "#991b1b" : "#94a3b8"}; text-align: left; border-left: 1px solid #e2e8f0; ${monoStyle}"><bdi dir="ltr">${
+        line.debit > 0 ? escapeHtml(formatNumber(line.debit)) : "—"
+      }</bdi></td>
+          <td style="padding: 6px 8px; font-size: 11px; font-weight: 700; color: ${line.credit > 0 ? "#0D4A39" : "#94a3b8"}; text-align: left; border-left: 1px solid #e2e8f0; ${monoStyle}"><bdi dir="ltr">${
+        line.credit > 0 ? escapeHtml(formatNumber(line.credit)) : "—"
+      }</bdi></td>
+          <td style="padding: 6px 8px; font-size: 11px; font-weight: 900; color: ${balanceColor}; text-align: left; ${monoStyle}"><bdi dir="ltr">${escapeHtml(
+        formatNumber(line.runningBalance)
+      )}</bdi></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  // 2. صفوف فارغة منظمة بدون نقاط زخرفية للحفاظ على تناسق ورقة A4
   const emptyRowsCount = Math.max(0, MIN_LEDGER_TABLE_ROWS - statement.lines.length);
   let emptyRowsHtml = "";
   for (let i = 0; i < emptyRowsCount; i++) {
     const isFirstEmpty = i === 0 && statement.lines.length === 0;
+    const isLastEmpty = i === emptyRowsCount - 1;
     emptyRowsHtml += `
-      <tr style="background: #ffffff; border-bottom: 1px solid #f1f5f9; height: 32px;">
-        <td style="padding: 6px 8px; text-align: center; color: #cbd5e1; font-size: 10px; border-left: 1px solid #f1f5f9;">${isFirstEmpty ? "—" : "•"}</td>
+      <tr style="background: #ffffff; border-bottom: ${isLastEmpty ? "none" : "1px solid #f1f5f9"}; height: 32px;">
+        <td style="padding: 6px 6px; border-left: 1px solid #f1f5f9;"></td>
         <td style="padding: 6px 8px; border-left: 1px solid #f1f5f9;"></td>
-        <td style="padding: 6px 12px; border-left: 1px solid #f1f5f9; color: #94a3b8; font-size: 10.5px;">${isFirstEmpty ? "لا توجد قيود مالية إضافية مسجلة لهذه الفترة" : ""}</td>
+        <td style="padding: 6px 10px; border-left: 1px solid #f1f5f9; color: #94a3b8; font-size: 10.5px; font-weight: 600;">${
+          isFirstEmpty ? "لا توجد معاملات مالية مسجلة لهذه الفترة" : ""
+        }</td>
         <td style="padding: 6px 8px; border-left: 1px solid #f1f5f9;"></td>
         <td style="padding: 6px 8px; border-left: 1px solid #f1f5f9;"></td>
         <td style="padding: 6px 8px; border-left: 1px solid #f1f5f9;"></td>
@@ -124,130 +195,98 @@ export function buildStatementDomElement(
     `;
   }
 
-  const netBal = statement.netBalance ?? statement.outstanding;
-  const netBalanceText = netBal > 0
-    ? `<span style="color: #b91c1c; font-weight: 900;">${escapeHtml(formatNumber(netBal))} ${safeCurrencySymbol} (مديونية مستحقة على العميل)</span>`
-    : netBal < 0
-    ? `<span style="color: #047857; font-weight: 900;">${escapeHtml(formatNumber(Math.abs(netBal)))} ${safeCurrencySymbol} (رصيد دائن / دفعة مقدمة لصالح العميل)</span>`
-    : `<span style="color: #059669; font-weight: 900;">0.00 (الحساب متزن بالكامل ومسدد)</span>`;
-
   container.innerHTML = `
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 1. الترويسة المؤسسية الرسمية (شعار T.A + شارة العنوان + شريط التواصل) -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 76px; margin-bottom: 6px;">
+    <!-- 1. الترويسة المؤسسية الرسمية -->
+    <div style="position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 70px; margin-bottom: 8px;">
       <div style="display: flex; align-items: center; z-index: 10;">
-        <img src="${TA_LOGO_GREEN_BASE64}" alt="T.A Advertising Solution" style="height: 72px; width: auto; object-fit: contain;" />
+        <img src="${TA_LOGO_GREEN_BASE64}" alt="T.A Advertising Solution" style="height: 66px; width: auto; object-fit: contain;" />
       </div>
 
-      <!-- شارة عنوان كشف الحساب في المنتصف تماماً مطابقة لهيكل الفاتورة الرسمية -->
       <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10;">
-        <div style="background-color: #C1D0CD; border-radius: 18px; min-width: 230px; height: 52px; padding: 0 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 1px solid #1e293b;">
-          <div style="font-size: 22px; font-weight: 900; color: #000000; line-height: 1.1; font-style: italic;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 4px 20px;">
+          <div style="font-size: 21px; font-weight: 900; color: #0D4A39; line-height: 1.15; font-style: normal;">
             كشف حساب مالي
           </div>
-          <div style="font-size: 9.5px; font-weight: 800; color: #1e293b; letter-spacing: 0.8px; margin-top: 2px;">
+          <div style="width: 52px; height: 2px; background: #C5A059; margin: 4px 0 3px 0; border-radius: 1px;"></div>
+          <div style="font-size: 9px; font-weight: 800; color: #475569; letter-spacing: 1.4px; text-transform: uppercase;">
             STATEMENT OF ACCOUNT
           </div>
         </div>
       </div>
 
-      <div style="width: 100px; shrink: 0;"></div>
+      <div style="width: 100px; flex-shrink: 0;"></div>
     </div>
 
-    <!-- شريط التواصل الرسمي المعتمد -->
-    <div style="margin: 4px 0 10px 0; height: 34px; padding: 0 18px; background-color: #C1D0CD; border: 1px solid #1e293b; border-radius: 8px; font-size: 11.5px; font-weight: bold; color: #000000; display: flex; align-items: center; justify-content: space-between;" dir="ltr">
-      <span style="font-weight: 900; letter-spacing: 0.3px;">+249 12371 1444  -  +249 91296 8886</span>
-      <span style="font-weight: 900; letter-spacing: -0.2px;">t.a.advertising@gmail.com</span>
-      <span style="font-weight: 900;" dir="rtl">السودان، الخرطوم - بورتسودان</span>
+    <!-- شريط بيانات التواصل الرسمي (متصل بإعدادات الشركة) -->
+    <div style="margin: 0 0 12px 0; min-height: 32px; padding: 6px 14px; background: #f4f7f6; border-top: 2px solid #0D4A39; border-bottom: 1px solid #cbd5e1; border-radius: 4px; font-size: 10.5px; font-weight: 700; color: #0f172a; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+      <span style="font-weight: 800; color: #0f172a;">${safeCompanyAddress}</span>
+      <bdi dir="ltr" style="font-weight: 800; color: #334155;">${safeCompanyEmail}</bdi>
+      <bdi dir="ltr" style="font-weight: 800; color: #0f172a; ${monoStyle}">${safeCompanyPhone}</bdi>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 2. بطاقتا البيانات: بيانات العميل + تفاصيل الكشف -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-bottom: 10px;">
-      <!-- بطاقة العميل (اليمين) -->
-      <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 14px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 5px;">
-          <span style="color: #475569; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">بيانات العميل / CLIENT DETAILS</span>
-          <span style="font-family: monospace; font-size: 10px; font-weight: 700; color: #0D4A39;" dir="ltr">${safeCustomerId}</span>
+    <!-- 2. بطاقتا البيانات التنفيذية: بيانات العميل + ملخص كشف الحساب -->
+    <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-bottom: 12px; align-items: stretch;">
+      <!-- بطاقة العميل (يمين) -->
+      <div style="border: 1px solid #cbd5e1; border-top: 2.5px solid #0D4A39; border-radius: 6px; padding: 10px 14px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+          <span style="color: #475569; font-weight: 800; font-size: 10px;">بيانات العميل</span>
+          <span style="font-size: 9.5px; font-weight: 800; background: #f0f5f3; color: #0D4A39; border: 1px solid #c5d6d1; padding: 1px 8px; border-radius: 4px;">
+            ${safeCustomerTypeLabel}
+          </span>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 900; font-size: 14px; color: #0f172a;">${safeCustomerName}</span>
-            <span style="font-size: 10px; font-weight: 800; background: #0D4A39; color: #ffffff; padding: 2px 8px; border-radius: 6px;">
-              ${safeCustomerTypeLabel}
-            </span>
+        <div style="font-weight: 900; font-size: 15px; color: #0f172a; line-height: 1.25;">
+          ${safeCustomerName}
+        </div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 10.5px; color: #475569;">
+          ${
+            safeCustomerPhone
+              ? `<div style="display: inline-flex; align-items: center; gap: 5px;"><span style="font-weight: 700; color: #64748b;">الهاتف:</span><bdi dir="ltr" style="font-weight: 800; color: #0f172a; ${monoStyle}">${safeCustomerPhone}</bdi></div>`
+              : ""
+          }
+          ${
+            safeCustomerAddress
+              ? `<div style="display: inline-flex; align-items: center; gap: 5px;"><span style="font-weight: 700; color: #64748b;">العنوان:</span><span style="font-weight: 700; color: #334155;">${safeCustomerAddress}</span></div>`
+              : ""
+          }
+        </div>
+      </div>
+
+      <!-- بطاقة ملخص كشف الحساب والرصيد الصافي الموحد (يسار) -->
+      <div style="border: 1px solid #cbd5e1; border-top: 2.5px solid #C5A059; border-radius: 6px; padding: 10px 14px; background: #fafcfb; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+          <span style="color: #475569; font-weight: 800; font-size: 10px;">ملخص كشف الحساب</span>
+          <bdi dir="ltr" style="font-size: 10px; font-weight: 800; color: #334155; ${monoStyle}">${safeTodayStr}</bdi>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;">
+          <span style="color: #64748b; font-weight: 700;">العملة المحاسبية:</span>
+          <span style="font-weight: 800; color: #0D4A39;">${safeCurrencyLabel}</span>
+        </div>
+
+        <div style="border-top: 1px solid #e2e8f0; padding-top: 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+          <div>
+            <div style="font-size: 10px; font-weight: 800; color: #475569;">${netStatusLabel}</div>
+            <div style="font-size: 9px; font-weight: 700; color: #64748b; margin-top: 1px;">${netStatusHint}</div>
           </div>
-          ${safeCustomerPhone ? `<div style="font-family: monospace; font-size: 11px; font-weight: 700; color: #334155;" dir="ltr">هاتف: ${safeCustomerPhone}</div>` : ""}
-        </div>
-        <div style="font-size: 10.5px; color: #64748b;">
-          ${safeCustomerAddress ? `العنوان: ${safeCustomerAddress}` : "الخرطوم - السودان"}
-        </div>
-      </div>
-
-      <!-- بطاقة تفاصيل الكشف (اليسار) -->
-      <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 14px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 5px;">
-          <span style="color: #475569; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">تفاصيل الكشف / STATEMENT METRICS</span>
-          <span style="font-family: monospace; font-size: 10px; font-weight: 800; color: #0f172a;" dir="ltr">${safeTodayStr}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <span style="color: #475569; font-weight: 700; font-size: 11px;">العملة المحاسبية:</span>
-          <span style="font-weight: 900; font-size: 12px; color: #0D4A39;">${safeCurrencyLabel}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="color: #475569; font-weight: 700; font-size: 11px;">إجمالي القيود المسجلة:</span>
-          <span style="font-family: monospace; font-weight: 900; font-size: 12px; color: #0f172a;">${statement.lines.length} حركة محاسبية</span>
+          <bdi dir="ltr" style="font-size: 16px; font-weight: 900; color: ${netAmountColor}; white-space: nowrap; ${monoStyle}">
+            ${escapeHtml(formatNumber(absNetBal))} <span style="font-size: 10.5px; font-weight: 800;">${safeCurrencySymbol}</span>
+          </bdi>
         </div>
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 3. لوحة المؤشرات المالية التنفيذية المركزة (KPI Financial Summary Bar) -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; margin-bottom: 10px;">
-      <!-- إجمالي المطالبات (مدين +) -->
-      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 12px; text-align: center;">
-        <div style="font-size: 10px; font-weight: 800; color: #64748b;">إجمالي المطالبات والفواتير (مدين +)</div>
-        <div style="font-size: 15px; font-weight: 900; font-family: monospace; color: #b91c1c; margin-top: 2px;" dir="ltr">
-          ${escapeHtml(formatNumber(statement.totalInvoiced))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
-        </div>
-      </div>
-
-      <!-- إجمالي المسدد (دائن -) -->
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 7px 12px; text-align: center;">
-        <div style="font-size: 10px; font-weight: 800; color: #047857;">إجمالي التحصيلات والمدفوعات (دائن -)</div>
-        <div style="font-size: 15px; font-weight: 900; font-family: monospace; color: #047857; margin-top: 2px;" dir="ltr">
-          ${escapeHtml(formatNumber(statement.totalCollected))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
-        </div>
-      </div>
-
-      <!-- الرصيد الصافي المتبقي -->
-      <div style="background: ${netBal > 0 ? "#fef2f2" : netBal < 0 ? "#ecfdf5" : "#f8fafc"}; border: 1.5px solid ${netBal > 0 ? "#ef4444" : netBal < 0 ? "#10b981" : "#cbd5e1"}; border-radius: 8px; padding: 7px 12px; text-align: center;">
-        <div style="font-size: 10px; font-weight: 800; color: ${netBal > 0 ? "#b91c1c" : netBal < 0 ? "#047857" : "#334155"};">
-          ${netBal > 0 ? "صافي الرصيد المستحق على العميل" : netBal < 0 ? "صافي الرصيد الدائن للعميل (مقدم)" : "صافي الرصيد (الحساب متزن)"}
-        </div>
-        <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: ${netBal > 0 ? "#b91c1c" : netBal < 0 ? "#047857" : "#0f172a"}; margin-top: 2px;" dir="ltr">
-          ${escapeHtml(formatNumber(Math.abs(netBal)))} <span style="font-size: 11px; font-weight: 700;">${safeCurrencySymbol}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 4. جدول كشف الحساب المحاسبي التفصيلي (Enterprise Ledger Table) -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="flex: 1; min-height: 480px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #1e293b; border-radius: 10px; overflow: hidden; margin-bottom: 10px; background: #ffffff;">
+    <!-- 3. جدول كشف الحساب المحاسبي التفصيلي -->
+    <div style="flex: 1; min-height: 510px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 10px; background: #ffffff;">
       <table style="width: 100%; border-collapse: collapse; height: 100%;">
         <thead>
-          <tr style="background: #0D4A39; color: #ffffff; height: 38px;">
-            <th style="padding: 6px 8px; width: 36px; text-align: center; font-size: 11px; font-weight: 900; border-left: 1px solid #1e293b;">#</th>
-            <th style="padding: 6px 8px; width: 95px; text-align: center; font-size: 11px; font-weight: 900; border-left: 1px solid #1e293b;">التاريخ</th>
-            <th style="padding: 6px 12px; text-align: right; font-size: 11.5px; font-weight: 900; border-left: 1px solid #1e293b;">البيان وتفاصيل المعاملة المالية</th>
-            <th style="padding: 6px 8px; width: 95px; text-align: center; font-size: 11px; font-weight: 900; border-left: 1px solid #1e293b;">المرجع</th>
-            <th style="padding: 6px 8px; width: 95px; text-align: left; font-size: 11px; font-weight: 900; border-left: 1px solid #1e293b;" dir="ltr">مدين (+)</th>
-            <th style="padding: 6px 8px; width: 95px; text-align: left; font-size: 11px; font-weight: 900; border-left: 1px solid #1e293b;" dir="ltr">دائن (-)</th>
-            <th style="padding: 6px 8px; width: 105px; text-align: left; font-size: 11px; font-weight: 900;" dir="ltr">الرصيد التراكمي</th>
+          <tr style="background: #0D4A39; color: #ffffff; height: 36px; border-bottom: 2px solid #C5A059;">
+            <th style="padding: 6px 6px; width: 34px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">#</th>
+            <th style="padding: 6px 8px; width: 92px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">التاريخ</th>
+            <th style="padding: 6px 10px; text-align: right; font-size: 11px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">البيان وتفاصيل المعاملة المالية</th>
+            <th style="padding: 6px 8px; width: 88px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">المرجع</th>
+            <th style="padding: 6px 8px; width: 94px; text-align: left; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">مدين</th>
+            <th style="padding: 6px 8px; width: 94px; text-align: left; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">دائن</th>
+            <th style="padding: 6px 8px; width: 106px; text-align: left; font-size: 10.5px; font-weight: 800;">الرصيد التراكمي</th>
           </tr>
         </thead>
         <tbody>
@@ -255,69 +294,64 @@ export function buildStatementDomElement(
           ${emptyRowsHtml}
         </tbody>
         <tfoot>
-          <tr style="background: #F1F5F4; border-top: 2px solid #0D4A39; height: 38px; font-weight: 900; font-size: 11.5px;">
+          <tr style="background: #f4f7f6; border-top: 2px solid #0D4A39; height: 36px; font-weight: 900; font-size: 11px;">
             <td colspan="4" style="padding: 6px 12px; text-align: right; color: #0D4A39; border-left: 1px solid #cbd5e1;">الإجماليات الكلية للفترة (${safeCurrencySymbol}):</td>
-            <td style="padding: 6px 8px; color: #b91c1c; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${escapeHtml(formatNumber(statement.totalInvoiced))}</td>
-            <td style="padding: 6px 8px; color: #047857; text-align: left; font-family: monospace; border-left: 1px solid #cbd5e1;" dir="ltr">${escapeHtml(formatNumber(statement.totalCollected))}</td>
-            <td style="padding: 6px 8px; color: #0f172a; text-align: left; font-family: monospace;" dir="ltr">${escapeHtml(formatNumber(netBal))}</td>
+            <td style="padding: 6px 8px; color: #991b1b; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalInvoiced))}</bdi></td>
+            <td style="padding: 6px 8px; color: #0D4A39; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalCollected))}</bdi></td>
+            <td style="padding: 6px 8px; color: ${netAmountColor}; text-align: left; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(netBal))}</bdi></td>
           </tr>
         </tfoot>
       </table>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 5. شريط الوضع المالي المعتمد والحساب البنكي الرسمي -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="background: #F8FAFA; border: 1px solid #C1D0CD; border-radius: 8px; padding: 6px 12px; margin-bottom: 10px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <span style="color: #475569; font-weight: 700;">الوضع المالي للحساب: </span>
-        ${netBalanceText}
+    <!-- 4. شريط التفقيط الرسمي وبيانات الحساب البنكي المعتمد -->
+    <div style="background: #f8faf9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 10.5px; display: flex; justify-content: space-between; align-items: center; gap: 14px;">
+      <div style="flex: 1; min-width: 0;">
+        <span style="color: #475569; font-weight: 800;">${tafqeetHeading} </span>
+        <span style="color: #0f172a; font-weight: 800;">${safeTafqeetText}</span>
       </div>
-      <div style="font-size: 10.5px; color: #0D4A39; font-weight: 800; background: #e6f0ed; padding: 3px 10px; border-radius: 6px; border: 1px solid #b8d5ce;">
-        الحساب المعتمد للسداد: بنك الخرطوم 3283046 (طارق عثمان / تي ايه للدعايه والاعلان)
+      <div style="flex-shrink: 0; font-size: 10px; color: #0D4A39; font-weight: 800; padding-right: 12px; border-right: 1px solid #cbd5e1; white-space: nowrap;">
+        الحساب المعتمد للسداد: بنك الخرطوم <bdi dir="ltr" style="${monoStyle}">3283046</bdi> (طارق عثمان / تي ايه للدعايه والاعلان)
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 6. التذييل الرسمي المعتمد: الاعتماد + رمز QR + توقيع الإدارة المالية -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 8px; border-top: 1px solid #1e293b; margin-bottom: 6px;">
+    <!-- 5. التذييل الرسمي المتوازن: اعتماد العميل + رمز QR + توقيع الإدارة المالية -->
+    <div style="display: grid; grid-template-columns: 1fr 86px 1fr; gap: 14px; align-items: stretch; padding-top: 8px; border-top: 1px solid #cbd5e1; margin-bottom: 4px;">
       <!-- اعتماد واستلام العميل -->
-      <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 12px; width: 220px; height: 84px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
-        <div style="font-weight: 800; font-size: 11px; color: #0f172a;">اعتماد واستلام العميل:</div>
-        <div style="font-size: 10px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
-          التوقيع والختم: ...................................
+      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 86px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 10.5px; color: #0f172a;">اعتماد واستلام العميل</div>
+        <div style="flex: 1;"></div>
+        <div style="font-size: 9.5px; color: #64748b; font-weight: 700; border-top: 1px solid #e2e8f0; padding-top: 4px;">
+          التوقيع والختم الرسمي
         </div>
       </div>
 
-      <!-- رمز QR للتوثيق بدون أي عبارة أسفله -->
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="width: 70px; height: 70px; padding: 3px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-          <img src="${TA_QR_CODE_BASE64}" alt="QR Verification" style="width: 100%; height: 100%; object-fit: contain;" />
-        </div>
+      <!-- رمز QR للتوثيق (مطابق لارتفاع بطاقتي الاعتماد) -->
+      <div style="width: 86px; height: 86px; padding: 6px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+        <img src="${TA_QR_CODE_BASE64}" alt="QR Verification" style="width: 100%; height: 100%; object-fit: contain;" />
       </div>
 
       <!-- إدارة الحسابات المالية وتوقيع طارق عثمان علي -->
-      <div style="border: 1px solid #1e293b; border-radius: 10px; padding: 8px 12px; width: 220px; height: 84px; display: flex; flex-direction: column; justify-content: space-between; position: relative; box-sizing: border-box;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-weight: 800; font-size: 11px; color: #0f172a;">إدارة الحسابات المالية:</span>
-          <span style="font-weight: 900; font-size: 11.5px; color: #0D4A39;">طارق عثمان علي</span>
+      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 86px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+          <span style="font-weight: 800; font-size: 10.5px; color: #0f172a;">إدارة الحسابات المالية</span>
+          <span style="font-weight: 900; font-size: 11px; color: #0D4A39;">طارق عثمان علي</span>
         </div>
-        <div style="position: relative; height: 42px; display: flex; align-items: center; justify-content: flex-start;">
+        <div style="height: 34px; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
           <img
             src="${TA_SIGNATURE_TARIG_BASE64}"
             alt="Signature"
-            style="max-height: 44px; width: auto; object-fit: contain; pointer-events: none; mix-blend-mode: multiply; transform: rotate(-1deg);"
+            style="max-height: 32px; width: auto; object-fit: contain; pointer-events: none; mix-blend-mode: multiply;"
           />
         </div>
-        <div style="font-size: 9.5px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 2px;">
+        <div style="font-size: 9.5px; color: #64748b; font-weight: 700; border-top: 1px solid #e2e8f0; padding-top: 3px;">
           المدير المالي والتشغيلي المعتمد
         </div>
       </div>
     </div>
 
     <!-- السطر الإداري والقانوني المعتمد -->
-    <div style="text-align: center; font-size: 9px; color: #94a3b8; font-weight: bold; padding-top: 4px;">
+    <div style="text-align: center; font-size: 8.5px; color: #64748b; font-weight: 700; padding-top: 4px;">
       نظام T.A Advertising Solution لإدارة الحسابات والمراسلات المالية — مستند رسمي صادر آلياً ومطابق للقيود المسجلة
     </div>
   `;
@@ -335,11 +369,12 @@ export async function printCustomerStatement(
 
   const mountWrapper = document.createElement("div");
   mountWrapper.id = "customer-statement-print-wrapper";
-  mountWrapper.style.cssText = "position: fixed; left: -9999px; top: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; z-index: -9999;";
+  mountWrapper.style.cssText =
+    "position: fixed; left: -9999px; top: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; z-index: -9999;";
   mountWrapper.appendChild(container);
   document.body.appendChild(mountWrapper);
 
-  const docTitle = `كشف-حساب-${statement.customerName.replace(/[\s/]/g, "_")}-${currency}-${new Date().toISOString().slice(0, 10)}`;
+  const docTitle = `كشف-حساب-${statement.customerName.replace(/[\s/]/g, "_")}-${currency}-${getLocalIsoDate()}`;
 
   document.body.classList.add("printing-custom-invoice");
   try {
@@ -348,7 +383,7 @@ export async function printCustomerStatement(
       if (mountWrapper.parentNode) mountWrapper.parentNode.removeChild(mountWrapper);
     });
     return true;
-  } catch (err) {
+  } catch {
     document.body.classList.remove("printing-custom-invoice");
     if (mountWrapper.parentNode) mountWrapper.parentNode.removeChild(mountWrapper);
     toast.error("تعذر طباعة كشف الحساب");
@@ -366,7 +401,8 @@ export async function shareCustomerStatementViaWhatsApp(
 
   const mountWrapper = document.createElement("div");
   mountWrapper.id = "customer-statement-share-wrapper";
-  mountWrapper.style.cssText = "position: fixed; left: -9999px; top: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; z-index: -9999;";
+  mountWrapper.style.cssText =
+    "position: fixed; left: -9999px; top: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; z-index: -9999;";
   mountWrapper.appendChild(container);
   document.body.appendChild(mountWrapper);
 
@@ -378,14 +414,14 @@ export async function shareCustomerStatementViaWhatsApp(
       format: "a4",
       partyName: statement.customerName,
       invoiceRef: "كشف حساب",
-      totalAmount: statement.outstanding,
+      totalAmount: statement.netBalance ?? statement.outstanding,
       currency,
       invoiceTypeLabel: "كشف حساب",
       isRtl: true,
     });
     if (mountWrapper.parentNode) mountWrapper.parentNode.removeChild(mountWrapper);
     return true;
-  } catch (err) {
+  } catch {
     if (mountWrapper.parentNode) mountWrapper.parentNode.removeChild(mountWrapper);
     toast.error("تعذر مشاركة كشف الحساب عبر واتساب");
     return false;

@@ -18,6 +18,8 @@ export function detectInvoiceLanguage(
   ].join(" ");
 
   const hasArabic = /[\u0600-\u06FF]/.test(textToScan);
-  return hasArabic ? "ar" : "en";
+  const hasLatin = /[A-Za-z]/.test(textToScan);
+  // عند خلو الفاتورة من أي نص بعد، أو وجود أي حرف عربي: الافتراضي هو العربية (هوية التطبيق)
+  return hasArabic || !hasLatin ? "ar" : "en";
 }
 

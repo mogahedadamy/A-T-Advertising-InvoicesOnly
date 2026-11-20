@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { Edit3, Printer, Share2 } from "lucide-react";
+import { Edit3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type {
   CustomInvoice,
@@ -152,8 +152,8 @@ export function CustomInvoiceDialog({
             value="preview"
             className="flex-1 overflow-hidden p-2 sm:p-4 bg-muted/30 m-0 min-h-0 flex flex-col space-y-2"
           >
-            {/* شريط أدوات المعاينة السريع */}
-            <div className="flex items-center justify-between gap-2 bg-card p-2 sm:px-3 rounded-xl border border-border/80 shadow-2xs shrink-0">
+            {/* شريط أدوات المعاينة السريع (بدون تكرار لأزرار التذييل السفلي أو قص على الموبايل) */}
+            <div className="flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 sm:px-3 rounded-xl border border-border/80 shadow-2xs shrink-0">
               <Button
                 type="button"
                 variant="outline"
@@ -162,38 +162,15 @@ export function CustomInvoiceDialog({
                   playTapSound();
                   form.setActiveTab("edit");
                 }}
-                className="h-8 px-3 rounded-lg text-xs font-black gap-1.5 cursor-pointer"
+                className="h-8 px-3 rounded-lg text-xs font-black gap-1.5 cursor-pointer shrink-0"
               >
                 <Edit3 className="h-3.5 w-3.5 text-primary" />
-                <span>العودة لتعديل البيانات</span>
+                <span>العودة للتعديل</span>
               </Button>
 
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={form.handleSaveAndShareWhatsApp}
-                  disabled={form.isProcessing}
-                  className="h-8 px-2.5 sm:px-3 rounded-lg text-xs font-black gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white cursor-pointer"
-                  title="مشاركة الفاتورة مباشرة عبر واتساب"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  <span>واتساب</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={form.handleSaveAndPrint}
-                  disabled={form.isProcessing}
-                  className="h-8 px-3 rounded-lg text-xs font-black gap-1.5 bg-primary hover:bg-primary/90 text-white cursor-pointer"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  <span>طباعة المستند</span>
-                </Button>
-
-
-              </div>
+              <span className="text-[11px] font-bold text-muted-foreground truncate">
+                معاينة A4 مطابقة للطباعة
+              </span>
             </div>
 
             {/* عارض الفاتورة الرسمية */}

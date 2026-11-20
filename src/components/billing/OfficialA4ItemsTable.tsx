@@ -27,7 +27,6 @@ interface OfficialA4ItemsTableProps {
 export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
   rows,
   rowCount,
-  emptyRowsCount,
   isRtl,
   currency,
   totalAmount,
@@ -35,6 +34,15 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
   formatAccountingNumber,
   totalDisplayText,
 }) => {
+  const visibleRows = rows.filter(
+    (item) =>
+      Boolean(item.description && item.description.trim().length > 0) ||
+      Number(item.unitPrice || 0) > 0 ||
+      Number(item.total || 0) > 0
+  );
+  const effectiveRowCount = Math.max(visibleRows.length, rowCount);
+  const effectiveEmptyRowsCount = Math.max(0, effectiveRowCount - visibleRows.length);
+
   return (
     <div
       className="relative overflow-hidden mt-1.5 flex-1 flex flex-col justify-between"
@@ -61,7 +69,9 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
             }}
           >
             <th
-              className="py-1 px-3 text-center font-black italic text-[13.5px] text-black flex items-center justify-center"
+              className={`py-1 px-3 text-center font-black text-[13.5px] text-black flex items-center justify-center ${
+                isRtl ? "not-italic" : "italic"
+              }`}
               style={{
                 width: "54%",
                 ...(isRtl
@@ -72,7 +82,9 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
               {isRtl ? "البيان وتفاصيل العمل" : "Description & Specifications"}
             </th>
             <th
-              className="py-1 px-2 text-center font-black italic text-[13.5px] text-black flex items-center justify-center"
+              className={`py-1 px-2 text-center font-black text-[13.5px] text-black flex items-center justify-center ${
+                isRtl ? "not-italic" : "italic"
+              }`}
               style={{
                 width: "10%",
                 ...(isRtl
@@ -83,7 +95,9 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
               {isRtl ? "العدد" : "Qty"}
             </th>
             <th
-              className="py-1 px-2 text-center font-black italic text-[13px] text-black flex items-center justify-center whitespace-nowrap"
+              className={`py-1 px-2 text-center font-black text-[13px] text-black flex items-center justify-center whitespace-nowrap ${
+                isRtl ? "not-italic" : "italic"
+              }`}
               style={{
                 width: "18%",
                 ...(isRtl
@@ -94,7 +108,9 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
               {isRtl ? `الفئة (${currency})` : `Unit Price (${currency})`}
             </th>
             <th
-              className="py-1 px-3 text-center font-black italic text-[13px] text-black flex items-center justify-center whitespace-nowrap"
+              className={`py-1 px-3 text-center font-black text-[13px] text-black flex items-center justify-center whitespace-nowrap ${
+                isRtl ? "not-italic" : "italic"
+              }`}
               style={{ width: "18%" }}
             >
               {isRtl ? `الجملة (${currency})` : `Total (${currency})`}
@@ -106,14 +122,14 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
           className="w-full flex-1 flex flex-col justify-between font-bold text-black"
           style={{ backgroundColor: "transparent" }}
         >
-          {rows.map((item, idx) => (
+          {visibleRows.map((item, idx) => (
             <tr
               key={item.id || idx}
               className="flex flex-1 items-stretch"
               style={{
                 minHeight: "27px",
                 backgroundColor: "transparent",
-                borderBottom: idx === rowCount - 1 ? "none" : "1px solid #1e293b",
+                borderBottom: idx === effectiveRowCount - 1 ? "none" : "1px solid #1e293b",
               }}
             >
               <td
@@ -170,8 +186,8 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
             </tr>
           ))}
 
-          {Array.from({ length: emptyRowsCount }).map((_, idx) => {
-            const isLast = rows.length + idx === rowCount - 1;
+          {Array.from({ length: effectiveEmptyRowsCount }).map((_, idx) => {
+            const isLast = visibleRows.length + idx === effectiveRowCount - 1;
             return (
               <tr
                 key={`empty-${idx}`}
@@ -235,7 +251,9 @@ export const OfficialA4ItemsTable: React.FC<OfficialA4ItemsTableProps> = ({
             }}
           >
             <td
-              className="px-3 flex items-center font-black italic text-[12px] text-black h-full py-1"
+              className={`px-3 flex items-center font-black text-[12px] text-black h-full py-1 ${
+                isRtl ? "not-italic" : "italic"
+              }`}
               style={{
                 width: "64%",
                 minWidth: 0,

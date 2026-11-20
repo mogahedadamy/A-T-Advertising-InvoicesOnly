@@ -44,8 +44,8 @@ export const StandardInvoiceHeader: React.FC<Props> = ({
         {/* شارة عنوان الفاتورة في منتصف الصفحة تماماً */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <div
-            className={`flex items-center justify-center font-black italic text-black select-none pointer-events-auto text-center ${
-              isRtl ? "" : "tracking-wide"
+            className={`flex items-center justify-center font-black text-black select-none pointer-events-auto text-center ${
+              isRtl ? "not-italic" : "italic tracking-wide"
             }`}
             style={{
               minWidth: "210px",

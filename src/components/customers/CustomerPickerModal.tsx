@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   useCustomers,
   findOrCreateCustomerByName,
+  getAllCustomerFinancialSummaries,
   CUSTOMER_TYPE_CONFIG,
   PRIMARY_CUSTOMER_TYPES,
   type CustomerRecord,
@@ -46,6 +47,9 @@ export function CustomerPickerModal({
   const [newPhone, setNewPhone] = useState("");
   const [newType, setNewType] = useState<CustomerType>("company");
   const [isSaving, setIsSaving] = useState(false);
+  const [liveBalances, setLiveBalances] = useState<
+    Record<string, { outstanding: number; invoiced: number; collected: number; overdueCount: number }>
+  >({});
 
   useEffect(() => {
     if (open) {
@@ -55,6 +59,17 @@ export function CustomerPickerModal({
       setNewPhone("");
       setTypeFilter("all");
       setIsAddingNew(Boolean(startInAddMode));
+      let cancelled = false;
+      void getAllCustomerFinancialSummaries()
+        .then((map) => {
+          if (!cancelled) setLiveBalances(map);
+        })
+        .catch(() => {
+          // keep fallback balance when DB is unavailable in web preview
+        });
+      return () => {
+        cancelled = true;
+      };
     } else {
       setSearch("");
       setTypeFilter("all");
@@ -129,16 +144,16 @@ export function CustomerPickerModal({
         dir="rtl"
         className="max-w-lg w-[95vw] p-0 rounded-2xl bg-card border-border/80 shadow-2xl max-h-[85vh] flex flex-col overflow-hidden"
       >
-        <DialogHeader className="p-4 sm:p-5 border-b border-border/60 bg-muted/20 text-right flex flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
+        <DialogHeader className="p-4 pl-14 sm:p-5 sm:pl-16 border-b border-border/60 bg-muted/20 text-right flex flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
               <Building2 className="h-4 w-4" />
             </span>
-            <div>
-              <DialogTitle className="text-sm sm:text-base font-black text-foreground">
+            <div className="min-w-0">
+              <DialogTitle className="text-sm sm:text-base font-black text-foreground truncate">
                 سجل العملاء المعتمدين
               </DialogTitle>
-              <DialogDescription className="text-[11px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
                 اختر العميل لربط الفاتورة بملفه التجاري والمالي
               </DialogDescription>
             </div>
@@ -154,7 +169,7 @@ export function CustomerPickerModal({
               }
               setIsAddingNew(!isAddingNew);
             }}
-            className="h-8 text-xs font-black gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white shrink-0 shadow-xs active:scale-[0.97] touch-manipulation cursor-pointer"
+            className="h-8 px-2.5 sm:px-3 text-[11px] sm:text-xs font-black gap-1 rounded-xl bg-primary hover:bg-primary/90 text-white shrink-0 shadow-xs active:scale-[0.97] touch-manipulation cursor-pointer whitespace-nowrap"
           >
             {isAddingNew ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
             <span>{isAddingNew ? "قائمة العملاء" : "عميل جديد"}</span>
@@ -309,11 +324,14 @@ export function CustomerPickerModal({
                   {filteredCustomers.map((cust) => {
                     const isSelected = selectedCustomerId === cust.id;
                     const cfg = CUSTOMER_TYPE_CONFIG[cust.type] || CUSTOMER_TYPE_CONFIG.individual;
+                    const live = liveBalances[cust.id];
+                    const effectiveOutstanding = live ? live.outstanding : cust.balance;
 
                     return (
                       <button
                         type="button"
                         key={cust.id}
+                        dir="rtl"
                         onClick={() => {
                           playTapSound();
                           onSelect(cust);
@@ -325,38 +343,40 @@ export function CustomerPickerModal({
                             : "hover:bg-secondary/50 border border-transparent"
                         }`}
                       >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                        <div className="min-w-0 flex-1 text-right">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-black text-xs text-foreground truncate">
                               {cust.name}
                             </span>
                             <span
-                              className={`rounded-full px-2 py-0.2 text-[9px] font-bold border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
+                              className={`rounded-full px-2 py-0.5 text-[9.5px] font-bold border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
                             >
                               {cfg.label}
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                            {cust.phone ? (
-                              <span className="font-mono font-bold text-primary/80" dir="ltr">
-                                {cust.phone}
-                              </span>
-                            ) : null}
-                            {cust.address ? <span className="truncate">{cust.address}</span> : null}
-                          </div>
+                          {(cust.phone || cust.address) && (
+                            <div className="flex items-center gap-2.5 mt-1 text-[11px] text-muted-foreground">
+                              {cust.phone ? (
+                                <bdi dir="ltr" className="font-mono font-bold text-primary/80">
+                                  {cust.phone}
+                                </bdi>
+                              ) : null}
+                              {cust.address ? <span className="truncate">{cust.address}</span> : null}
+                            </div>
+                          )}
                         </div>
 
                         <div className="text-left shrink-0">
-                          {cust.balance > 0 ? (
+                          {effectiveOutstanding > 0.009 ? (
                             <div className="text-[11px] font-mono font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                              {formatNumber(cust.balance)} ج.س
-                              <span className="text-[9px] block text-rose-600/70 font-normal">مديونية</span>
+                              {formatNumber(effectiveOutstanding)}
+                              <span className="text-[9.5px] block font-sans text-rose-600/75 font-bold">مديونية</span>
                             </div>
-                          ) : cust.balance < 0 ? (
+                          ) : effectiveOutstanding < -0.009 ? (
                             <div className="text-[11px] font-mono font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                              {formatNumber(Math.abs(cust.balance))} ج.س
-                              <span className="text-[9px] block text-emerald-600/70 font-normal">رصيد مقدم</span>
+                              {formatNumber(Math.abs(effectiveOutstanding))}
+                              <span className="text-[9.5px] block font-sans text-emerald-600/75 font-bold">رصيد مقدم</span>
                             </div>
                           ) : (
                             <span className="text-[11px] text-muted-foreground font-bold">متزن (0)</span>

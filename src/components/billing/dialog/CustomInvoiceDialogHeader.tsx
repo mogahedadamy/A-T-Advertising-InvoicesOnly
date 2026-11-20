@@ -46,13 +46,13 @@ export function CustomInvoiceDialogHeader({
             {type === "proforma" && <FileText className="h-4 w-4" />}
             {type === "purchase" && <ShoppingBag className="h-4 w-4" />}
           </span>
-          <div>
-            <DialogTitle className="text-sm sm:text-base font-black text-foreground">
+          <div className="min-w-0">
+            <DialogTitle className="text-sm sm:text-base font-black text-foreground truncate">
               {invoiceToEdit
                 ? `تعديل ${INVOICE_TYPE_LABELS[type]}`
                 : `إصدار ${INVOICE_TYPE_LABELS[type]}`}
             </DialogTitle>
-            <p className="text-[10px] sm:text-[10.5px] text-muted-foreground">
+            <p className="hidden sm:block text-[10.5px] text-muted-foreground truncate">
               نموذج الفاتورة التجاري المعتمد والمطابق للمواصفات الرسمية A4
             </p>
           </div>
@@ -60,17 +60,21 @@ export function CustomInvoiceDialogHeader({
 
         <div className="flex items-center gap-2 shrink-0">
           <span
-            dir="ltr"
-            className="text-xs font-mono font-black px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 tabular-nums"
+            dir={savedReference ? "ltr" : "rtl"}
+            className={`text-[11px] sm:text-xs font-black px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
+              savedReference
+                ? "font-mono bg-primary/10 text-primary border-primary/20 tabular-nums"
+                : "bg-secondary/70 text-muted-foreground border-border/70"
+            }`}
           >
-            {savedReference || `${String(new Date().getFullYear()).slice(-2)}-...`}
+            {savedReference || "مسودة"}
           </span>
         </div>
       </div>
 
       {/* 2. شريط التبديل البارز والاحترافي بين تحرير البيانات ومعاينة الفاتورة */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
-        <div className="inline-flex rounded-xl bg-muted/80 p-1 border border-border/70 shadow-2xs w-full sm:w-auto">
+        <div className="grid grid-cols-2 sm:inline-flex rounded-xl bg-muted/80 p-1 border border-border/70 shadow-2xs w-full sm:w-auto gap-1">
           {/* زر تحرير البيانات */}
           <button
             type="button"
@@ -78,14 +82,15 @@ export function CustomInvoiceDialogHeader({
               playTapSound();
               onTabChange("edit");
             }}
-            className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+            className={`h-9 inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 rounded-lg text-xs font-black whitespace-nowrap transition-all cursor-pointer ${
               activeTab === "edit"
                 ? "bg-card text-foreground shadow-xs border border-border/60"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Edit3 className="h-3.5 w-3.5 text-primary" />
-            <span>1. إدخال وتعديل البيانات</span>
+            <Edit3 className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="sm:hidden">1. البيانات</span>
+            <span className="hidden sm:inline">1. إدخال وتعديل البيانات</span>
           </button>
 
           {/* زر معاينة الفاتورة الرسمية البارز جداً */}
@@ -95,17 +100,18 @@ export function CustomInvoiceDialogHeader({
               playTapSound();
               onTabChange("preview");
             }}
-            className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+            className={`h-9 inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 rounded-lg text-xs font-black whitespace-nowrap transition-all cursor-pointer ${
               activeTab === "preview"
                 ? "bg-primary text-white shadow-xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
-            <Eye className="h-3.5 w-3.5" />
-            <span>2. معاينة الفاتورة الرسمية (A4)</span>
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span className="sm:hidden">2. معاينة A4</span>
+            <span className="hidden sm:inline">2. معاينة الفاتورة الرسمية (A4)</span>
             {itemsCount > 0 && (
               <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full leading-none shrink-0 ${
                   activeTab === "preview"
                     ? "bg-white/20 text-white"
                     : "bg-primary/10 text-primary font-bold"

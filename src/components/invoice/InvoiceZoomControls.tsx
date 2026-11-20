@@ -6,13 +6,24 @@ interface Props {
   zoomOut: () => void;
   reset: () => void;
   scalePercent?: number;
+  inline?: boolean;
 }
 
-export function InvoiceZoomControls({ zoomIn, zoomOut, reset, scalePercent }: Props) {
+export function InvoiceZoomControls({
+  zoomIn,
+  zoomOut,
+  reset,
+  scalePercent,
+  inline = false,
+}: Props) {
   return (
     <div
       dir="ltr"
-      className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/90 px-2 py-1 text-white shadow-xl backdrop-blur-md z-10 text-xs"
+      className={
+        inline
+          ? "flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/95 px-2.5 py-1 text-white shadow-md text-xs"
+          : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/90 px-2 py-1 text-white shadow-xl backdrop-blur-md z-10 text-xs"
+      }
     >
       <Button
         variant="ghost"
@@ -39,7 +50,7 @@ export function InvoiceZoomControls({ zoomIn, zoomOut, reset, scalePercent }: Pr
         variant="ghost"
         size="icon"
         aria-label="ملاءمة الشاشة"
-        title="ملاءمة الورقة A5"
+        title="ملاءمة الورقة"
         onClick={reset}
         className="h-7 w-7 rounded-full text-slate-300 hover:bg-white/10 hover:text-white"
       >

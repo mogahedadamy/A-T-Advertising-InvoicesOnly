@@ -49,7 +49,11 @@ export const StandardInvoiceDocument = React.forwardRef<HTMLDivElement, Props>(
     const emptyRowsCount = Math.max(0, rowCount - items.length);
 
     const badgeTitle = (() => {
-      if (!isRtl) return "Pro-invoice";
+      if (!isRtl) {
+        if (meta.type === "purchase") return "Purchase Invoice";
+        if (meta.type === "sales") return "Sales Invoice";
+        return "Pro-invoice";
+      }
       if (meta.type === "purchase") return "فاتورة مشتريات";
       if (meta.type === "sales") return "فاتورة مبيعات";
       return "فاتورة مبدئية";

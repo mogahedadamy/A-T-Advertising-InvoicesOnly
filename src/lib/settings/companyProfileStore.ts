@@ -183,6 +183,15 @@ export async function updateCompanyProfile(updates: {
   notifyListeners();
 }
 
+export function getCompanyProfileSnapshot() {
+  return {
+    email: cachedEmail,
+    phone: cachedPhone,
+    addressAr: cachedAddressAr,
+    addressEn: cachedAddressEn,
+  };
+}
+
 export function useCompanyProfile() {
   const [, setTick] = useState(0);
 
