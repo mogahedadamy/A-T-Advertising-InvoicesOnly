@@ -57,14 +57,31 @@ describe("InvoiceCustomerLinkStrip", () => {
     expect(setSaveAsNewCustomer).toHaveBeenCalledWith(true);
   });
 
-  it("reveals phone and customer type inputs when opted in (ON)", () => {
-    render(<InvoiceCustomerLinkStrip {...baseProps} saveAsNewCustomer={true} />);
+  it("reveals phone, customer type, and optional address inputs when opted in (ON) and closes cleanly when toggled off", () => {
+    const setSaveAsNewCustomer = vi.fn();
+    render(
+      <InvoiceCustomerLinkStrip
+        {...baseProps}
+        saveAsNewCustomer={true}
+        setSaveAsNewCustomer={setSaveAsNewCustomer}
+        address=""
+        setAddress={vi.fn()}
+      />
+    );
 
     expect(
       screen.getByText(/سيُنشأ ملف عميل جديد وتُربط به الفاتورة تلقائياً في خطوة واحدة/)
     ).toBeDefined();
     expect(screen.getByPlaceholderText("09XXXXXXXX")).toBeDefined();
     expect(screen.getByLabelText("تصنيف العميل الجديد")).toBeDefined();
+    expect(screen.getByPlaceholderText("مثال: الخرطوم، بورتسودان...")).toBeDefined();
+
+    const closeBtn = screen.getByRole("switch", {
+      name: /حفظ كعميل جديد في دليل العملاء تلقائياً/i,
+    });
+    expect(closeBtn.textContent).toContain("إلغاء الإضافة");
+    fireEvent.click(closeBtn);
+    expect(setSaveAsNewCustomer).toHaveBeenCalledWith(false);
   });
 
   it("shows one-tap link CTA when an exact active customer match exists", () => {

@@ -514,7 +514,8 @@
     min-height: 297mm !important;
     height: auto !important;
     max-height: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
+    padding: 16mm 18mm 14mm 18mm !important;
     box-sizing: border-box !important;
     overflow: visible !important;
     page: custom-invoice-page;

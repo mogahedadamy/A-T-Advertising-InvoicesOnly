@@ -83,6 +83,7 @@ export function useCustomInvoiceForm({
   const [items, setItems] = useState<CustomInvoiceItem[]>([]);
   const [saveAsNewCustomer, setSaveAsNewCustomer] = useState(false);
   const [newCustomerType, setNewCustomerType] = useState<CustomerType>("client");
+  const [newCustomerAddress, setNewCustomerAddress] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const draftIdRef = useRef<string>("");
   const saveLockRef = useRef(false);
@@ -98,6 +99,7 @@ export function useCustomInvoiceForm({
     setIsProcessing(false);
     setSaveAsNewCustomer(false);
     setNewCustomerType("client");
+    setNewCustomerAddress("");
 
     if (invoiceToEdit) {
       draftIdRef.current = invoiceToEdit.id;
@@ -270,9 +272,11 @@ export function useCustomInvoiceForm({
       name: candidateName,
       phone: invoice.meta.phone,
       type: newCustomerType,
+      address: newCustomerAddress,
     });
     setCustomerId(outcome.customer.id);
     setSaveAsNewCustomer(false);
+    setNewCustomerAddress("");
     return {
       invoice: {
         ...invoice,
@@ -430,6 +434,8 @@ export function useCustomInvoiceForm({
     setSaveAsNewCustomer,
     newCustomerType,
     setNewCustomerType,
+    newCustomerAddress,
+    setNewCustomerAddress,
     isCustomerLocked,
     language,
     setLanguage,

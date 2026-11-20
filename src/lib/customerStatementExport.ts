@@ -49,7 +49,8 @@ export function buildStatementDomElement(
     width: 210mm;
     min-height: 297mm;
     height: ${isSinglePage ? "297mm" : "auto"};
-    padding: 11mm 13mm 10mm 13mm;
+    margin: 0 auto;
+    padding: 16mm 18mm 14mm 18mm;
     background: #ffffff;
     color: #0f172a;
     box-sizing: border-box;
@@ -276,17 +277,17 @@ export function buildStatementDomElement(
     </div>
 
     <!-- 3. جدول كشف الحساب المحاسبي التفصيلي -->
-    <div style="flex: 1; min-height: 510px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 10px; background: #ffffff;">
+    <div style="flex: 1; min-height: 450px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 10px; background: #ffffff;">
       <table style="width: 100%; border-collapse: collapse; height: 100%;">
         <thead>
           <tr style="background: #0D4A39; color: #ffffff; height: 36px; border-bottom: 2px solid #C5A059;">
-            <th style="padding: 6px 6px; width: 34px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">#</th>
-            <th style="padding: 6px 8px; width: 92px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">التاريخ</th>
-            <th style="padding: 6px 10px; text-align: right; font-size: 11px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">البيان وتفاصيل المعاملة المالية</th>
-            <th style="padding: 6px 8px; width: 88px; text-align: center; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">المرجع</th>
-            <th style="padding: 6px 8px; width: 94px; text-align: left; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">مدين</th>
-            <th style="padding: 6px 8px; width: 94px; text-align: left; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">دائن</th>
-            <th style="padding: 6px 8px; width: 106px; text-align: left; font-size: 10.5px; font-weight: 800;">الرصيد التراكمي</th>
+            <th style="padding: 6px 5px; width: 30px; text-align: center; font-size: 10px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">#</th>
+            <th style="padding: 6px 6px; width: 82px; text-align: center; font-size: 10px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">التاريخ</th>
+            <th style="padding: 6px 10px; text-align: right; font-size: 10.5px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">البيان وتفاصيل المعاملة المالية</th>
+            <th style="padding: 6px 6px; width: 76px; text-align: center; font-size: 10px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">المرجع</th>
+            <th style="padding: 6px 6px; width: 84px; text-align: left; font-size: 10px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">مدين</th>
+            <th style="padding: 6px 6px; width: 84px; text-align: left; font-size: 10px; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.16);">دائن</th>
+            <th style="padding: 6px 6px; width: 96px; text-align: left; font-size: 10px; font-weight: 800;">الرصيد التراكمي</th>
           </tr>
         </thead>
         <tbody>
@@ -295,30 +296,30 @@ export function buildStatementDomElement(
         </tbody>
         <tfoot>
           <tr style="background: #f4f7f6; border-top: 2px solid #0D4A39; height: 36px; font-weight: 900; font-size: 11px;">
-            <td colspan="4" style="padding: 6px 12px; text-align: right; color: #0D4A39; border-left: 1px solid #cbd5e1;">الإجماليات الكلية للفترة (${safeCurrencySymbol}):</td>
-            <td style="padding: 6px 8px; color: #991b1b; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalInvoiced))}</bdi></td>
-            <td style="padding: 6px 8px; color: #0D4A39; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalCollected))}</bdi></td>
-            <td style="padding: 6px 8px; color: ${netAmountColor}; text-align: left; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(netBal))}</bdi></td>
+            <td colspan="4" style="padding: 6px 10px; text-align: right; color: #0D4A39; border-left: 1px solid #cbd5e1;">الإجماليات الكلية للفترة (${safeCurrencySymbol}):</td>
+            <td style="padding: 6px 6px; color: #991b1b; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalInvoiced))}</bdi></td>
+            <td style="padding: 6px 6px; color: #0D4A39; text-align: left; border-left: 1px solid #cbd5e1; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(statement.totalCollected))}</bdi></td>
+            <td style="padding: 6px 6px; color: ${netAmountColor}; text-align: left; ${monoStyle}"><bdi dir="ltr">${escapeHtml(formatNumber(netBal))}</bdi></td>
           </tr>
         </tfoot>
       </table>
     </div>
 
     <!-- 4. شريط التفقيط الرسمي وبيانات الحساب البنكي المعتمد -->
-    <div style="background: #f8faf9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 10.5px; display: flex; justify-content: space-between; align-items: center; gap: 14px;">
-      <div style="flex: 1; min-width: 0;">
+    <div style="background: #f8faf9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 14px;">
+      <div style="flex: 1 1 240px; min-width: 0;">
         <span style="color: #475569; font-weight: 800;">${tafqeetHeading} </span>
         <span style="color: #0f172a; font-weight: 800;">${safeTafqeetText}</span>
       </div>
-      <div style="flex-shrink: 0; font-size: 10px; color: #0D4A39; font-weight: 800; padding-right: 12px; border-right: 1px solid #cbd5e1; white-space: nowrap;">
+      <div style="flex-shrink: 0; font-size: 9.5px; color: #0D4A39; font-weight: 800; padding-right: 10px; border-right: 1px solid #cbd5e1;">
         الحساب المعتمد للسداد: بنك الخرطوم <bdi dir="ltr" style="${monoStyle}">3283046</bdi> (طارق عثمان / تي ايه للدعايه والاعلان)
       </div>
     </div>
 
     <!-- 5. التذييل الرسمي المتوازن: اعتماد العميل + رمز QR + توقيع الإدارة المالية -->
-    <div style="display: grid; grid-template-columns: 1fr 86px 1fr; gap: 14px; align-items: stretch; padding-top: 8px; border-top: 1px solid #cbd5e1; margin-bottom: 4px;">
+    <div style="display: grid; grid-template-columns: 1fr 84px 1fr; gap: 14px; align-items: stretch; padding-top: 8px; border-top: 1px solid #cbd5e1; margin-bottom: 4px;">
       <!-- اعتماد واستلام العميل -->
-      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 86px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
+      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 84px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
         <div style="font-weight: 800; font-size: 10.5px; color: #0f172a;">اعتماد واستلام العميل</div>
         <div style="flex: 1;"></div>
         <div style="font-size: 9.5px; color: #64748b; font-weight: 700; border-top: 1px solid #e2e8f0; padding-top: 4px;">
@@ -327,12 +328,12 @@ export function buildStatementDomElement(
       </div>
 
       <!-- رمز QR للتوثيق (مطابق لارتفاع بطاقتي الاعتماد) -->
-      <div style="width: 86px; height: 86px; padding: 6px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
-        <img src="${TA_QR_CODE_BASE64}" alt="QR Verification" style="width: 100%; height: 100%; object-fit: contain;" />
+      <div style="width: 84px; height: 84px; padding: 5px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+        <img src="${TA_QR_CODE_BASE64}" alt="QR Code" style="width: 100%; height: 100%; object-fit: contain;" />
       </div>
 
       <!-- إدارة الحسابات المالية وتوقيع طارق عثمان علي -->
-      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 86px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
+      <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; height: 84px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; background: #ffffff;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
           <span style="font-weight: 800; font-size: 10.5px; color: #0f172a;">إدارة الحسابات المالية</span>
           <span style="font-weight: 900; font-size: 11px; color: #0D4A39;">طارق عثمان علي</span>

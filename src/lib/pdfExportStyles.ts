@@ -134,9 +134,6 @@ html, body {
 .proforma-print-root,
 .custom-invoice-print-root,
 #custom-invoice-print-portal,
-.statement-print-root,
-#customer-statement-print-mount,
-.statement-print-document,
 .invoice-standalone-root {
   display: block !important;
   position: static !important;
@@ -162,6 +159,26 @@ html, body {
   color: #000000 !important;
   position: relative !important;
   overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+/* 2. كشف الحساب المالي A4 بهوامش أمان متوازنة ومسنترة داخل الورقة */
+.statement-print-root,
+.statement-print-document,
+#customer-statement-print-mount,
+#customer-statement-share-mount {
+  width: 210mm !important;
+  min-height: 297mm !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  padding: 16mm 18mm 14mm 18mm !important;
+  box-sizing: border-box !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  position: relative !important;
+  overflow: visible !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: space-between !important;

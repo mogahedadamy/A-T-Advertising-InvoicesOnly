@@ -56,10 +56,14 @@ describe("customerStatementExport - Executive Corporate A4 Statement", () => {
     // Explicit check: Must not have "invoice-paper" which triggers A5 landscape in pdfExport.ts
     expect(el.classList.contains("invoice-paper")).toBe(false);
 
-    // Full A4 dimensions for single-page statements
+    // Full A4 dimensions with centered safe paper margins
     expect(el.style.width).toBe("210mm");
     expect(el.style.height).toBe("297mm");
     expect(el.style.minHeight).toBe("297mm");
+    expect(el.style.paddingTop).toBe("16mm");
+    expect(el.style.paddingRight).toBe("18mm");
+    expect(el.style.paddingBottom).toBe("14mm");
+    expect(el.style.paddingLeft).toBe("18mm");
 
     // Company & Report Title
     expect(el.innerHTML).toContain("كشف حساب مالي");

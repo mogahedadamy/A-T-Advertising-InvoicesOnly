@@ -1,6 +1,15 @@
 import React from "react";
-import { ArchiveRestore, ExternalLink, Link2, Lock, Phone, UserCheck, UserPlus, X } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
+import {
+  ArchiveRestore,
+  ExternalLink,
+  Link2,
+  Lock,
+  MapPin,
+  Phone,
+  UserCheck,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   CUSTOMER_TYPE_CONFIG,
@@ -22,6 +31,8 @@ interface InvoiceCustomerLinkStripProps {
   setPhone: (v: string) => void;
   newCustomerType: CustomerType;
   setNewCustomerType: (t: CustomerType) => void;
+  address?: string;
+  setAddress?: (v: string) => void;
   onLinkCustomer: (customer: CustomerRecord) => void;
   onUnlinkCustomer: () => void;
   onRestoreAndLink: (customer: CustomerRecord) => Promise<void> | void;
@@ -40,6 +51,8 @@ export function InvoiceCustomerLinkStrip({
   setPhone,
   newCustomerType,
   setNewCustomerType,
+  address = "",
+  setAddress,
   onLinkCustomer,
   onUnlinkCustomer,
   onRestoreAndLink,
@@ -158,24 +171,27 @@ export function InvoiceCustomerLinkStrip({
 
   return (
     <div
-      className={`rounded-xl border px-3 py-2.5 transition-colors space-y-2.5 ${
+      className={`mt-2 rounded-xl border transition-colors ${
         saveAsNewCustomer
-          ? "border-primary/35 bg-primary/5"
-          : "border-border/70 bg-secondary/30"
+          ? "border-primary/40 bg-primary/5 shadow-2xs"
+          : "border-border/80 bg-secondary/30"
       }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
+      {/* شريط التحكم المستقل: زر واضح لتفعيل الإضافة التلقائية أو إغلاقها بضغطة واحدة بدون أي تداخل */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 py-2.5">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
           <UserPlus
             className={`h-4 w-4 mt-0.5 shrink-0 ${
               saveAsNewCustomer ? "text-primary" : "text-muted-foreground"
             }`}
           />
           <div className="min-w-0">
-            <p className="text-[11px] font-black text-foreground truncate">
-              حفظ «{trimmedName}» في دليل العملاء تلقائياً عند إصدار الفاتورة
+            <p className="text-[11px] font-black text-foreground leading-snug">
+              {saveAsNewCustomer
+                ? `إضافة «${trimmedName}» تلقائياً عند حفظ الفاتورة`
+                : `عميل جديد غير مسجل: «${trimmedName}»`}
             </p>
-            <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
+            <p className="text-[10px] font-medium text-muted-foreground mt-0.5 leading-snug">
               {saveAsNewCustomer
                 ? "سيُنشأ ملف عميل جديد وتُربط به الفاتورة تلقائياً في خطوة واحدة"
                 : "عميل عابر — لن يُضاف إلى قائمة العملاء"}
@@ -183,51 +199,88 @@ export function InvoiceCustomerLinkStrip({
           </div>
         </div>
 
-        <Switch
-          dir="ltr"
-          checked={saveAsNewCustomer}
-          onCheckedChange={(checked) => {
-            playTapSound();
-            setSaveAsNewCustomer(checked);
-          }}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={saveAsNewCustomer}
           aria-label="حفظ كعميل جديد في دليل العملاء تلقائياً"
-        />
+          onClick={() => {
+            playTapSound();
+            setSaveAsNewCustomer(!saveAsNewCustomer);
+          }}
+          className={`inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl text-[11px] font-black transition-all cursor-pointer shrink-0 active:scale-[0.97] whitespace-nowrap ${
+            saveAsNewCustomer
+              ? "border border-destructive/35 bg-card text-destructive hover:bg-destructive hover:text-white"
+              : "border border-primary/45 bg-primary text-white hover:bg-primary/90 shadow-2xs"
+          }`}
+        >
+          {saveAsNewCustomer ? (
+            <>
+              <X className="h-3.5 w-3.5 shrink-0" />
+              <span>إلغاء الإضافة</span>
+            </>
+          ) : (
+            <>
+              <UserPlus className="h-3.5 w-3.5 shrink-0" />
+              <span>إضافة تلقائية للعميل</span>
+            </>
+          )}
+        </button>
       </div>
 
+      {/* لوحة بيانات العميل الجديد المنسدلة بوضوح ضمن التدفق الطبيعي بدون أي عناصر عائمة */}
       {saveAsNewCustomer && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-primary/15">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-foreground flex items-center gap-1">
-              <Phone className="h-3 w-3 text-primary" />
-              <span>رقم الهاتف / واتساب (اختياري)</span>
-            </label>
-            <Input
-              type="tel"
-              dir="ltr"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="09XXXXXXXX"
-              className="h-9 text-xs rounded-xl bg-background font-mono font-bold text-left"
-            />
+        <div className="px-3 pb-3 pt-2.5 border-t border-primary/20 space-y-2.5 bg-card/60 rounded-b-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-[10.5px] font-bold text-foreground flex items-center gap-1">
+                <Phone className="h-3 w-3 text-primary" />
+                <span>رقم الهاتف / واتساب (اختياري)</span>
+              </label>
+              <Input
+                type="tel"
+                dir="ltr"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="09XXXXXXXX"
+                className="h-9 text-xs rounded-xl bg-background font-mono font-bold text-left"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10.5px] font-bold text-foreground block">
+                تصنيف العميل
+              </label>
+              <select
+                aria-label="تصنيف العميل الجديد"
+                value={newCustomerType}
+                onChange={(e) => setNewCustomerType(e.target.value as CustomerType)}
+                className="h-9 w-full rounded-xl border border-border/80 bg-background px-3 text-xs font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                {PRIMARY_CUSTOMER_TYPES.map((k) => (
+                  <option key={k} value={k}>
+                    {CUSTOMER_TYPE_CONFIG[k].label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-foreground block">
-              تصنيف العميل
-            </label>
-            <select
-              aria-label="تصنيف العميل الجديد"
-              value={newCustomerType}
-              onChange={(e) => setNewCustomerType(e.target.value as CustomerType)}
-              className="h-9 w-full rounded-xl border border-border/80 bg-background px-3 text-xs font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            >
-              {PRIMARY_CUSTOMER_TYPES.map((k) => (
-                <option key={k} value={k}>
-                  {CUSTOMER_TYPE_CONFIG[k].label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {setAddress && (
+            <div className="space-y-1">
+              <label className="text-[10.5px] font-bold text-foreground flex items-center gap-1">
+                <MapPin className="h-3 w-3 text-primary" />
+                <span>العنوان (اختياري)</span>
+              </label>
+              <Input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="مثال: الخرطوم، بورتسودان..."
+                className="h-9 text-xs rounded-xl bg-background font-bold text-right"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

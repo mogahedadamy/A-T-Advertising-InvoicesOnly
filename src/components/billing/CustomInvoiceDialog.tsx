@@ -125,6 +125,8 @@ export function CustomInvoiceDialog({
               setSaveAsNewCustomer={form.setSaveAsNewCustomer}
               newCustomerType={form.newCustomerType}
               setNewCustomerType={form.setNewCustomerType}
+              newCustomerAddress={form.newCustomerAddress}
+              setNewCustomerAddress={form.setNewCustomerAddress}
               isCustomerLocked={form.isCustomerLocked}
               onOpenCustomerProfile={(cid) => {
                 onOpenChange(false);

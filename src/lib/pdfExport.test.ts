@@ -79,6 +79,9 @@ describe("Invoice Footer & Standalone Print HTML Engineering (Problem C)", () =>
     expect(INVOICE_STANDALONE_CSS).toContain("font-synthesis: none");
     expect(INVOICE_STANDALONE_CSS).toContain("text-rendering: auto");
     expect(INVOICE_STANDALONE_CSS).not.toContain("text-rendering: geometricPrecision");
+    // Account Statement safe centered paper margins must NEVER be reset to padding: 0
+    expect(INVOICE_STANDALONE_CSS).toContain("#customer-statement-print-mount");
+    expect(INVOICE_STANDALONE_CSS).toContain("padding: 16mm 18mm 14mm 18mm !important;");
   });
 
   it("enforces explicit QR box dimensions in standalone CSS to prevent collapsing or clipping", () => {
