@@ -1,33 +1,22 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- * Official Corporate Letters — Domain Types
+ * Official Corporate Letters — Domain Types (Bilingual AR / EN)
  * ═══════════════════════════════════════════════════════════════
  */
 
-export type LetterTemplateId = "introduction" | "financial_claim" | "authorization";
-
-export interface LetterTemplateMeta {
-  id: LetterTemplateId;
-  shortLabel: string;
-  title: string;
-  description: string;
-  defaultHonorific: string;
-  defaultSubject: string;
-  defaultSalutation: string;
-  defaultBody: string;
-  defaultClosingPhrase: string;
-}
+export type LetterLanguage = "ar" | "en";
 
 export interface OfficialLetter {
   id: string;
   reference: string;
-  templateId: LetterTemplateId;
+  language: LetterLanguage;
   date: string;
+  showLetterTitle: boolean;
+  letterTitle: string;
   recipientHonorific: string;
   recipientName: string;
   recipientTitle?: string;
   salutation: string;
-  letterTitle: string;
   subject: string;
   body: string;
   closingPhrase: string;

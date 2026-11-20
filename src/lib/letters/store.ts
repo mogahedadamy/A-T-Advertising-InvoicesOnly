@@ -17,15 +17,46 @@ import type { OfficialLetter } from "./types";
 const LETTERS_STORAGE_KEY = "ta_official_letters_v1";
 const MAX_STORED_LETTERS = 150;
 
+function normalizeStoredLetter(item: Partial<OfficialLetter> & { id: string; subject: string }): OfficialLetter {
+  return {
+    id: item.id,
+    reference: item.reference || "TA-001",
+    language: item.language === "en" ? "en" : "ar",
+    date: item.date || getLocalIsoDate(),
+    showLetterTitle: item.showLetterTitle ?? Boolean(item.letterTitle && item.letterTitle.trim().length > 0),
+    letterTitle: item.letterTitle || "",
+    recipientHonorific: item.recipientHonorific || (item.language === "en" ? "Messrs." : "السادة /"),
+    recipientName: item.recipientName || "",
+    recipientTitle: item.recipientTitle || undefined,
+    salutation: item.salutation || (item.language === "en" ? "Dear Sir / Madam," : "السلام عليكم ورحمة الله وبركاته،،،"),
+    subject: item.subject,
+    body: item.body || "",
+    closingPhrase: item.closingPhrase || (item.language === "en" ? "Yours sincerely," : "وتفضلوا بقبول فائق الاحترام والتقدير،،،"),
+    signatoryName: item.signatoryName || (item.language === "en" ? "Tarig Osman Ali" : "طارق عثمان علي"),
+    signatoryTitle:
+      item.signatoryTitle ||
+      (item.language === "en"
+        ? "General Manager — T.A Advertising Solution"
+        : "المدير العام — T.A Advertising Solution"),
+    includeSignature: item.includeSignature !== false,
+    includeStamp: item.includeStamp !== false,
+    includeQr: item.includeQr !== false,
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || new Date().toISOString(),
+  };
+}
+
 function parseLettersJson(raw: string): OfficialLetter[] {
   if (!raw || !raw.trim()) return [];
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is OfficialLetter =>
-        Boolean(item && typeof item === "object" && typeof item.id === "string" && typeof item.subject === "string")
-    );
+    return parsed
+      .filter(
+        (item): item is Partial<OfficialLetter> & { id: string; subject: string } =>
+          Boolean(item && typeof item === "object" && typeof item.id === "string" && typeof item.subject === "string")
+      )
+      .map(normalizeStoredLetter);
   } catch {
     return [];
   }
@@ -142,10 +173,12 @@ export async function saveOfficialLetter(letter: OfficialLetter): Promise<Offici
   const nowIso = new Date().toISOString();
   const normalized: OfficialLetter = {
     ...letter,
+    language: letter.language === "en" ? "en" : "ar",
+    showLetterTitle: Boolean(letter.showLetterTitle && letter.letterTitle.trim()),
     reference: letter.reference.trim() || getNextLetterReference(letter.date),
     recipientName: letter.recipientName.trim(),
     recipientTitle: letter.recipientTitle?.trim() || undefined,
-    letterTitle: letter.letterTitle.trim() || "خطاب رسمي",
+    letterTitle: letter.letterTitle.trim(),
     subject: letter.subject.trim(),
     body: letter.body.trim(),
     updatedAt: nowIso,

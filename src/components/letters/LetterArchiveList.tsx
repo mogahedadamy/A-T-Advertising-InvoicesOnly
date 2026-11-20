@@ -1,7 +1,6 @@
 import React from "react";
 import { Edit3, FileText, Printer, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getLetterTemplate } from "@/lib/letters/templates";
 import type { OfficialLetter } from "@/lib/letters/types";
 import { playTapSound } from "@/lib/soundEffects";
 
@@ -29,81 +28,78 @@ export function LetterArchiveList({ letters, onOpenEdit, onPrint, onDelete }: Pr
 
   return (
     <div className="space-y-2.5" dir="rtl">
-      {letters.map((item) => {
-        const tpl = getLetterTemplate(item.templateId);
-        return (
-          <div
-            key={item.id}
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-2xl border border-border/80 bg-card p-3 shadow-2xs hover:border-primary/40 transition-colors"
-          >
-            <div className="min-w-0 flex-1 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  dir="ltr"
-                  className="font-mono text-[10.5px] font-black text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md"
-                >
-                  {item.reference}
-                </span>
-                <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-md">
-                  {tpl.shortLabel}
-                </span>
-                <span className="font-mono text-[10.5px] text-muted-foreground" dir="ltr">
-                  {item.date}
-                </span>
-              </div>
-              <div className="text-xs sm:text-sm font-black text-foreground truncate">
-                {item.recipientName || item.recipientHonorific}
-              </div>
-              <p className="text-[11px] font-medium text-muted-foreground truncate">
-                {item.subject}
-              </p>
+      {letters.map((item) => (
+        <div
+          key={item.id}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-2xl border border-border/80 bg-card p-3 shadow-2xs hover:border-primary/40 transition-colors"
+        >
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                dir="ltr"
+                className="font-mono text-[10.5px] font-black text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md"
+              >
+                {item.reference}
+              </span>
+              <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-md">
+                {item.language === "en" ? "English" : "عربي"}
+              </span>
+              <span className="font-mono text-[10.5px] text-muted-foreground" dir="ltr">
+                {item.date}
+              </span>
             </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  playTapSound();
-                  onOpenEdit(item);
-                }}
-                className="h-8 px-2.5 rounded-lg text-[11px] font-black gap-1 cursor-pointer"
-              >
-                <Edit3 className="h-3.5 w-3.5 text-primary" />
-                <span>فتح وتعديل</span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  playTapSound();
-                  onPrint(item);
-                }}
-                className="h-8 px-2.5 rounded-lg text-[11px] font-black gap-1 cursor-pointer"
-                title="طباعة الخطاب"
-              >
-                <Printer className="h-3.5 w-3.5 text-primary" />
-                <span className="hidden sm:inline">طباعة</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  playTapSound();
-                  onDelete(item.id);
-                }}
-                aria-label="حذف الخطاب"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+            <div className="text-xs sm:text-sm font-black text-foreground truncate">
+              {item.recipientName || item.recipientHonorific}
             </div>
+            <p className="text-[11px] font-medium text-muted-foreground truncate">
+              {item.subject}
+            </p>
           </div>
-        );
-      })}
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                playTapSound();
+                onOpenEdit(item);
+              }}
+              className="h-8 px-2.5 rounded-lg text-[11px] font-black gap-1 cursor-pointer"
+            >
+              <Edit3 className="h-3.5 w-3.5 text-primary" />
+              <span>فتح وتعديل</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                playTapSound();
+                onPrint(item);
+              }}
+              className="h-8 px-2.5 rounded-lg text-[11px] font-black gap-1 cursor-pointer"
+              title="طباعة الخطاب"
+            >
+              <Printer className="h-3.5 w-3.5 text-primary" />
+              <span className="hidden sm:inline">طباعة</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                playTapSound();
+                onDelete(item.id);
+              }}
+              aria-label="حذف الخطاب"
+              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -111,6 +111,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Enable full offscreen WebView drawing for exact native vector PDF export.
+        WebView.enableSlowWholeDocumentDraw();
         // Native backup engine must be registered before the bridge is created.
         registerPlugin(BackupPlugin.class);
         super.onCreate(savedInstanceState);
@@ -221,8 +223,15 @@ public class MainActivity extends BridgeActivity {
 
                             printWebView.setWebViewClient(new WebViewClient() {
                                 @Override
+                                public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                                    android.webkit.WebResourceResponse fontResp = NativePdfExporter.interceptLocalFontAsset(MainActivity.this, request);
+                                    if (fontResp != null) return fontResp;
+                                    return super.shouldInterceptRequest(view, request);
+                                }
+
+                                @Override
                                 public void onPageFinished(WebView view, String url) {
-                                    view.postDelayed(triggerPrint, 200);
+                                    view.postDelayed(triggerPrint, 250);
                                 }
                             });
 
@@ -363,6 +372,7 @@ public class MainActivity extends BridgeActivity {
                             sendIntent.putExtra(Intent.EXTRA_TEXT, messageText);
                         }
                         sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        sendIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         sendIntent.setClipData(ClipData.newRawUri("PDF", fileUri));
 
                         if (targetWhatsApp) {
@@ -410,6 +420,76 @@ public class MainActivity extends BridgeActivity {
                             );
                         }
                     } catch (Exception ignored) {}
+                }
+
+                @JavascriptInterface
+                public void shareHtmlToWhatsApp(String htmlContent, String filename, String pageSize, String messageText) {
+                    try {
+                        String safeName = sanitizeFileName(filename, "مستند-TA.pdf", ".pdf");
+                        File shareDir = new File(getCacheDir(), "shared_invoices");
+                        File targetFile = resolveSafeTargetFile(shareDir, safeName);
+                        NativePdfExporter.renderHtmlToPdfFile(
+                            MainActivity.this,
+                            htmlContent,
+                            pageSize,
+                            targetFile,
+                            new NativePdfExporter.ExportCallback() {
+                                @Override
+                                public void onSuccess(File pdfFile) {
+                                    sharePdfFileDirectly(pdfFile, messageText, true);
+                                    notifyShareStatus(true, "تم تجهيز الملف الأصلي وفتح واتساب بنجاح");
+                                }
+
+                                @Override
+                                public void onError(String message) {
+                                    notifyShareStatus(false, message);
+                                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        );
+                    } catch (SecurityException se) {
+                        Log.w(TAG, "Rejected unsafe HTML share filename", se);
+                        notifyShareStatus(false, "اسم الملف غير صالح");
+                    } catch (Exception e) {
+                        Log.e(TAG, "shareHtmlToWhatsApp failed", e);
+                        notifyShareStatus(false, "تعذر تجهيز المستند للمشاركة");
+                    }
+                }
+
+                @JavascriptInterface
+                public void saveHtmlAsPdf(String htmlContent, String filename, String pageSize) {
+                    try {
+                        String safeName = sanitizeFileName(filename, "مستند-TA.pdf", ".pdf");
+                        File targetDir = new File(getCacheDir(), "saved_invoices");
+                        File targetFile = resolveSafeTargetFile(targetDir, safeName);
+                        NativePdfExporter.renderHtmlToPdfFile(
+                            MainActivity.this,
+                            htmlContent,
+                            pageSize,
+                            targetFile,
+                            new NativePdfExporter.ExportCallback() {
+                                @Override
+                                public void onSuccess(File pdfFile) {
+                                    try {
+                                        byte[] fileBytes = java.nio.file.Files.readAllBytes(pdfFile.toPath());
+                                        String b64 = Base64.encodeToString(fileBytes, Base64.NO_WRAP);
+                                        saveFileInternal(b64, safeName, "application/pdf", true);
+                                    } catch (Exception ex) {
+                                        Log.e(TAG, "saveHtmlAsPdf finalize failed", ex);
+                                        Toast.makeText(MainActivity.this, "تعذر حفظ ملف PDF", Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String message) {
+                                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        );
+                    } catch (Exception e) {
+                        Log.e(TAG, "saveHtmlAsPdf failed", e);
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "تعذر حفظ ملف PDF", Toast.LENGTH_SHORT).show());
+                    }
                 }
 
                 @JavascriptInterface

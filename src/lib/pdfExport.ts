@@ -419,13 +419,28 @@ export async function exportElementToPdf(
 ): Promise<boolean> {
   const toastId = toast.loading("جاري توليد وحفظ ملف الـ PDF الأصلي...");
   try {
+    const androidPrint = window.AndroidPrint;
+    if (androidPrint && typeof androidPrint.saveHtmlAsPdf === "function") {
+      const actualFormat: "a4" | "a5" =
+        options.format === "a5" ||
+        element.classList.contains("invoice-paper") ||
+        element.querySelector(".invoice-paper") !== null
+          ? "a5"
+          : "a4";
+      const safeName = (options.filename || "فاتورة-TA").replace(/[\\/:*?"<>|]/g, "-");
+      const fullFilename = safeName.endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+      const standaloneHtml = buildStandaloneInvoiceHtml(element, fullFilename, actualFormat);
+      androidPrint.saveHtmlAsPdf(standaloneHtml, fullFilename, actualFormat.toUpperCase());
+      toast.success(`تم حفظ ملف الـ PDF الأصلي بنجاح: ${fullFilename}`, { id: toastId });
+      return true;
+    }
+
     const generated = await generateInvoicePdf(element, options);
     if (!generated) {
       throw new Error("تعذر توليد بيانات ملف PDF");
     }
 
     const { pdf, base64, filename } = generated;
-    const androidPrint = window.AndroidPrint;
     if (androidPrint && typeof androidPrint.savePdf === "function") {
       androidPrint.savePdf(base64, filename);
       toast.success(`تم حفظ ملف الـ PDF بنجاح باسم: ${filename}`, { id: toastId });
@@ -661,7 +676,45 @@ export async function shareInvoiceViaWhatsApp(
   try {
     if (!element) throw new Error("تعذر العثور على مستند الفاتورة لتجهيزه للمشاركة");
 
-    // 1. توليد ملف PDF عالي الدقة (300 DPI) مع الحفاظ على رمز QR الأصلي بدون ضغط
+    // المسار الأصلي المباشر على أندرويد: تصدير Vector PDF مباشر من Chromium WebView بدون أي إزاحة للخطوط أو ضغط للباركود
+    const androidPrint = window.AndroidPrint;
+    if (androidPrint && typeof androidPrint.shareHtmlToWhatsApp === "function") {
+      const safeFilename = filename.replace(/[\\/:*?"<>|]/g, "-");
+      const fullFilename = safeFilename.endsWith(".pdf") ? safeFilename : `${safeFilename}.pdf`;
+      const standaloneHtml = buildStandaloneInvoiceHtml(element, fullFilename, actualFormat);
+
+      return await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const previousHandler = window.__onInvoiceShared;
+        const finish = (success: boolean, msg?: string) => {
+          if (settled) return;
+          settled = true;
+          window.__onInvoiceShared = previousHandler;
+          if (success) {
+            hud.setStagePdfDone();
+            hud.setSuccess(msg || "تم تجهيز الملف الأصلي وفتح واتساب بنجاح!");
+            resolve(true);
+          } else {
+            hud.setError(msg || "تعذر تجهيز المستند للمشاركة");
+            resolve(false);
+          }
+        };
+
+        window.__onInvoiceShared = (success: boolean, msg: string) => finish(success, msg);
+        androidPrint.shareHtmlToWhatsApp!(
+          standaloneHtml,
+          fullFilename,
+          actualFormat.toUpperCase(),
+          messageText
+        );
+
+        setTimeout(() => {
+          finish(true, "تم إرسال الملف إلى واتساب");
+        }, 3500);
+      });
+    }
+
+    // 1. توليد ملف PDF عالي الدقة (300 DPI) لمتصفحات الويب مع الحفاظ على رمز QR الأصلي بدون ضغط
     const generated = await generateInvoicePdf(element, {
       filename,
       format: actualFormat,
@@ -674,8 +727,7 @@ export async function shareInvoiceViaWhatsApp(
 
     hud.setStagePdfDone();
 
-    // 2. إطلاق الفاتورة إلى واتساب مباشرة عبر AndroidPrint
-    const androidPrint = window.AndroidPrint;
+    // 2. إطلاق الفاتورة إلى واتساب مباشرة عبر AndroidPrint (مسار احتياطي للإصدارات الأقدم)
     if (androidPrint && typeof androidPrint.shareToWhatsApp === "function") {
       let responded = false;
       const previousHandler = window.__onInvoiceShared;

@@ -23,13 +23,13 @@ function formatLetterDate(isoDate: string): string {
  * ═══════════════════════════════════════════════════════════════
  * الورقة الرسمية المروّسة لإصدار الخطابات — T.A Advertising Solution
  * ═══════════════════════════════════════════════════════════════
- * مقاس A4 قياسي (210mm × 297mm) بهوامش أمان دبلوماسية متوازنة
- * (18mm أعلى، 20mm يمين ويسار، 16mm أسفل) مع توسيط مربع الموضوع
- * وتثبيت التوقيع والاسم والختم في أسفل الورقة وفق هوية الوكالة.
+ * تدعم اللغتين العربية (RTL) والإنجليزية (LTR) بالكامل بمقاس A4
+ * قياسي بهوامش أمان دبلوماسية متوازنة (18mm أعلى، 20mm جانباً، 16mm أسفل).
  */
 export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
   ({ letter, id = "official-letter-doc" }, ref) => {
-    const { email, phone, addressAr } = useCompanyProfile();
+    const { email, phone, addressAr, addressEn } = useCompanyProfile();
+    const isRtl = letter.language !== "en";
 
     const formattedDate = formatLetterDate(letter.date);
     const paragraphs = (letter.body || "")
@@ -37,12 +37,16 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
       .map((p) => p.trim())
       .filter(Boolean);
 
-    const isToWhom = letter.recipientHonorific.trim() === "إلى من يهمه الأمر";
-    const recipientDisplay = letter.recipientName.trim();
-    const honorificSuffix =
-      letter.recipientHonorific.includes("السادة") || letter.recipientHonorific.includes("إدارة")
+    const honorificTrimmed = (letter.recipientHonorific || "").trim();
+    const isToWhom =
+      honorificTrimmed === "إلى من يهمه الأمر" ||
+      honorificTrimmed.toLowerCase() === "to whom it may concern";
+    const recipientDisplay = (letter.recipientName || "").trim();
+
+    const honorificSuffixAr =
+      honorificTrimmed.includes("السادة") || honorificTrimmed.includes("إدارة")
         ? "المحترمين"
-        : letter.recipientHonorific.includes("السيد")
+        : honorificTrimmed.includes("السيد")
         ? "المحترم"
         : "";
 
@@ -55,8 +59,10 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
       <div
         id={id}
         ref={ref}
-        dir="rtl"
-        className="official-letter-sheet bg-white text-slate-900 mx-auto select-text relative flex flex-col justify-between text-right"
+        dir={isRtl ? "rtl" : "ltr"}
+        className={`official-letter-sheet bg-white text-slate-900 mx-auto select-text relative flex flex-col justify-between ${
+          isRtl ? "text-right" : "text-left"
+        }`}
         style={{
           width: "210mm",
           minHeight: "297mm",
@@ -68,14 +74,16 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
           overflow: "hidden",
           backgroundColor: "#ffffff",
           color: "#0f172a",
-          fontFamily:
-            "'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          fontFamily: isRtl
+            ? "'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            : "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           WebkitPrintColorAdjust: "exact",
           printColorAdjust: "exact",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           position: "relative",
+          textAlign: isRtl ? "right" : "left",
         }}
       >
         {/* العلامة المائية الرسمية الخفيفة في قلب الورقة المروّسة */}
@@ -106,9 +114,11 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
         </div>
 
         <OfficialLetterHeader
+          showTitle={letter.showLetterTitle}
           letterTitle={letter.letterTitle}
           formattedDate={formattedDate}
           reference={letter.reference}
+          isRtl={isRtl}
           monoStyle={monoStyle}
         />
 
@@ -120,7 +130,7 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            paddingTop: "16px",
+            paddingTop: "18px",
             paddingBottom: "14px",
           }}
         >
@@ -133,25 +143,25 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
                 gap: "12px",
               }}
             >
-              <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#0f172a", lineHeight: 1.45 }}>
+              <div style={{ fontSize: "15px", fontWeight: 900, color: "#0f172a", lineHeight: 1.45 }}>
                 {isToWhom ? (
-                  <span>إلى من يهمه الأمر</span>
+                  <span>{honorificTrimmed}</span>
                 ) : (
                   <>
-                    <span style={{ color: "#0D4A39" }}>{letter.recipientHonorific} </span>
+                    <span style={{ color: "#0D4A39" }}>{honorificTrimmed} </span>
                     <span>{recipientDisplay || "................................................"}</span>
                   </>
                 )}
               </div>
-              {!isToWhom && honorificSuffix && (
-                <span style={{ fontSize: "13.5px", fontWeight: 800, color: "#0D4A39", flexShrink: 0 }}>
-                  {honorificSuffix}
+              {isRtl && !isToWhom && honorificSuffixAr && (
+                <span style={{ fontSize: "14px", fontWeight: 800, color: "#0D4A39", flexShrink: 0 }}>
+                  {honorificSuffixAr}
                 </span>
               )}
             </div>
 
             {letter.recipientTitle?.trim() && (
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#334155", marginTop: "3px" }}>
+              <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", marginTop: "3px" }}>
                 {letter.recipientTitle.trim()}
               </div>
             )}
@@ -170,16 +180,23 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
               width: "92%",
               backgroundColor: "#f4f7f6",
               border: "1px solid #c5d6d1",
-              borderRight: "4px solid #0D4A39",
-              borderLeft: "4px solid #C5A059",
+              borderRight: isRtl ? "4px solid #0D4A39" : "4px solid #C5A059",
+              borderLeft: isRtl ? "4px solid #C5A059" : "4px solid #0D4A39",
               borderRadius: "6px",
-              padding: "10px 18px",
+              padding: "11px 18px",
               textAlign: "center",
               boxSizing: "border-box",
             }}
           >
-            <div style={{ fontSize: "13.5px", fontWeight: 900, color: "#0f172a", lineHeight: 1.5 }}>
-              <span style={{ color: "#0D4A39", marginLeft: "6px" }}>الموضوع:</span>
+            <div style={{ fontSize: "14px", fontWeight: 900, color: "#0f172a", lineHeight: 1.5 }}>
+              <span
+                style={{
+                  color: "#0D4A39",
+                  marginInlineEnd: "6px",
+                }}
+              >
+                {isRtl ? "الموضوع:" : "Subject:"}
+              </span>
               <span>{letter.subject || "................................................"}</span>
             </div>
           </div>
@@ -191,12 +208,12 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
                 <p
                   key={idx}
                   style={{
-                    fontSize: "13px",
+                    fontSize: "13.5px",
                     fontWeight: 500,
                     color: "#0f172a",
                     lineHeight: 1.95,
                     textAlign: "justify",
-                    margin: "0 0 11px 0",
+                    margin: "0 0 12px 0",
                     whiteSpace: "pre-wrap",
                   }}
                 >
@@ -204,8 +221,8 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
                 </p>
               ))
             ) : (
-              <p style={{ fontSize: "12.5px", color: "#94a3b8", textAlign: "center", marginTop: "24px" }}>
-                اكتب نص الخطاب الرسمي هنا...
+              <p style={{ fontSize: "13px", color: "#94a3b8", textAlign: "center", marginTop: "24px" }}>
+                {isRtl ? "اكتب نص الخطاب الرسمي هنا..." : "Write the official letter body here..."}
               </p>
             )}
 
@@ -214,7 +231,7 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
                 style={{
                   marginTop: "20px",
                   textAlign: "center",
-                  fontSize: "13px",
+                  fontSize: "13.5px",
                   fontWeight: 800,
                   color: "#0D4A39",
                 }}
@@ -227,10 +244,10 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
 
         <OfficialLetterFooter
           letter={letter}
-          addressAr={addressAr}
+          companyAddress={isRtl ? addressAr : addressEn}
           email={email}
           phone={phone}
-          monoStyle={monoStyle}
+          isRtl={isRtl}
         />
       </div>
     );

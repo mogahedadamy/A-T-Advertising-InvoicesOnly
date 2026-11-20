@@ -10,10 +10,10 @@ import {
   Share2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { registerBackHandler } from "@/lib/backButtonHandler";
-import { createLetterFromTemplate, getLetterTemplate } from "@/lib/letters/templates";
+import { createOfficialLetter } from "@/lib/letters/templates";
 import {
   deleteOfficialLetter,
   getNextLetterReference,
@@ -24,7 +24,7 @@ import {
   printOfficialLetter,
   shareOfficialLetterViaWhatsApp,
 } from "@/lib/letters/letterExport";
-import type { LetterTemplateId, OfficialLetter } from "@/lib/letters/types";
+import type { OfficialLetter } from "@/lib/letters/types";
 import { LetterEditorForm } from "./LetterEditorForm";
 import { OfficialLetterViewer } from "./OfficialLetterViewer";
 import { LetterArchiveList } from "./LetterArchiveList";
@@ -43,7 +43,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
   const [activeTab, setActiveTab] = useState<ActiveTab>("edit");
   const [isProcessing, setIsProcessing] = useState(false);
   const [letter, setLetter] = useState<OfficialLetter>(() =>
-    createLetterFromTemplate("introduction", getNextLetterReference(), {
+    createOfficialLetter(getNextLetterReference(), "ar", {
       recipientName: initialRecipientName || "",
     })
   );
@@ -52,7 +52,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
     if (!open) return;
     setActiveTab("edit");
     setLetter(
-      createLetterFromTemplate("introduction", getNextLetterReference(), {
+      createOfficialLetter(getNextLetterReference(), "ar", {
         recipientName: initialRecipientName || "",
       })
     );
@@ -70,27 +70,18 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
     setLetter((prev) => ({ ...prev, ...patch }));
   };
 
-  const handleTemplateChange = (templateId: LetterTemplateId) => {
-    const tpl = getLetterTemplate(templateId);
-    setLetter((prev) => ({
-      ...prev,
-      templateId,
-      letterTitle: tpl.title,
-      subject: tpl.defaultSubject,
-      body: tpl.defaultBody,
-      salutation: tpl.defaultSalutation,
-      closingPhrase: tpl.defaultClosingPhrase,
-    }));
-  };
-
   const handleNewDraft = () => {
     playTapSound();
-    setLetter(createLetterFromTemplate("introduction", getNextLetterReference()));
+    setLetter(createOfficialLetter(getNextLetterReference(), letter.language));
     setActiveTab("edit");
   };
 
   const validateLetter = (): boolean => {
-    if (letter.recipientHonorific !== "إلى من يهمه الأمر" && !letter.recipientName.trim()) {
+    const honorific = letter.recipientHonorific.trim();
+    const isToWhom =
+      honorific === "إلى من يهمه الأمر" ||
+      honorific.toLowerCase() === "to whom it may concern";
+    if (!isToWhom && !letter.recipientName.trim()) {
       playErrorSound();
       toast.error("حقل مطلوب", { description: "يرجى كتابة اسم الجهة أو الشخص الموجَّه إليه الخطاب" });
       return false;
@@ -162,7 +153,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-full sm:max-w-4xl h-[100dvh] sm:h-[90vh] max-h-[100dvh] sm:max-h-[90vh] flex flex-col p-0 overflow-hidden bg-card border-border/80 rounded-none sm:rounded-3xl shadow-2xl"
+        className="w-full sm:max-w-4xl h-[100dvh] sm:h-[90vh] max-h-[100dvh] sm:max-h-[90vh] flex flex-col p-0 pt-[env(safe-area-inset-top,0px)] overflow-hidden bg-card border-border/80 rounded-none sm:rounded-3xl shadow-2xl"
         dir="rtl"
       >
         {/* 1. الترويسة مع شريط التبويبات المرن */}
@@ -195,7 +186,6 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
             </Button>
           </div>
 
-          {/* 3 تبويبات واضحة بسطر واحد بدون قص */}
           <div className="grid grid-cols-3 gap-1 rounded-xl border border-border/70 bg-secondary/50 p-1">
             {[
               { id: "edit" as const, label: "1. التحرير", icon: Edit3 },
@@ -232,7 +222,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
             <LetterEditorForm
               letter={letter}
               onChange={handlePatch}
-              onTemplateChange={handleTemplateChange}
+              onReplaceLetter={setLetter}
             />
           </div>
         )}
@@ -281,14 +271,14 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
           </div>
         )}
 
-        {/* 3. شريط الإجراءات السفلي الدائم */}
-        <div className="px-3 sm:px-5 py-2.5 border-t border-border/60 bg-card shrink-0 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* 3. شريط الإجراءات السفلي داخل Safe Area المحمية بالكامل فوق شريط تنقل أندرويد */}
+        <DialogFooter className="px-3 pt-2.5 pb-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)+0.85rem))] sm:px-5 sm:py-3 border-t border-border/60 bg-card shrink-0 flex flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <Button
               type="button"
               disabled={isProcessing}
               onClick={() => void handleSaveAndShare()}
-              className="h-9.5 px-3 sm:px-4 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-white text-xs font-black gap-1.5 cursor-pointer"
+              className="h-9 px-3 sm:px-3.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-white text-xs font-black gap-1.5 cursor-pointer"
             >
               <Share2 className="h-3.5 w-3.5" />
               <span>واتساب</span>
@@ -298,7 +288,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
               variant="outline"
               disabled={isProcessing}
               onClick={() => void handleSaveAndPrint()}
-              className="h-9.5 px-3 sm:px-4 rounded-xl text-xs font-black gap-1.5 cursor-pointer"
+              className="h-9 px-3 sm:px-3.5 rounded-xl text-xs font-black gap-1.5 cursor-pointer"
             >
               <Printer className="h-3.5 w-3.5 text-primary" />
               <span>طباعة</span>
@@ -310,7 +300,7 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
               onClick={() => void handleSave()}
               aria-label="حفظ الخطاب"
               title="حفظ في الأرشيف"
-              className="h-9.5 px-2.5 sm:px-3 rounded-xl text-xs font-black gap-1 cursor-pointer"
+              className="h-9 px-2.5 sm:px-3 rounded-xl text-xs font-black gap-1 cursor-pointer"
             >
               <Save className="h-3.5 w-3.5 text-primary" />
               <span className="hidden sm:inline">حفظ</span>
@@ -319,13 +309,13 @@ export function LetterIssuerDialog({ open, onOpenChange, initialRecipientName }:
 
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-9.5 px-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer"
+            className="h-9 px-3 sm:px-4 rounded-xl text-xs font-bold cursor-pointer shrink-0"
           >
             إغلاق
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

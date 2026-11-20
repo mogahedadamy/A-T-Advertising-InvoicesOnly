@@ -217,4 +217,33 @@ describe("Direct WhatsApp Sharing & System Export (Problem G)", () => {
     closeBtn!.click();
     expect(document.getElementById("share-invoice-hud-overlay")).toBeNull();
   });
+
+  it("prefers native Android Chromium vector PDF bridge (shareHtmlToWhatsApp) when available", async () => {
+    const shareHtmlSpy = vi.fn((_html, _filename, _pageSize, _msg) => {
+      window.__onInvoiceShared?.(true, "تم التصدير بنجاح");
+    });
+    window.AndroidPrint = {
+      shareHtmlToWhatsApp: shareHtmlSpy,
+    };
+
+    const dummyEl = document.createElement("div");
+    dummyEl.className = "official-letter-sheet";
+    dummyEl.innerHTML = "<p>خطاب رسمي</p>";
+
+    const ok = await shareInvoiceViaWhatsApp(dummyEl, {
+      filename: "خطاب-TA-26-001",
+      format: "a4",
+      partyName: "شركة زادنا",
+      invoiceRef: "TA-26-001",
+      invoiceTypeLabel: "خطاب رسمي",
+      isRtl: true,
+    });
+
+    expect(ok).toBe(true);
+    expect(shareHtmlSpy).toHaveBeenCalledTimes(1);
+    const [htmlArg, filenameArg, pageSizeArg] = shareHtmlSpy.mock.calls[0];
+    expect(htmlArg).toContain("official-letter-sheet");
+    expect(filenameArg).toBe("خطاب-TA-26-001.pdf");
+    expect(pageSizeArg).toBe("A4");
+  });
 });

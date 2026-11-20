@@ -20,7 +20,7 @@ async function mountOfficialLetterForExport(
   const staging = document.createElement("div");
   staging.id = `official-letter-staging-${Date.now()}`;
   staging.className = "official-letter-print-root";
-  staging.setAttribute("dir", "rtl");
+  staging.setAttribute("dir", letter.language === "en" ? "ltr" : "rtl");
   staging.style.cssText =
     "position:fixed;left:-9999px;top:0;width:210mm;min-height:297mm;background:#ffffff;pointer-events:none;z-index:-9999;";
   document.body.appendChild(staging);
@@ -93,14 +93,17 @@ export async function shareOfficialLetterViaWhatsApp(letter: OfficialLetter): Pr
   const safeName = (letter.recipientName || letter.letterTitle || "خطاب-رسمي").replace(/[\s/\\:*?"<>|]/g, "_");
   const filename = `خطاب-${letter.reference || getLocalIsoDate()}-${safeName}`;
 
+  const isRtl = letter.language !== "en";
   try {
     const ok = await shareInvoiceViaWhatsApp(handle.element, {
       filename,
       format: "a4",
-      partyName: letter.recipientName || "الجهة الموقرة",
+      partyName: letter.recipientName || (isRtl ? "الجهة الموقرة" : "Valued Client"),
       invoiceRef: letter.reference,
-      invoiceTypeLabel: letter.letterTitle || "خطاب رسمي",
-      isRtl: true,
+      invoiceTypeLabel: letter.showLetterTitle && letter.letterTitle.trim()
+        ? letter.letterTitle.trim()
+        : (isRtl ? "خطاب رسمي" : "Official Letter"),
+      isRtl,
     });
     handle.cleanup();
     return ok;

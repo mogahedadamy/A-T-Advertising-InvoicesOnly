@@ -6,9 +6,11 @@ export interface AndroidPrintBridge {
   printHtml?(html: string, title: string, pageSize?: string): void;
   print?(title: string): void;
   savePdf?(base64: string, filename: string): void;
+  saveHtmlAsPdf?(html: string, filename: string, pageSize?: string): void;
   saveFile?(base64: string, filename: string, mimeType?: string): void;
-  sharePdf?(base64: string, filename: string): void;
+  sharePdf?(base64: string, filename: string, message?: string): void;
   shareToWhatsApp?(base64: string, filename: string, message?: string): void;
+  shareHtmlToWhatsApp?(html: string, filename: string, pageSize?: string, message?: string): void;
 }
 
 declare global {
