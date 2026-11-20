@@ -50,6 +50,10 @@ describe("Official Corporate Letters — Unified Bilingual Letterhead", () => {
     expect(qrImg).not.toBeNull();
     expect(qrImg!.parentElement?.style.width).toBe("96px");
 
+    // Signature must appear ABOVE signatory name & title in DOM order
+    const html = sheet!.innerHTML;
+    expect(html.indexOf('alt="Signature"')).toBeLessThan(html.indexOf("طارق عثمان علي"));
+
     expect(INVOICE_STANDALONE_CSS).toContain(".official-letter-sheet");
     expect(INVOICE_STANDALONE_CSS).toContain("padding: 18mm 20mm 16mm 20mm !important;");
   });

@@ -15,11 +15,12 @@ interface Props {
 }
 
 /**
- * تذييل الورقة المروّسة:
- * - ختم رسمي مكبّر بحجم بارز وواضح (185px)
- * - قسم توقيع نظيف يحتوي فقط على الاسم + المنصب + التوقيع بدون ازدحام
- * - باركود QR مكبّر (96×96px) بجودة أصلية غير مضغوطة
- * - شريط تواصل متساوي الأحجام بين الموقع والبريد وأرقام الهاتف
+ * تذييل الورقة المروّسة (متماثل هندسياً بنسبة 100%):
+ * - اليمين (بداية السطر): باركود QR مكبّر (96×96px) بمحاذاة حافة الأمان اليمنى
+ * - المنتصف تماماً (قصاد الإيميل مباشرة): الختم الرسمي المكبّر (185px)
+ * - اليسار (نهاية السطر، بنفس مسافة بُعد الباركود عن الحافة اليمنى):
+ *   التوقيع في الأعلى مباشرة، وأسفله بقرب متوازن الاسم والمسمى الوظيفي فقط
+ * - شريط التواصل السفلي بشبكة متماثلة (1fr auto 1fr) بحيث يقع الإيميل تحت الختم تماماً
  */
 export const OfficialLetterFooter: React.FC<Props> = ({
   letter,
@@ -35,17 +36,17 @@ export const OfficialLetterFooter: React.FC<Props> = ({
 
   return (
     <div style={{ position: "relative", zIndex: 2, flexShrink: 0 }}>
-      {/* منطقة الاعتماد: رمز QR المكبّر + الختم الرسمي المكبّر + الاسم والمنصب والتوقيع فقط */}
+      {/* منطقة الاعتماد المتماثلة: [QR يمين] — [الختم بالمنتصف قصاد الإيميل] — [التوقيع فوق الاسم والمنصب يسار] */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "110px 1fr 1.15fr",
+          gridTemplateColumns: "1fr 190px 1fr",
           alignItems: "center",
-          gap: "14px",
+          gap: "10px",
           paddingBottom: "14px",
         }}
       >
-        {/* رمز التوثيق QR مكبّر وبدقة أصلية بدون ضغط */}
+        {/* 1. رمز التوثيق QR مكبّر بمحاذاة الحافة البادئة (يمين في العربية) */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
           {letter.includeQr && (
             <div
@@ -76,7 +77,7 @@ export const OfficialLetterFooter: React.FC<Props> = ({
           )}
         </div>
 
-        {/* الختم الرسمي بحجم كبير وواضح */}
+        {/* 2. الختم الرسمي مسنتر في المنتصف تماماً ومحاذي للبريد الإلكتروني أسفله */}
         <div
           style={{
             minHeight: "120px",
@@ -101,68 +102,70 @@ export const OfficialLetterFooter: React.FC<Props> = ({
           )}
         </div>
 
-        {/* قسم التوقيع المبسّط: الاسم + المدير العام T.A Advertising Solution + التوقيع فقط */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            gap: "4px",
-            padding: "6px 8px",
-          }}
-        >
-          <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#0D4A39", lineHeight: 1.3 }}>
-            {letter.signatoryName || defaultName}
-          </div>
-          <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#334155", lineHeight: 1.35 }}>
-            {letter.signatoryTitle || defaultTitle}
-          </div>
-
-          {letter.includeSignature && (
-            <div
-              style={{
-                marginTop: "6px",
-                height: "56px",
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <img
-                src={TA_SIGNATURE_TARIG_BASE64}
-                alt="Signature"
+        {/* 3. التوقيع أعلى الاسم والمسمى الوظيفي بقرب متوازن وبمحاذاة الحافة اليسرى (بنفس هامش اليمين) */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              gap: "2px",
+            }}
+          >
+            {letter.includeSignature && (
+              <div
                 style={{
-                  maxHeight: "54px",
-                  width: "auto",
-                  objectFit: "contain",
-                  mixBlendMode: "multiply",
+                  height: "52px",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                  marginBottom: "-2px",
                 }}
-              />
+              >
+                <img
+                  src={TA_SIGNATURE_TARIG_BASE64}
+                  alt="Signature"
+                  style={{
+                    maxHeight: "50px",
+                    width: "auto",
+                    objectFit: "contain",
+                    mixBlendMode: "multiply",
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#0D4A39", lineHeight: 1.25 }}>
+              {letter.signatoryName || defaultName}
             </div>
-          )}
+            <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#334155", lineHeight: 1.3 }}>
+              {letter.signatoryTitle || defaultTitle}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* شريط التواصل الرسمي بأحجام بصرية متساوية تماماً بين الموقع والبريد والأرقام */}
+      {/* شريط التواصل الرسمي المتماثل (الموقع يمين — الإيميل بالمنتصف تحت الختم تماماً — الهاتف يسار) */}
       <div
         style={{
           borderTop: "2px solid #0D4A39",
           paddingTop: "9px",
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: "12px",
+          gap: "10px",
           fontSize: "12px",
           fontWeight: 800,
           color: "#0f172a",
           lineHeight: 1.4,
         }}
       >
-        <span style={{ fontSize: "12px", fontWeight: 800 }}>{companyAddress}</span>
-        <bdi dir="ltr" style={{ fontSize: "12px", fontWeight: 800 }}>
+        <span style={{ fontSize: "12px", fontWeight: 800, textAlign: "start" }}>
+          {companyAddress}
+        </span>
+        <bdi dir="ltr" style={{ fontSize: "12px", fontWeight: 800, textAlign: "center" }}>
           {email}
         </bdi>
         <bdi
@@ -170,6 +173,7 @@ export const OfficialLetterFooter: React.FC<Props> = ({
           style={{
             fontSize: "12px",
             fontWeight: 800,
+            textAlign: "end",
             fontVariantNumeric: "tabular-nums",
           }}
         >

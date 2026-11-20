@@ -2,8 +2,11 @@ package com.futureprint.calculator;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.pdf.PdfDocument;
 import android.net.Uri;
 import android.util.Log;
@@ -20,10 +23,11 @@ import java.io.InputStream;
 import java.util.regex.Pattern;
 
 /**
- * Native Chromium WebView -> Android PdfDocument vector exporter.
- * Eliminates html2canvas Arabic baseline drift by using the exact same
- * Chromium layout/font engine as Android native printing, preserving
- * crisp vector text and lossless original QR/stamp/logo images.
+ * Native Chromium WebView -> 300 DPI Lossless Print-Quality PDF Exporter.
+ * Uses Android's real Chromium layout & bundled Tajawal fonts (eliminating
+ * html2canvas Arabic baseline drift) and rasterizes at true 300 DPI
+ * (2480x3508 px for ISO A4) into an ISO-sized PdfDocument so print sharpness
+ * and QR code scanning match print-shop quality.
  */
 public final class NativePdfExporter {
     private static final String TAG = "NativePdfExporter";
@@ -66,8 +70,8 @@ public final class NativePdfExporter {
     }
 
     /**
-     * Renders standalone invoice/statement/letter HTML into a true vector PDF file
-     * at exact ISO A4 (595x842 pt) or A5 landscape (595x420 pt) dimensions.
+     * Renders standalone invoice/statement/letter HTML into a crisp 300 DPI PDF
+     * at exact ISO A4 (595x842 pt) or A5 landscape (595x420 pt) physical page size.
      */
     public static void renderHtmlToPdfFile(
         Activity activity,
@@ -82,6 +86,10 @@ public final class NativePdfExporter {
             final int cssH = isA5Landscape ? 559 : 1123;
             final int pageW = 595;
             final int pageH = isA5Landscape ? 420 : 842;
+
+            // True 300 DPI pixel targets (ISO A4: 2480x3508, ISO A5 Landscape: 2480x1748)
+            final int hiResW = 2480;
+            final int hiResH = isA5Landscape ? 1748 : 3508;
 
             final float density = Math.max(1.0f, activity.getResources().getDisplayMetrics().density);
             final int viewW = Math.round(cssW * density);
@@ -129,6 +137,7 @@ public final class NativePdfExporter {
                 if (completed[0]) return;
                 completed[0] = true;
                 PdfDocument document = null;
+                Bitmap hiResBitmap = null;
                 try {
                     pdfWebView.measure(
                         View.MeasureSpec.makeMeasureSpec(viewW, View.MeasureSpec.EXACTLY),
@@ -136,18 +145,38 @@ public final class NativePdfExporter {
                     );
                     pdfWebView.layout(0, 0, viewW, viewH);
 
+                    int bmpW = hiResW;
+                    int bmpH = hiResH;
+                    try {
+                        hiResBitmap = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888);
+                    } catch (OutOfMemoryError oom) {
+                        // Graceful fallback to 200 DPI on memory-constrained devices
+                        bmpW = 1654;
+                        bmpH = isA5Landscape ? 1166 : 2339;
+                        hiResBitmap = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888);
+                    }
+
+                    Canvas bmpCanvas = new Canvas(hiResBitmap);
+                    bmpCanvas.drawColor(Color.WHITE);
+                    bmpCanvas.save();
+                    bmpCanvas.scale((float) bmpW / (float) viewW, (float) bmpH / (float) viewH);
+                    pdfWebView.draw(bmpCanvas);
+                    bmpCanvas.restore();
+
                     document = new PdfDocument();
                     PdfDocument.PageInfo pageInfo = new PdfDocument.PageInfo.Builder(pageW, pageH, 1).create();
                     PdfDocument.Page page = document.startPage(pageInfo);
-                    Canvas canvas = page.getCanvas();
-                    canvas.drawColor(Color.WHITE);
-                    canvas.save();
-                    float scaleX = (float) pageW / (float) viewW;
-                    float scaleY = (float) pageH / (float) viewH;
-                    canvas.scale(scaleX, scaleY);
-                    pdfWebView.draw(canvas);
-                    canvas.restore();
+                    Canvas pdfCanvas = page.getCanvas();
+                    pdfCanvas.drawColor(Color.WHITE);
+
+                    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                    Rect srcRect = new Rect(0, 0, bmpW, bmpH);
+                    Rect dstRect = new Rect(0, 0, pageW, pageH);
+                    pdfCanvas.drawBitmap(hiResBitmap, srcRect, dstRect, paint);
                     document.finishPage(page);
+
+                    hiResBitmap.recycle();
+                    hiResBitmap = null;
 
                     try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                         document.writeTo(fos);
@@ -164,12 +193,15 @@ public final class NativePdfExporter {
                         callback.onError("تعذر توليد ملف PDF صالح");
                     }
                 } catch (Exception ex) {
-                    Log.e(TAG, "Native PDF draw failed", ex);
+                    Log.e(TAG, "Native 300 DPI PDF draw failed", ex);
+                    if (hiResBitmap != null && !hiResBitmap.isRecycled()) {
+                        hiResBitmap.recycle();
+                    }
                     if (document != null) {
                         try { document.close(); } catch (Exception ignored) {}
                     }
                     cleanupView.run();
-                    callback.onError("تعذر تصيير ملف PDF الأصلي");
+                    callback.onError("تعذر تصيير ملف PDF عالي الدقة");
                 }
             };
 
@@ -183,12 +215,12 @@ public final class NativePdfExporter {
 
                 @Override
                 public void onPageFinished(WebView view, String url) {
-                    view.postDelayed(drawPdf, 420);
+                    view.postDelayed(drawPdf, 450);
                 }
             });
 
             // Safety timeout if WebView page-finish callback is delayed
-            pdfWebView.postDelayed(drawPdf, 2000);
+            pdfWebView.postDelayed(drawPdf, 2200);
 
             pdfWebView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null);
         });

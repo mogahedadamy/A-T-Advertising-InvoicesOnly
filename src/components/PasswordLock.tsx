@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Lock, Moon, Sun, Fingerprint, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Delete, Fingerprint, Lock, Moon, ShieldCheck, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
 import {
@@ -18,6 +18,7 @@ import { playTapSound, playSuccessSound, playErrorSound } from "@/lib/soundEffec
 
 const LENGTH = PASSWORD_DIGITS;
 const BIOMETRIC_PROMPT_DISMISSED = "future_calc_biometric_prompt_dismissed";
+const KEYPAD_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 function formatLockoutCountdown(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -34,9 +35,16 @@ interface PasswordLockProps {
 
 type View = "password" | "enroll-prompt" | "enrolling";
 
+/**
+ * شاشة القفل فائقة السرعة (0ms استجابة لمسية):
+ * - لوحة أرقام مدمجة تعمل بحدث onPointerDown الفوري بدون تأخير لوحة مفاتيح أندرويد (IME)
+ * - بدون مرشحات blur-3xl أو backdrop-blur الثقيلة على معالج الرسوميات
+ * - دعم كامل للوحة المفاتيح الفيزيائية واللصق + البصمة البيومترية
+ */
 const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
   const { theme, toggle } = useTheme();
-  const [digits, setDigits] = useState<string[]>(Array(LENGTH).fill(""));
+  const [pin, setPin] = useState<string>("");
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [view, setView] = useState<View>("password");
@@ -47,17 +55,19 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
   const [lockoutRemainingSec, setLockoutRemainingSec] = useState<number>(() =>
     Math.ceil(getPinLockoutState().remainingMs / 1000)
   );
-  const inputs = useRef<Array<HTMLInputElement | null>>([]);
+
+  const pinRef = useRef("");
+  const verifyingRef = useRef(false);
   const autoTriedRef = useRef(false);
   const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  const scheduleTimeout = (fn: () => void, delayMs: number) => {
+  const scheduleTimeout = useCallback((fn: () => void, delayMs: number) => {
     const id = setTimeout(() => {
       timeoutsRef.current.delete(id);
       fn();
     }, delayMs);
     timeoutsRef.current.add(id);
-  };
+  }, []);
 
   useEffect(() => {
     const activeTimeouts = timeoutsRef.current;
@@ -67,21 +77,38 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
     };
   }, []);
 
-  // عدّاد تنازلي لحالة قفل المحاولات المتكررة
   useEffect(() => {
     if (lockoutRemainingSec <= 0) return;
     const interval = setInterval(() => {
       const nextSec = Math.ceil(getPinLockoutState().remainingMs / 1000);
       setLockoutRemainingSec(nextSec);
-      if (nextSec <= 0) {
-        clearInterval(interval);
-        inputs.current[0]?.focus();
-      }
+      if (nextSec <= 0) clearInterval(interval);
     }, 1000);
     return () => clearInterval(interval);
   }, [lockoutRemainingSec]);
 
-  // فحص دعم البصمة + المحاولة التلقائية إن كانت مفعّلة
+  const tryBiometric = useCallback(async () => {
+    setBioError("");
+    setBioLoading(true);
+    try {
+      const ok = await verifyBiometric();
+      if (ok) {
+        await resetPinAttempts();
+        setLockoutRemainingSec(0);
+        playSuccessSound();
+        onUnlock();
+      } else {
+        playErrorSound();
+        setBioError("تعذّر التحقق بالبصمة، استخدم رمز المرور");
+      }
+    } catch {
+      playErrorSound();
+      setBioError("تعذّر التحقق بالبصمة، استخدم رمز المرور");
+    } finally {
+      setBioLoading(false);
+    }
+  }, [onUnlock]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -94,79 +121,110 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
       if (enrolled && available && !autoTriedRef.current) {
         autoTriedRef.current = true;
         await tryBiometric();
-      } else {
-        inputs.current[0]?.focus();
       }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tryBiometric]);
 
-  const tryBiometric = async () => {
-    setBioError("");
-    setBioLoading(true);
-    try {
-      const ok = await verifyBiometric();
-      if (ok) {
-        await resetPinAttempts();
-        setLockoutRemainingSec(0);
-        playSuccessSound();
-        onUnlock();
-      } else {
-        playErrorSound();
-        setBioError("تعذّر التحقق بالبصمة، استخدم كلمة المرور");
-        scheduleTimeout(() => inputs.current[0]?.focus(), 100);
+  const submitPin = useCallback(
+    async (code: string) => {
+      if (verifyingRef.current || code.length < LENGTH) return;
+      const lockState = getPinLockoutState();
+      if (lockState.isLocked) {
+        setLockoutRemainingSec(Math.ceil(lockState.remainingMs / 1000));
+        setError(true);
+        return;
       }
-    } catch (err) {
-      console.warn("Biometric verify failed", err);
-      playErrorSound();
-      setBioError("تعذّر التحقق بالبصمة، استخدم كلمة المرور");
-      scheduleTimeout(() => inputs.current[0]?.focus(), 100);
-    } finally {
-      setBioLoading(false);
-    }
-  };
 
-  const trySubmit = async (vals: string[]) => {
-    const lockState = getPinLockoutState();
-    if (lockState.isLocked) {
-      setLockoutRemainingSec(Math.ceil(lockState.remainingMs / 1000));
-      setError(true);
-      return;
-    }
+      verifyingRef.current = true;
+      setVerifying(true);
 
-    const code = vals.join("");
-    if (code.length < LENGTH) return;
-    const ok = await verifyPassword(code);
-    if (ok) {
-      setLockoutRemainingSec(0);
-      playSuccessSound();
-      // إن كانت البصمة متاحة وغير مفعّلة ولم يرفض المستخدم الاقتراح، اعرضه
-      const dismissed = localStorage.getItem(BIOMETRIC_PROMPT_DISMISSED) === "1";
-      if (bioAvailable && !bioEnrolled && !dismissed) {
-        setView("enroll-prompt");
-      } else {
-        onUnlock();
-      }
-    } else {
-      playErrorSound();
-      const updatedLock = getPinLockoutState();
-      if (updatedLock.isLocked) {
-        setLockoutRemainingSec(Math.ceil(updatedLock.remainingMs / 1000));
-      }
-      setError(true);
-      setShake(true);
-      scheduleTimeout(() => setShake(false), 500);
-      scheduleTimeout(() => {
-        setDigits(Array(LENGTH).fill(""));
-        if (!getPinLockoutState().isLocked) {
-          inputs.current[0]?.focus();
+      // إتاحة إطار رسم فوري (0ms) لإظهار النقطة الرابعة قبل تشغيل PBKDF2
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+
+      try {
+        const ok = await verifyPassword(code);
+        if (ok) {
+          setLockoutRemainingSec(0);
+          playSuccessSound();
+          const dismissed = localStorage.getItem(BIOMETRIC_PROMPT_DISMISSED) === "1";
+          if (bioAvailable && !bioEnrolled && !dismissed) {
+            setView("enroll-prompt");
+          } else {
+            onUnlock();
+          }
+        } else {
+          playErrorSound();
+          const updatedLock = getPinLockoutState();
+          if (updatedLock.isLocked) {
+            setLockoutRemainingSec(Math.ceil(updatedLock.remainingMs / 1000));
+          }
+          setError(true);
+          setShake(true);
+          scheduleTimeout(() => setShake(false), 420);
+          scheduleTimeout(() => {
+            pinRef.current = "";
+            setPin("");
+          }, 420);
         }
-      }, 600);
-    }
-  };
+      } finally {
+        verifyingRef.current = false;
+        setVerifying(false);
+      }
+    },
+    [bioAvailable, bioEnrolled, onUnlock, scheduleTimeout]
+  );
+
+  const appendDigit = useCallback(
+    (digit: string) => {
+      if (lockoutRemainingSec > 0 || verifyingRef.current) return;
+      if (pinRef.current.length >= LENGTH) return;
+
+      const nextPin = pinRef.current + digit;
+      pinRef.current = nextPin;
+      setPin(nextPin);
+      setError(false);
+
+      // تشغيل الصوت بشكل غير معطل بعد إطار اللمس
+      setTimeout(() => playTapSound(), 0);
+
+      if (nextPin.length === LENGTH) {
+        void submitPin(nextPin);
+      }
+    },
+    [lockoutRemainingSec, submitPin]
+  );
+
+  const handleBackspace = useCallback(() => {
+    if (lockoutRemainingSec > 0 || verifyingRef.current) return;
+    if (!pinRef.current.length) return;
+    const nextPin = pinRef.current.slice(0, -1);
+    pinRef.current = nextPin;
+    setPin(nextPin);
+    setError(false);
+    setTimeout(() => playTapSound(), 0);
+  }, [lockoutRemainingSec]);
+
+  // دعم لوحة المفاتيح الفيزيائية (للحاسوب أو الكيبورد الخارجي)
+  useEffect(() => {
+    if (view !== "password") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault();
+        appendDigit(e.key);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === "Enter" && pinRef.current.length === LENGTH) {
+        e.preventDefault();
+        void submitPin(pinRef.current);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [view, appendDigit, handleBackspace, submitPin]);
 
   const handleEnroll = async () => {
     setBioError("");
@@ -179,11 +237,10 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
         onUnlock();
       } else {
         playErrorSound();
-        setBioError("لم يتم التفعيل، يمكنك المتابعة بكلمة المرور");
+        setBioError("لم يتم التفعيل، يمكنك المتابعة برمز المرور");
         setView("enroll-prompt");
       }
-    } catch (err) {
-      console.warn("Biometric register failed", err);
+    } catch {
       playErrorSound();
       setBioError("تعذّر تفعيل البصمة على هذا الجهاز");
       setView("enroll-prompt");
@@ -196,176 +253,203 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
     onUnlock();
   };
 
-  const handleChange = (i: number, v: string) => {
-    if (lockoutRemainingSec > 0) return;
-    const ch = v.replace(/\D/g, "").slice(-1);
-    const next = [...digits];
-    next[i] = ch;
-    setDigits(next);
-    setError(false);
-    if (ch) {
-      playTapSound();
-    }
-    if (ch && i < LENGTH - 1) {
-      inputs.current[i + 1]?.focus();
-    }
-    if (next.every((d) => d !== "")) {
-      trySubmit(next);
-    }
-  };
-
-  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !digits[i] && i > 0) {
-      inputs.current[i - 1]?.focus();
-    }
-    if (e.key === "Enter") trySubmit(digits);
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (lockoutRemainingSec > 0) return;
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, LENGTH);
-    if (!text) return;
-    const next = Array(LENGTH).fill("");
-    for (let i = 0; i < text.length; i++) next[i] = text[i];
-    setDigits(next);
-    const focusIdx = Math.min(text.length, LENGTH - 1);
-    inputs.current[focusIdx]?.focus();
-    if (text.length === LENGTH) trySubmit(next);
-  };
+  const isDisabled = lockoutRemainingSec > 0 || verifying;
 
   return (
-    <div className="min-h-screen h-[100dvh] w-full bg-gradient-soft flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] relative overflow-y-auto" dir="rtl">
-      {/* decorative brand glow */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-24 h-80 w-80 rounded-full bg-accent/10 blur-3xl" />
-      </div>
-
+    <div
+      className="min-h-screen h-[100dvh] w-full bg-background flex flex-col items-center justify-center px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] relative overflow-y-auto select-none"
+      dir="rtl"
+    >
       <button
+        type="button"
         onClick={toggle}
         aria-label="تبديل الوضع"
-        className="absolute top-[max(1rem,env(safe-area-inset-top,0px))] left-[max(1rem,env(safe-area-inset-left,0px))] z-10 h-10 w-10 rounded-full border border-border bg-card/80 backdrop-blur hover:bg-muted flex items-center justify-center transition-all hover:shadow-md active:scale-95"
+        className="absolute top-[max(0.85rem,env(safe-area-inset-top,0px))] left-[max(0.85rem,env(safe-area-inset-left,0px))] z-10 h-10 w-10 rounded-full border border-border bg-card flex items-center justify-center active:scale-95 touch-manipulation"
       >
         {theme === "dark" ? <Sun className="h-5 w-5 text-accent" /> : <Moon className="h-5 w-5 text-primary" />}
       </button>
 
       {view === "password" && (
-        <div className={`relative w-full max-w-sm bg-card border border-border/70 rounded-2xl shadow-elegant overflow-hidden ${shake ? "animate-shake" : ""}`}>
-          <div className="h-1.5 bg-gradient-brand" />
-          <div className="p-7">
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="relative mb-3 flex items-center justify-center">
-                <div className="rounded-2xl bg-white dark:bg-[#0C251E] p-2 shadow-sm border border-border/60">
-                  <img
-                    src={theme === "dark" ? "/ta-logo-white.png" : "/ta-logo.png"}
-                    alt="T.A Advertising Solution"
-                    className="h-16 w-auto object-contain"
-                  />
-                </div>
-              </div>
-              <div className="h-11 w-11 rounded-full bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center mb-3">
-                <Lock className="h-5 w-5 text-primary" />
-              </div>
-              <h1 className="text-xl font-black tracking-tight text-foreground">التطبيق مقفل</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {bioEnrolled ? "استخدم البصمة أو كلمة المرور" : "أدخل كلمة المرور للمتابعة"}
-              </p>
-            </div>
-
-            <div className="flex justify-center gap-2 mb-3" dir="ltr">
-              {digits.map((d, i) => (
-                <input
-                  key={i}
-                  ref={(el) => {
-                    inputs.current[i] = el;
-                  }}
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  autoComplete="one-time-code"
-                  maxLength={1}
-                  value={d}
-                  disabled={lockoutRemainingSec > 0}
-                  onChange={(e) => handleChange(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(i, e)}
-                  onPaste={handlePaste}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className={`h-14 w-12 text-center text-2xl font-black rounded-xl border-2 bg-background text-foreground tabular-nums transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-50 ${
-                    error
-                      ? "border-destructive"
-                      : d
-                        ? "border-primary shadow-sm"
-                        : "border-input hover:border-primary/40"
-                  }`}
+        <div
+          className={`relative w-full max-w-sm bg-card border border-border/80 rounded-2xl shadow-sm overflow-hidden ${
+            shake ? "animate-shake" : ""
+          }`}
+        >
+          <div className="h-1.5 bg-primary" />
+          <div className="px-5 py-5 sm:p-6">
+            {/* الترويسة والشعار */}
+            <div className="flex flex-col items-center text-center mb-4">
+              <div className="rounded-xl bg-white dark:bg-[#0C251E] px-3 py-1.5 border border-border/60 mb-2.5">
+                <img
+                  src={theme === "dark" ? "/ta-logo-white.png" : "/ta-logo.png"}
+                  alt="T.A Advertising Solution"
+                  className="h-12 w-auto object-contain"
                 />
-              ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Lock className="h-4 w-4 text-primary" />
+                <h1 className="text-lg font-black tracking-tight text-foreground">التطبيق مقفل</h1>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {verifying
+                  ? "جاري التحقق..."
+                  : bioEnrolled
+                    ? "أدخل رمز المرور أو استخدم البصمة"
+                    : "أدخل رمز المرور المكوّن من 4 أرقام"}
+              </p>
             </div>
 
-            {lockoutRemainingSec > 0 ? (
-              <p className="text-center text-sm font-semibold text-destructive mt-2" role="alert">
-                محاولات خاطئة متكررة — يرجى الانتظار {formatLockoutCountdown(lockoutRemainingSec)}
-              </p>
-            ) : error ? (
-              <p className="text-center text-sm font-semibold text-destructive mt-2">
-                كلمة المرور غير صحيحة
-              </p>
-            ) : null}
+            {/* مؤشرات الخانات الأربع (تحديث لحظي 0ms بدون تركيز IME) */}
+            <div className="flex justify-center gap-3 mb-4" dir="ltr" aria-label="رمز المرور">
+              {Array.from({ length: LENGTH }).map((_, i) => {
+                const filled = i < pin.length;
+                return (
+                  <div
+                    key={i}
+                    className={`h-12 w-12 rounded-xl border-2 flex items-center justify-center ${
+                      error
+                        ? "border-destructive bg-destructive/5"
+                        : filled
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-background"
+                    }`}
+                  >
+                    <span
+                      className={`h-3.5 w-3.5 rounded-full ${
+                        filled ? (error ? "bg-destructive" : "bg-primary") : "bg-transparent"
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
 
-            {bioError && !error && lockoutRemainingSec <= 0 && (
-              <p className="text-center text-xs text-muted-foreground mt-2">{bioError}</p>
-            )}
+            {/* رسائل الحالة والأخطاء */}
+            <div className="min-h-[20px] mb-3 text-center">
+              {lockoutRemainingSec > 0 ? (
+                <p className="text-xs font-bold text-destructive" role="alert">
+                  محاولات خاطئة متكررة — انتظر {formatLockoutCountdown(lockoutRemainingSec)}
+                </p>
+              ) : error ? (
+                <p className="text-xs font-bold text-destructive">رمز المرور غير صحيح</p>
+              ) : bioError ? (
+                <p className="text-xs font-medium text-muted-foreground">{bioError}</p>
+              ) : null}
+            </div>
 
-            <Button
-              type="button"
-              onClick={() => trySubmit(digits)}
-              className="w-full mt-5 h-11 font-bold"
-              disabled={lockoutRemainingSec > 0 || digits.some((d) => !d)}
-            >
-              فتح التطبيق
-            </Button>
+            {/* لوحة الأرقام اللمسية السريعة (onPointerDown الفوري = استجابة 0ms) */}
+            <div className="grid grid-cols-3 gap-2.5 max-w-[270px] mx-auto" dir="ltr">
+              {KEYPAD_NUMBERS.map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  disabled={isDisabled}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    appendDigit(num);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      appendDigit(num);
+                    }
+                  }}
+                  className="h-13 rounded-xl border border-border/80 bg-secondary/40 text-xl font-black font-mono text-foreground active:bg-primary active:text-white active:scale-95 touch-manipulation select-none disabled:opacity-50 cursor-pointer"
+                >
+                  {num}
+                </button>
+              ))}
 
-            {bioEnrolled && bioAvailable && (
+              {/* زر البصمة أو مسح الكل */}
+              {bioEnrolled && bioAvailable ? (
+                <button
+                  type="button"
+                  disabled={bioLoading || verifying}
+                  aria-label="فتح بالبصمة"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    void tryBiometric();
+                  }}
+                  className="h-13 rounded-xl border border-primary/35 bg-primary/10 text-primary flex items-center justify-center active:bg-primary active:text-white active:scale-95 touch-manipulation cursor-pointer disabled:opacity-50"
+                >
+                  <Fingerprint className="h-6 w-6" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isDisabled || pin.length === 0}
+                  aria-label="مسح الرمز"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    pinRef.current = "";
+                    setPin("");
+                    setError(false);
+                  }}
+                  className="h-13 rounded-xl border border-border/60 bg-background text-xs font-black text-muted-foreground active:bg-secondary active:scale-95 touch-manipulation cursor-pointer disabled:opacity-40"
+                >
+                  مسح
+                </button>
+              )}
+
+              {/* الرقم صفر */}
               <button
                 type="button"
-                onClick={tryBiometric}
-                disabled={bioLoading}
-                className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-border bg-background hover:bg-muted hover:border-primary/40 text-foreground transition-all disabled:opacity-60 active:scale-[0.99]"
+                disabled={isDisabled}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  appendDigit("0");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    appendDigit("0");
+                  }
+                }}
+                className="h-13 rounded-xl border border-border/80 bg-secondary/40 text-xl font-black font-mono text-foreground active:bg-primary active:text-white active:scale-95 touch-manipulation select-none disabled:opacity-50 cursor-pointer"
               >
-                <Fingerprint className="h-5 w-5 text-primary" />
-                <span className="text-sm font-bold">
-                  {bioLoading ? "جاري التحقق…" : "فتح بالبصمة"}
-                </span>
+                0
               </button>
-            )}
+
+              {/* زر الحذف */}
+              <button
+                type="button"
+                disabled={isDisabled || pin.length === 0}
+                aria-label="حذف رقم"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleBackspace();
+                }}
+                className="h-13 rounded-xl border border-border/60 bg-background text-foreground flex items-center justify-center active:bg-destructive/15 active:text-destructive active:scale-95 touch-manipulation cursor-pointer disabled:opacity-40"
+              >
+                <Delete className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {view === "enroll-prompt" && (
-        <div className="relative w-full max-w-sm bg-card border border-border/70 rounded-2xl shadow-elegant overflow-hidden">
-          <div className="h-1.5 bg-gradient-brand" />
-          <div className="p-7">
+        <div className="relative w-full max-w-sm bg-card border border-border/80 rounded-2xl shadow-sm overflow-hidden">
+          <div className="h-1.5 bg-primary" />
+          <div className="p-6">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="h-16 w-16 rounded-full bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center mb-3">
-                <Fingerprint className="h-8 w-8 text-primary" />
+              <div className="h-14 w-14 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-3">
+                <Fingerprint className="h-7 w-7 text-primary" />
               </div>
-              <h2 className="text-xl font-black tracking-tight text-foreground">تفعيل فتح التطبيق بالبصمة</h2>
-              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                لتسريع فتح التطبيق في المرات القادمة، يمكنك استخدام البصمة بدلاً من كتابة كلمة المرور.
+              <h2 className="text-lg font-black tracking-tight text-foreground">تفعيل فتح التطبيق بالبصمة</h2>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                لتسريع فتح التطبيق في المرات القادمة، يمكنك استخدام البصمة بدلاً من كتابة رمز المرور.
               </p>
             </div>
 
-            <div className="bg-muted/50 border border-border/50 rounded-xl p-3 mb-5 flex items-start gap-2">
+            <div className="bg-muted/50 border border-border/50 rounded-xl p-3 mb-4 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-primary mt-0.5 shrink-0" />
               <p className="text-xs text-muted-foreground leading-relaxed">
-                يتم استخدام بصمة جهازك فقط، ولا تُرسل أي بيانات. يمكنك إلغاء التفعيل في أي وقت.
+                يتم استخدام بصمة جهازك فقط، ولا تُرسل أي بيانات.
               </p>
             </div>
 
-            {bioError && (
-              <p className="text-center text-sm text-destructive mb-3">{bioError}</p>
-            )}
+            {bioError && <p className="text-center text-xs text-destructive mb-3">{bioError}</p>}
 
             <Button type="button" onClick={handleEnroll} className="w-full h-11 font-bold">
               <Fingerprint className="h-4 w-4" />
@@ -375,14 +459,14 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
             <button
               type="button"
               onClick={() => skipEnroll(false)}
-              className="mt-3 w-full text-sm font-semibold text-foreground hover:text-primary transition-colors py-2"
+              className="mt-3 w-full text-sm font-semibold text-foreground hover:text-primary py-2 cursor-pointer"
             >
               ليس الآن
             </button>
             <button
               type="button"
               onClick={() => skipEnroll(true)}
-              className="mt-1 w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="mt-1 w-full text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             >
               لا تسأل مرة أخرى
             </button>
@@ -391,21 +475,21 @@ const PasswordLock = ({ onUnlock }: PasswordLockProps) => {
       )}
 
       {view === "enrolling" && (
-        <div className="relative w-full max-w-sm bg-card border border-border/70 rounded-2xl shadow-elegant overflow-hidden">
-          <div className="h-1.5 bg-gradient-brand" />
+        <div className="relative w-full max-w-sm bg-card border border-border/80 rounded-2xl shadow-sm overflow-hidden">
+          <div className="h-1.5 bg-primary" />
           <div className="p-8 text-center">
-            <div className="h-16 w-16 mx-auto rounded-full bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center mb-4 animate-pulse">
-              <Fingerprint className="h-8 w-8 text-primary" />
+            <div className="h-14 w-14 mx-auto rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+              <Fingerprint className="h-7 w-7 text-primary" />
             </div>
             <h2 className="text-lg font-black text-foreground">جاري تفعيل البصمة…</h2>
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               اتبع التعليمات على جهازك لإكمال التحقق
             </p>
           </div>
         </div>
       )}
 
-      <p className="relative text-xs font-medium text-muted-foreground mt-6">© T.A Advertising Solution</p>
+      <p className="relative text-[11px] font-medium text-muted-foreground mt-4">© T.A Advertising Solution</p>
     </div>
   );
 };
