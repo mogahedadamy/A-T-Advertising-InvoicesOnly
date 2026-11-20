@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import {
   CUSTOMER_TYPE_CONFIG,
   PRIMARY_CUSTOMER_TYPES,
+  useCustomers,
   type CustomerRecord,
   type CustomerType,
 } from "@/lib/customersStore";
+import { findCustomerMatch } from "@/lib/customers/customerMatching";
 import { AppCurrency } from "@/lib/currency/types";
 import { getLocalIsoDate } from "@/lib/dateUtils";
 import { sanitizePositiveDecimal } from "@/components/finance/shared/numericInput";
@@ -27,6 +29,7 @@ const SUPPORTED_CURRENCIES: { code: AppCurrency; label: string }[] = [
 ];
 
 export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
+  const customers = useCustomers();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [type, setType] = useState<CustomerType>("company");
@@ -94,6 +97,9 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
   const fieldStyle =
     "h-10 w-full rounded-xl border border-border/80 bg-background px-3 text-xs font-bold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary";
 
+  const duplicateMatch =
+    !initialData && name.trim().length >= 2 ? findCustomerMatch(customers, name) : null;
+
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
       <DialogContent
@@ -131,6 +137,16 @@ export function CustomerDialog({ open, onClose, onSave, initialData }: Props) {
               placeholder="مثال: وكالة الأفق للدعاية والإعلان"
               className={fieldStyle}
             />
+            {duplicateMatch?.exactActive && (
+              <p className="rounded-xl border border-[#C5A059]/40 bg-[#C5A059]/10 px-3 py-1.5 text-[11px] font-bold text-[#9A7835] dark:text-[#dfbe7e]">
+                تنبيه: يوجد عميل مسجل بنفس الاسم «{duplicateMatch.exactActive.name}». يفضّل اختياره بدلاً من إنشاء سجل مكرر.
+              </p>
+            )}
+            {!duplicateMatch?.exactActive && duplicateMatch?.exactArchived && (
+              <p className="rounded-xl border border-border/80 bg-secondary/40 px-3 py-1.5 text-[11px] font-bold text-muted-foreground">
+                تنبيه: العميل «{duplicateMatch.exactArchived.name}» موجود في الأرشيف ويمكن استعادته من قائمة المؤرشفين.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

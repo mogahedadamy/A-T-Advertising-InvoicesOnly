@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Search,
   FileText,
   TrendingUp,
   ShoppingBag,
   Calculator,
+  UserCheck,
+  UserPlus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,11 +25,19 @@ import type { InvoiceRecord } from "@/lib/invoicesStore";
 import {
   convertProformaToSalesInvoice,
   deleteCustomInvoice,
+  linkCustomInvoiceToCustomer,
   saveCustomInvoice,
 } from "@/lib/billing/store";
+import {
+  findOrCreateCustomerByName,
+  useCustomers,
+  type CustomerRecord,
+} from "@/lib/customersStore";
+import { findCustomerByNormalizedName } from "@/lib/customers/customerMatching";
 import { deleteProformaInvoice } from "@/lib/proforma/store";
 import { deleteInvoice } from "@/lib/invoicesStore";
 import { getLocalIsoDate } from "@/lib/dateUtils";
+import { router } from "@/router";
 import { formatAccountingNumber } from "./StandardInvoiceDocument";
 import {
   printCustomInvoiceDocument,
@@ -58,11 +68,56 @@ export function BillingArchiveTable({
   onRecordPayment,
   onPreviewCalc,
 }: Props) {
+  const customers = useCustomers();
+  const customersById = useMemo(() => {
+    const map = new Map<string, CustomerRecord>();
+    for (const c of customers) map.set(c.id, c);
+    return map;
+  }, [customers]);
+
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [linkingInvoiceId, setLinkingInvoiceId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<UnifiedInvoiceRecord | null>(null);
+
+  const handleOpenCustomerProfile = (customerId: string) => {
+    void router.navigate({ to: "/customers", search: { id: customerId } });
+  };
+
+  const handleSaveWalkInAsCustomer = async (inv: CustomInvoice) => {
+    const partyName = (inv.meta.partyName || inv.meta.partyEnName || "").trim();
+    if (!partyName || linkingInvoiceId) return;
+    setLinkingInvoiceId(inv.id);
+    try {
+      const { customer, created, unarchived } = await findOrCreateCustomerByName({
+        name: partyName,
+        phone: inv.meta.phone,
+        type: "client",
+      });
+      await linkCustomInvoiceToCustomer(inv.id, customer.id);
+      const statusText = created
+        ? `تمت إضافة «${customer.name}» لدليل العملاء وربط الفاتورة بملفه`
+        : unarchived
+        ? `تمت استعادة «${customer.name}» من الأرشيف وربط الفاتورة بملفه`
+        : `تم ربط الفاتورة بملف «${customer.name}» المسجّل مسبقاً`;
+
+      toast.success("تم التوثيق والربط بنجاح", {
+        description: statusText,
+        action: {
+          label: "فتح ملف العميل",
+          onClick: () => handleOpenCustomerProfile(customer.id),
+        },
+      });
+    } catch (err) {
+      toast.error("تعذّر ربط الفاتورة بملف عميل", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setLinkingInvoiceId(null);
+    }
+  };
 
   const handleConvertProformaToSales = async (rec: UnifiedInvoiceRecord) => {
     if (convertingId) return;
@@ -249,7 +304,74 @@ export function BillingArchiveTable({
                     </td>
 
                     <td className="py-2 px-4 font-black text-sm text-foreground">
-                      {rec.customerName}
+                      {isCustom && rec.type !== "purchase" ? (
+                        (() => {
+                          const linkedCustomer = rec.raw.customerId
+                            ? customersById.get(rec.raw.customerId)
+                            : undefined;
+                          const matchedByName = !linkedCustomer
+                            ? findCustomerByNormalizedName(customers, rec.customerName)
+                            : undefined;
+
+                          if (linkedCustomer) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCustomerProfile(linkedCustomer.id)}
+                                className="inline-flex items-center gap-1.5 text-right text-foreground hover:text-primary transition-colors cursor-pointer group/cust"
+                                title="فتح ملف العميل وكشف الحساب"
+                              >
+                                <UserCheck className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <span className="group-hover/cust:underline">{rec.customerName}</span>
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span>{rec.customerName}</span>
+                              {!matchedByName && (
+                                <span className="rounded-full border border-border/70 bg-secondary/60 px-2 py-0.2 text-[9.5px] font-bold text-muted-foreground">
+                                  عابر
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                disabled={linkingInvoiceId === rec.id}
+                                onClick={() => void handleSaveWalkInAsCustomer(rec.raw)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-black text-primary hover:bg-primary hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                                title={
+                                  matchedByName
+                                    ? `ربط هذه الفاتورة بملف ${matchedByName.name}`
+                                    : "حفظ في دليل العملاء وربط الفاتورة"
+                                }
+                              >
+                                <UserPlus className="h-3 w-3" />
+                                <span>{matchedByName ? "ربط بملفه" : "حفظ كعميل"}</span>
+                              </button>
+                            </div>
+                          );
+                        })()
+                      ) : isProforma ? (
+                        (() => {
+                          const matched = findCustomerByNormalizedName(customers, rec.customerName);
+                          return matched ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCustomerProfile(matched.id)}
+                              className="inline-flex items-center gap-1.5 text-right text-foreground hover:text-primary hover:underline transition-colors cursor-pointer"
+                              title="فتح ملف العميل"
+                            >
+                              <UserCheck className="h-3.5 w-3.5 text-primary shrink-0" />
+                              <span>{rec.customerName}</span>
+                            </button>
+                          ) : (
+                            rec.customerName
+                          );
+                        })()
+                      ) : (
+                        rec.customerName
+                      )}
                     </td>
 
                     <td className="py-2 px-4 text-center font-mono text-muted-foreground">

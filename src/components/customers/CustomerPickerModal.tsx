@@ -1,15 +1,20 @@
-import React, { useState, useMemo } from "react";
-import { Search, UserPlus, X, Check, Building2, Phone, Wallet, Plus } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Search, X, Check, Building2, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   useCustomers,
-  addCustomer,
+  findOrCreateCustomerByName,
   CUSTOMER_TYPE_CONFIG,
   PRIMARY_CUSTOMER_TYPES,
   type CustomerRecord,
   type CustomerType,
 } from "@/lib/customersStore";
+import {
+  findCustomerMatch,
+  normalizeCustomerName,
+  normalizePhoneDigits,
+} from "@/lib/customers/customerMatching";
 import { formatNumber } from "@/lib/printCalculator";
 import { playTapSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
@@ -19,6 +24,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   selectedCustomerId?: string | null;
   onSelect: (customer: CustomerRecord) => void;
+  initialQuery?: string;
+  startInAddMode?: boolean;
 }
 
 export function CustomerPickerModal({
@@ -26,6 +33,8 @@ export function CustomerPickerModal({
   onOpenChange,
   selectedCustomerId,
   onSelect,
+  initialQuery,
+  startInAddMode = false,
 }: Props) {
   const customers = useCustomers();
   const [search, setSearch] = useState("");
@@ -38,22 +47,47 @@ export function CustomerPickerModal({
   const [newType, setNewType] = useState<CustomerType>("company");
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    if (open) {
+      const seed = (initialQuery || "").trim();
+      setSearch(seed);
+      setNewName(seed);
+      setNewPhone("");
+      setTypeFilter("all");
+      setIsAddingNew(Boolean(startInAddMode));
+    } else {
+      setSearch("");
+      setTypeFilter("all");
+      setIsAddingNew(false);
+      setNewName("");
+      setNewPhone("");
+    }
+  }, [open, initialQuery, startInAddMode]);
+
   const activeCustomers = useMemo(() => {
     return customers.filter((c) => !c.isArchived);
   }, [customers]);
 
   const filteredCustomers = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const normQ = normalizeCustomerName(search);
+    const phoneQ = normalizePhoneDigits(search);
+    const addrQ = search.trim().toLowerCase();
     return activeCustomers.filter((c) => {
       const matchSearch =
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        (c.phone && c.phone.includes(q)) ||
-        (c.address && c.address.toLowerCase().includes(q));
+        (!normQ && !phoneQ && !addrQ) ||
+        (Boolean(normQ) && normalizeCustomerName(c.name).includes(normQ)) ||
+        (phoneQ.length >= 2 && normalizePhoneDigits(c.phone).includes(phoneQ)) ||
+        (Boolean(addrQ) && Boolean(c.address) && c.address.toLowerCase().includes(addrQ));
       const matchType = typeFilter === "all" || c.type === typeFilter;
       return matchSearch && matchType;
     });
   }, [activeCustomers, search, typeFilter]);
+
+  const hasExactActiveMatch = useMemo(() => {
+    const q = search.trim();
+    if (!q) return false;
+    return Boolean(findCustomerMatch(customers, q).exactActive);
+  }, [customers, search]);
 
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,21 +95,25 @@ export function CustomerPickerModal({
 
     setIsSaving(true);
     try {
-      const created = await addCustomer({
+      const outcome = await findOrCreateCustomerByName({
         name: newName.trim(),
         phone: newPhone.trim(),
         type: newType,
-        address: "",
-        balance: 0,
       });
       playSuccessSound();
-      toast.success(`تمت إضافة العميل "${created.name}" واختياره للفاتورة`);
+      if (outcome.created) {
+        toast.success(`تمت إضافة العميل "${outcome.customer.name}" واختياره للفاتورة`);
+      } else if (outcome.unarchived) {
+        toast.success(`تمت استعادة العميل "${outcome.customer.name}" من الأرشيف وربطه بالفاتورة`);
+      } else {
+        toast.success(`تم الربط بالعميل المسجل مسبقاً "${outcome.customer.name}"`);
+      }
       setIsAddingNew(false);
       setNewName("");
       setNewPhone("");
-      onSelect(created);
+      onSelect(outcome.customer);
       onOpenChange(false);
-    } catch (err) {
+    } catch {
       toast.error("تعذر إضافة العميل الجديد");
     } finally {
       setIsSaving(false);
@@ -111,6 +149,9 @@ export function CustomerPickerModal({
             size="sm"
             onClick={() => {
               playTapSound();
+              if (!isAddingNew && search.trim() && !newName.trim()) {
+                setNewName(search.trim());
+              }
               setIsAddingNew(!isAddingNew);
             }}
             className="h-8 text-xs font-black gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white shrink-0 shadow-xs active:scale-[0.97] touch-manipulation cursor-pointer"
@@ -245,74 +286,108 @@ export function CustomerPickerModal({
             {/* قائمة العملاء */}
             <div className="flex-1 overflow-y-auto min-h-[220px] max-h-[360px] space-y-1.5 pr-0.5 divide-y divide-border/30">
               {filteredCustomers.length === 0 ? (
-                <div className="py-12 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl">
-                  {search ? "لا توجد نتائج مطابقة لبحثك" : "لا يوجد عملاء مسجلون حالياً"}
-                </div>
-              ) : (
-                filteredCustomers.map((cust) => {
-                  const isSelected = selectedCustomerId === cust.id;
-                  const cfg = CUSTOMER_TYPE_CONFIG[cust.type] || CUSTOMER_TYPE_CONFIG.individual;
-
-                  return (
-                    <div
-                      key={cust.id}
+                <div className="py-10 px-4 text-center text-xs font-bold text-muted-foreground border border-dashed border-border/70 rounded-2xl space-y-3">
+                  <p>{search.trim() ? `لا توجد نتائج مطابقة لـ «${search.trim()}»` : "لا يوجد عملاء مسجلون حالياً"}</p>
+                  {search.trim().length > 0 && !hasExactActiveMatch && (
+                    <Button
+                      type="button"
+                      size="sm"
                       onClick={() => {
                         playTapSound();
-                        onSelect(cust);
-                        onOpenChange(false);
+                        setNewName(search.trim());
+                        setIsAddingNew(true);
                       }}
-                      className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-3 ${
-                        isSelected
-                          ? "bg-primary/10 border border-primary/30 shadow-2xs"
-                          : "hover:bg-secondary/50 border border-transparent"
-                      }`}
+                      className="h-8 px-4 rounded-xl text-xs font-black gap-1.5 bg-primary hover:bg-primary/90 text-white cursor-pointer"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-xs text-foreground truncate">
-                            {cust.name}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.2 text-[9px] font-bold border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
-                          >
-                            {cfg.label}
-                          </span>
-                        </div>
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>إضافة «{search.trim()}» كعميل جديد</span>
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {filteredCustomers.map((cust) => {
+                    const isSelected = selectedCustomerId === cust.id;
+                    const cfg = CUSTOMER_TYPE_CONFIG[cust.type] || CUSTOMER_TYPE_CONFIG.individual;
 
-                        <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                          {cust.phone ? (
-                            <span className="font-mono font-bold text-primary/80" dir="ltr">
-                              {cust.phone}
+                    return (
+                      <button
+                        type="button"
+                        key={cust.id}
+                        onClick={() => {
+                          playTapSound();
+                          onSelect(cust);
+                          onOpenChange(false);
+                        }}
+                        className={`w-full text-right p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                          isSelected
+                            ? "bg-primary/10 border border-primary/30 shadow-2xs"
+                            : "hover:bg-secondary/50 border border-transparent"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-black text-xs text-foreground truncate">
+                              {cust.name}
                             </span>
-                          ) : null}
-                          {cust.address ? <span className="truncate">{cust.address}</span> : null}
-                        </div>
-                      </div>
+                            <span
+                              className={`rounded-full px-2 py-0.2 text-[9px] font-bold border ${cfg.bg} ${cfg.color} border-current/20 shrink-0`}
+                            >
+                              {cfg.label}
+                            </span>
+                          </div>
 
-                      <div className="text-left shrink-0">
-                        {cust.balance > 0 ? (
-                          <div className="text-[11px] font-mono font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                            {formatNumber(cust.balance)} ج.س
-                            <span className="text-[9px] block text-rose-600/70 font-normal">مديونية</span>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                            {cust.phone ? (
+                              <span className="font-mono font-bold text-primary/80" dir="ltr">
+                                {cust.phone}
+                              </span>
+                            ) : null}
+                            {cust.address ? <span className="truncate">{cust.address}</span> : null}
                           </div>
-                        ) : cust.balance < 0 ? (
-                          <div className="text-[11px] font-mono font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                            {formatNumber(Math.abs(cust.balance))} ج.س
-                            <span className="text-[9px] block text-emerald-600/70 font-normal">رصيد مقدم</span>
+                        </div>
+
+                        <div className="text-left shrink-0">
+                          {cust.balance > 0 ? (
+                            <div className="text-[11px] font-mono font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                              {formatNumber(cust.balance)} ج.س
+                              <span className="text-[9px] block text-rose-600/70 font-normal">مديونية</span>
+                            </div>
+                          ) : cust.balance < 0 ? (
+                            <div className="text-[11px] font-mono font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                              {formatNumber(Math.abs(cust.balance))} ج.س
+                              <span className="text-[9px] block text-emerald-600/70 font-normal">رصيد مقدم</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground font-bold">متزن (0)</span>
+                          )}
+                        </div>
+
+                        {isSelected && (
+                          <div className="grid h-6 w-6 place-items-center rounded-full bg-primary text-white shrink-0 shadow-2xs">
+                            <Check className="h-3.5 w-3.5" />
                           </div>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground font-bold">متزن (0)</span>
                         )}
-                      </div>
-
-                      {isSelected && (
-                        <div className="grid h-6 w-6 place-items-center rounded-full bg-primary text-white shrink-0 shadow-2xs">
-                          <Check className="h-3.5 w-3.5" />
-                        </div>
-                      )}
+                      </button>
+                    );
+                  })}
+                  {search.trim().length > 0 && !hasExactActiveMatch && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setNewName(search.trim());
+                          setIsAddingNew(true);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-xs font-black text-primary hover:bg-primary/10 transition cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>إضافة «{search.trim()}» كعميل جديد</span>
+                      </button>
                     </div>
-                  );
-                })
+                  )}
+                </>
               )}
             </div>
           </div>

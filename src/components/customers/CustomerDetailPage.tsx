@@ -11,6 +11,9 @@ import {
   Wallet,
   ArrowDownLeft,
   Loader2,
+  FileText,
+  Eye,
+  Edit2,
 } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
@@ -24,6 +27,9 @@ import {
   type CustomerFinancialProfile,
   type CustomerInvoiceItemRow,
 } from "@/lib/customersStore";
+import { normalizeCustomerName } from "@/lib/customers/customerMatching";
+import { getCustomInvoice, useCustomInvoices } from "@/lib/billing/store";
+import type { CustomInvoice } from "@/lib/billing/types";
 import {
   getCustomerStatement,
   type CustomerStatement,
@@ -43,6 +49,8 @@ import {
   type StatementTypeFilter,
 } from "./CustomerDetailStatementTab";
 import { ReceiptDialog } from "@/components/finance/ReceiptDialog";
+import { BillingPreviewModal } from "@/components/billing/BillingPreviewModal";
+import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
 import {
   printCustomInvoiceDocument,
   shareCustomInvoiceViaWhatsApp,
@@ -53,6 +61,7 @@ interface Props {
   onBack: () => void;
   onCustomerUpdated?: () => void;
   onCreateInvoice?: (customer: CustomerRecord) => void;
+  onCreateProforma?: (customer: CustomerRecord) => void;
 }
 
 /**
@@ -63,6 +72,7 @@ export function CustomerDetailPage({
   onBack,
   onCustomerUpdated,
   onCreateInvoice,
+  onCreateProforma,
 }: Props) {
   const [activeTab, setActiveTab] = useState<"invoices" | "statement" | "info">("invoices");
   const [financialProfile, setFinancialProfile] = useState<CustomerFinancialProfile | null>(null);
@@ -94,6 +104,20 @@ export function CustomerDetailPage({
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [targetReceiptInvoiceId, setTargetReceiptInvoiceId] = useState<string | null>(null);
   const [isExportingStatement, setIsExportingStatement] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState<CustomInvoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<CustomInvoice | null>(null);
+
+  const allCustomInvoices = useCustomInvoices();
+  const customerProformas = useMemo(() => {
+    const normCustName = normalizeCustomerName(customer.name);
+    return allCustomInvoices.filter(
+      (inv) =>
+        inv.meta.type === "proforma" &&
+        !inv.cancelledAt &&
+        (inv.customerId === customer.id ||
+          (!inv.customerId && Boolean(normCustName) && normalizeCustomerName(inv.meta.partyName) === normCustName))
+    );
+  }, [allCustomInvoices, customer.id, customer.name]);
 
   const loadAllCustomerData = async () => {
     if (!customer?.id) return;
@@ -119,8 +143,14 @@ export function CustomerDetailPage({
   };
 
   useEffect(() => {
-    if (customer?.id) {
+    if (!customer?.id) return;
+    void loadAllCustomerData();
+    const handleFinanceChange = () => {
       void loadAllCustomerData();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("finance-changed", handleFinanceChange);
+      return () => window.removeEventListener("finance-changed", handleFinanceChange);
     }
   }, [customer?.id]);
 
@@ -261,10 +291,44 @@ export function CustomerDetailPage({
     }
   };
 
+  const resolveFullCustomInvoice = async (invoiceId: string): Promise<CustomInvoice | undefined> => {
+    const inMemory = getCustomInvoice(invoiceId);
+    if (inMemory) return inMemory;
+    return await getCustomInvoiceById(invoiceId);
+  };
+
+  const handleInvoicePreview = async (invoiceId: string) => {
+    playTapSound();
+    try {
+      const fullInv = await resolveFullCustomInvoice(invoiceId);
+      if (!fullInv) {
+        toast.error("تعذر العثور على الفاتورة الأصلية");
+        return;
+      }
+      setPreviewInvoice(fullInv);
+    } catch {
+      toast.error("تعذرت معاينة الفاتورة");
+    }
+  };
+
+  const handleInvoiceEdit = async (invoiceId: string) => {
+    playTapSound();
+    try {
+      const fullInv = await resolveFullCustomInvoice(invoiceId);
+      if (!fullInv) {
+        toast.error("تعذر العثور على الفاتورة الأصلية");
+        return;
+      }
+      setEditingInvoice(fullInv);
+    } catch {
+      toast.error("تعذر فتح الفاتورة للتعديل");
+    }
+  };
+
   const handleInvoicePrint = async (invoiceId: string) => {
     playTapSound();
     try {
-      const fullInv = await getCustomInvoiceById(invoiceId);
+      const fullInv = await resolveFullCustomInvoice(invoiceId);
       if (!fullInv) {
         toast.error("تعذر العثور على الفاتورة الأصلية");
         return;
@@ -278,7 +342,7 @@ export function CustomerDetailPage({
   const handleInvoiceShare = async (invoiceId: string) => {
     playTapSound();
     try {
-      const fullInv = await getCustomInvoiceById(invoiceId);
+      const fullInv = await resolveFullCustomInvoice(invoiceId);
       if (!fullInv) {
         toast.error("تعذر العثور على الفاتورة الأصلية");
         return;
@@ -366,6 +430,21 @@ export function CustomerDetailPage({
                 <Plus className="h-3.5 w-3.5" />
                 <span>إصدار فاتورة</span>
               </Button>
+
+              {onCreateProforma && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    playTapSound();
+                    onCreateProforma(customer);
+                  }}
+                  className="h-9 px-3 rounded-xl font-bold text-xs gap-1.5 border-[#C5A059]/40 text-[#9A7835] dark:text-[#dfbe7e] bg-[#C5A059]/5 hover:bg-[#C5A059]/15 active:scale-[0.97] transition-all cursor-pointer"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>عرض سعر</span>
+                </Button>
+              )}
 
               <Button
                 type="button"
@@ -574,9 +653,69 @@ export function CustomerDetailPage({
                   setTargetReceiptInvoiceId(invId);
                   setReceiptDialogOpen(true);
                 }}
+                onPreviewInvoice={(invId) => void handleInvoicePreview(invId)}
+                onEditInvoice={(invId) => void handleInvoiceEdit(invId)}
                 onPrintInvoice={(invId) => void handleInvoicePrint(invId)}
                 onShareInvoice={(invId) => void handleInvoiceShare(invId)}
               />
+            )}
+
+            {activeTab === "invoices" && customerProformas.length > 0 && (
+              <div className="rounded-2xl border border-[#C5A059]/30 bg-card p-3.5 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-[#C5A059]" />
+                    <span className="text-xs font-black text-foreground">
+                      عروض الأسعار المرتبطة بالعميل ({customerProformas.length})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    استرشادية — لا تدخل ضمن حساب المديونية
+                  </span>
+                </div>
+                <div className="divide-y divide-border/40">
+                  {customerProformas.map((pf) => (
+                    <div
+                      key={pf.id}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono font-black text-primary" dir="ltr">
+                          {pf.reference || `#${pf.meta.serial}`}
+                        </span>
+                        <span className="text-muted-foreground font-mono text-[11px]">
+                          {pf.meta.date}
+                        </span>
+                        <span className="font-mono font-bold text-foreground tabular-nums">
+                          {formatNumber(pf.totalAmount)} {pf.currency || "SDG"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setPreviewInvoice(pf)}
+                          className="h-7 px-2 rounded-lg text-[11px] font-bold gap-1 cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>معاينة</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingInvoice(pf)}
+                          className="h-7 px-2 rounded-lg text-[11px] font-bold gap-1 text-blue-600 cursor-pointer"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>تعديل</span>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {activeTab === "statement" && (
@@ -675,6 +814,37 @@ export function CustomerDetailPage({
           onCustomerUpdated?.();
         }}
       />
+
+      {previewInvoice && (
+        <BillingPreviewModal
+          invoice={previewInvoice}
+          open={Boolean(previewInvoice)}
+          onOpenChange={(open) => {
+            if (!open) setPreviewInvoice(null);
+          }}
+          onEdit={(inv) => {
+            setPreviewInvoice(null);
+            setEditingInvoice(inv);
+          }}
+        />
+      )}
+
+      {editingInvoice && (
+        <CustomInvoiceDialog
+          open={Boolean(editingInvoice)}
+          onOpenChange={(open) => {
+            if (!open) setEditingInvoice(null);
+          }}
+          initialType={editingInvoice.meta.type || "sales"}
+          invoiceToEdit={editingInvoice}
+          onSaved={(saved) => {
+            setEditingInvoice(null);
+            setPreviewInvoice(saved);
+            void loadAllCustomerData();
+            onCustomerUpdated?.();
+          }}
+        />
+      )}
     </PageShell>
   );
 }

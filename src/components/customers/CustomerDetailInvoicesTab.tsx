@@ -2,6 +2,8 @@ import React from "react";
 import {
   Printer,
   Share2,
+  Eye,
+  Edit2,
   ChevronRight,
   ChevronLeft,
   ChevronsRight,
@@ -41,6 +43,8 @@ interface CustomerDetailInvoicesTabProps {
   pageFinancials: { pageTotal: number; pageRemaining: number };
   selectedCurrency: string;
   onCollectInvoice: (invoiceId: string) => void;
+  onPreviewInvoice?: (invoiceId: string) => void;
+  onEditInvoice?: (invoiceId: string) => void;
   onPrintInvoice: (invoiceId: string) => void;
   onShareInvoice: (invoiceId: string) => void;
 }
@@ -66,6 +70,8 @@ export function CustomerDetailInvoicesTab({
   pageFinancials,
   selectedCurrency,
   onCollectInvoice,
+  onPreviewInvoice,
+  onEditInvoice,
   onPrintInvoice,
   onShareInvoice,
 }: CustomerDetailInvoicesTabProps) {
@@ -288,6 +294,32 @@ export function CustomerDetailInvoicesTab({
                             تحصيل
                           </Button>
                         )}
+                        {onPreviewInvoice && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onPreviewInvoice(inv.id)}
+                            className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+                            title="معاينة الفاتورة"
+                            aria-label="معاينة الفاتورة"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {onEditInvoice && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onEditInvoice(inv.id)}
+                            className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-blue-600 cursor-pointer"
+                            title="تعديل الفاتورة"
+                            aria-label="تعديل الفاتورة"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -383,6 +415,34 @@ export function CustomerDetailInvoicesTab({
                 )}
 
                 <div className="flex items-center gap-1.5">
+                  {onPreviewInvoice && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onPreviewInvoice(inv.id)}
+                      className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="معاينة الفاتورة"
+                      aria-label="معاينة الفاتورة"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  )}
+
+                  {onEditInvoice && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onEditInvoice(inv.id)}
+                      className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-blue-600 cursor-pointer"
+                      title="تعديل الفاتورة"
+                      aria-label="تعديل الفاتورة"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                  )}
+
                   <Button
                     type="button"
                     size="sm"

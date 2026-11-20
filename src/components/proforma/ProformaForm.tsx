@@ -1,25 +1,80 @@
-import React, { useState } from "react";
-import { User, Phone, Calendar, Hash, Building2, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  User,
+  Phone,
+  Calendar,
+  Hash,
+  Building2,
+  ChevronDown,
+  ChevronUp,
+  Pencil,
+  Users,
+  UserPlus,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import type { ProformaMeta, ProformaLine } from "@/lib/proforma/types";
 import { ProformaLineEditor } from "./ProformaLineEditor";
 import { calculateProformaTotals } from "@/lib/proforma/store";
 import { formatNumber } from "@/lib/printCalculator";
 import { CurrencySelector } from "@/components/currency/CurrencySelector";
-import type { AppCurrency } from "@/lib/currency/types";
+import { useCustomers, type CustomerRecord } from "@/lib/customersStore";
+import { findCustomerMatch } from "@/lib/customers/customerMatching";
+import { CustomerPickerModal } from "@/components/customers/CustomerPickerModal";
+import { playTapSound } from "@/lib/soundEffects";
 
 interface Props {
   meta: ProformaMeta;
   lines: ProformaLine[];
   onMetaChange: (meta: ProformaMeta) => void;
   onLinesChange: (lines: ProformaLine[]) => void;
+  saveAsNewCustomer?: boolean;
+  onSaveAsNewCustomerChange?: (v: boolean) => void;
 }
 
-export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props) {
+export function ProformaForm({
+  meta,
+  lines,
+  onMetaChange,
+  onLinesChange,
+  saveAsNewCustomer = false,
+  onSaveAsNewCustomerChange,
+}: Props) {
+  const customers = useCustomers();
   const totals = calculateProformaTotals(lines);
   // إذا كان كلا الاسمين غير مدخل بعد، تفتح البطاقة تلقائياً؛ وإلا يمكن طيها لتوفير المساحة
   const [isCustomerOpen, setIsCustomerOpen] = useState(!meta.customerName?.trim() && !meta.customerEnName?.trim());
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showSuggestions) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showSuggestions]);
+
+  const matchResult = useMemo(
+    () => findCustomerMatch(customers, meta.customerName || ""),
+    [customers, meta.customerName]
+  );
+
+  const handleSelectCustomer = (cust: CustomerRecord) => {
+    playTapSound();
+    onMetaChange({
+      ...meta,
+      customerName: cust.name,
+      phone: cust.phone || meta.phone,
+    });
+    onSaveAsNewCustomerChange?.(false);
+    setShowSuggestions(false);
+  };
 
   const updateField = <K extends keyof ProformaMeta>(key: K, value: ProformaMeta[K]) => {
     onMetaChange({ ...meta, [key]: value });
@@ -78,19 +133,59 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
         {/* الحقول المدمجة عند فتح البطاقة */}
         {isCustomerOpen && (
           <div className="grid grid-cols-2 gap-2 pt-2.5 mt-2 border-t border-border/60 animate-in fade-in duration-150">
-            <div>
+            <div ref={suggestionsRef} className="relative">
               <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
                 اسم العميل بالعربية <span className="text-[9px] font-normal text-muted-foreground/80">(اختياري)</span>
               </label>
-              <div className="relative">
-                <Input
-                  value={meta.customerName}
-                  onChange={(e) => updateField("customerName", e.target.value)}
-                  placeholder="مثال: مكتبة البيان"
-                  className="h-7.5 text-xs pr-7 font-bold"
-                />
-                <User className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+              <div className="flex items-center gap-1">
+                <div className="relative flex-1">
+                  <Input
+                    value={meta.customerName}
+                    onChange={(e) => {
+                      updateField("customerName", e.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder="مثال: مكتبة البيان"
+                    className="h-7.5 text-xs pr-7 font-bold"
+                  />
+                  <User className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    playTapSound();
+                    setPickerOpen(true);
+                  }}
+                  className="h-7.5 px-2 text-[10px] font-black gap-1 border-primary/35 text-primary hover:bg-primary hover:text-white shrink-0 cursor-pointer"
+                  title="اختيار عميل من الدليل"
+                >
+                  <Users className="h-3 w-3" />
+                  <span>العملاء</span>
+                </Button>
               </div>
+
+              {showSuggestions && meta.customerName.trim().length > 0 && matchResult.suggestions.length > 0 && (
+                <div className="absolute z-30 top-full mt-1 w-full rounded-xl border border-border bg-card shadow-lg overflow-hidden py-1">
+                  {matchResult.suggestions.map((cust) => (
+                    <button
+                      key={cust.id}
+                      type="button"
+                      onClick={() => handleSelectCustomer(cust)}
+                      className="w-full text-right px-2.5 py-1.5 text-[11px] font-bold hover:bg-primary/10 hover:text-primary flex items-center justify-between cursor-pointer border-b border-border/20 last:border-0"
+                    >
+                      <span className="truncate">{cust.name}</span>
+                      {cust.phone && (
+                        <span className="font-mono text-[10px] text-muted-foreground shrink-0" dir="ltr">
+                          {cust.phone}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -216,9 +311,36 @@ export function ProformaForm({ meta, lines, onMetaChange, onLinesChange }: Props
                 <Building2 className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
               </div>
             </div>
+
+            {onSaveAsNewCustomerChange &&
+              !matchResult.exactActive &&
+              !matchResult.exactArchived &&
+              (meta.customerName || "").trim().length >= 2 && (
+                <div className="col-span-2 flex items-center justify-between gap-2 rounded-xl border border-border/70 bg-secondary/30 px-2.5 py-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <UserPlus className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="text-[10.5px] font-bold text-foreground truncate">
+                      حفظ «{meta.customerName.trim()}» في دليل العملاء عند الحفظ
+                    </span>
+                  </div>
+                  <Switch
+                    dir="ltr"
+                    checked={Boolean(saveAsNewCustomer)}
+                    onCheckedChange={onSaveAsNewCustomerChange}
+                    aria-label="حفظ كعميل جديد في دليل العملاء"
+                  />
+                </div>
+              )}
           </div>
         )}
       </div>
+
+      <CustomerPickerModal
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        initialQuery={meta.customerName}
+        onSelect={handleSelectCustomer}
+      />
 
       {/* 2. منطقة البنود القابلة للتمرير الوحيدة والسلسة بدون شريط تمرير داخلي مكرر */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-2">

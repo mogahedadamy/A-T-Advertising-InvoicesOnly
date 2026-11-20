@@ -18,6 +18,7 @@ import { registerBackHandler } from "@/lib/backButtonHandler";
 import { playTapSound } from "@/lib/soundEffects";
 import { useCustomInvoiceForm } from "./dialog/useCustomInvoiceForm";
 import type { CustomerRecord } from "@/lib/customersStore";
+import { router } from "@/router";
 
 interface Props {
   open: boolean;
@@ -118,6 +119,17 @@ export function CustomInvoiceDialog({
               setCurrency={form.setCurrency}
               customerId={form.customerId}
               setCustomerId={form.setCustomerId}
+              phone={form.phone}
+              setPhone={form.setPhone}
+              saveAsNewCustomer={form.saveAsNewCustomer}
+              setSaveAsNewCustomer={form.setSaveAsNewCustomer}
+              newCustomerType={form.newCustomerType}
+              setNewCustomerType={form.setNewCustomerType}
+              isCustomerLocked={form.isCustomerLocked}
+              onOpenCustomerProfile={(cid) => {
+                onOpenChange(false);
+                void router.navigate({ to: "/customers", search: { id: cid } });
+              }}
               supplierId={form.supplierId}
               setSupplierId={form.setSupplierId}
               supplierInvoiceNumber={form.supplierInvoiceNumber}

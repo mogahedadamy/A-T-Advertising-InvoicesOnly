@@ -1,16 +1,27 @@
-import React, { useEffect, useRef, useState } from "react";
-import { X, Calendar, User, Users, Link2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { X, Calendar, User, Users, Plus } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { CustomInvoiceType } from "@/lib/billing/types";
 import { AppCurrency } from "@/lib/currency/types";
 import { CurrencySelector } from "@/components/currency/CurrencySelector";
-import { useCustomers, type CustomerRecord } from "@/lib/customersStore";
+import {
+  unarchiveCustomer,
+  useCustomers,
+  type CustomerRecord,
+  type CustomerType,
+} from "@/lib/customersStore";
+import {
+  findCustomerMatch,
+  normalizeCustomerName,
+} from "@/lib/customers/customerMatching";
 import { CustomerPickerModal } from "@/components/customers/CustomerPickerModal";
+import { InvoiceCustomerLinkStrip } from "./InvoiceCustomerLinkStrip";
 import { CustomInvoiceAdvancedFields } from "./CustomInvoiceAdvancedFields";
 import { getLocalIsoDate } from "@/lib/dateUtils";
 import { playTapSound } from "@/lib/soundEffects";
+import { toast } from "sonner";
 
 interface Props {
   type: CustomInvoiceType;
@@ -30,6 +41,14 @@ interface Props {
   setCurrency: (v: AppCurrency) => void;
   customerId?: string | null;
   setCustomerId?: (id: string | null) => void;
+  phone?: string;
+  setPhone?: (v: string) => void;
+  saveAsNewCustomer?: boolean;
+  setSaveAsNewCustomer?: (v: boolean) => void;
+  newCustomerType?: CustomerType;
+  setNewCustomerType?: (t: CustomerType) => void;
+  isCustomerLocked?: boolean;
+  onOpenCustomerProfile?: (customerId: string) => void;
   supplierId?: string | null;
   setSupplierId?: (id: string | null) => void;
   supplierInvoiceNumber?: string;
@@ -54,6 +73,14 @@ export function CustomInvoiceMetaSection({
   setCurrency,
   customerId,
   setCustomerId,
+  phone = "",
+  setPhone,
+  saveAsNewCustomer = false,
+  setSaveAsNewCustomer,
+  newCustomerType = "client",
+  setNewCustomerType,
+  isCustomerLocked = false,
+  onOpenCustomerProfile,
   supplierId,
   setSupplierId,
   supplierInvoiceNumber,
@@ -62,6 +89,7 @@ export function CustomInvoiceMetaSection({
   const isPurchase = type === "purchase";
   const customers = useCustomers();
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [pickerStartInAddMode, setPickerStartInAddMode] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(
     Boolean(attn.trim() || partyEnName.trim() || (isPurchase && (supplierId || supplierInvoiceNumber?.trim())))
@@ -79,25 +107,42 @@ export function CustomInvoiceMetaSection({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [showSuggestions]);
 
-  const linkedCustomer = !isPurchase && customerId ? customers.find((c) => c.id === customerId) : null;
+  const linkedCustomer = useMemo(
+    () => (!isPurchase && customerId ? customers.find((c) => c.id === customerId) ?? null : null),
+    [isPurchase, customerId, customers]
+  );
 
-  const searchTrim = partyName.trim().toLowerCase();
-  const matchedCustomers =
-    searchTrim.length > 0 && !isPurchase
-      ? customers
-          .filter(
-            (c) =>
-              c.name.toLowerCase().includes(searchTrim) ||
-              (c.phone && c.phone.includes(searchTrim))
-          )
-          .slice(0, 5)
-      : [];
+  const matchResult = useMemo(
+    () => (isPurchase ? { exactActive: null, exactArchived: null, suggestions: [] } : findCustomerMatch(customers, partyName)),
+    [isPurchase, customers, partyName]
+  );
+
+  const matchedCustomers = partyName.trim().length > 0 && !isPurchase ? matchResult.suggestions : [];
 
   const handleSelectCustomer = (customer: CustomerRecord) => {
     playTapSound();
     setPartyName(customer.name);
-    if (setCustomerId) setCustomerId(customer.id);
+    setCustomerId?.(customer.id);
+    setSaveAsNewCustomer?.(false);
+    if (customer.phone && setPhone) {
+      setPhone(customer.phone);
+    }
     setShowSuggestions(false);
+  };
+
+  const handleUnlinkCustomer = () => {
+    if (isCustomerLocked) return;
+    setCustomerId?.(null);
+  };
+
+  const handleRestoreAndLink = async (archived: CustomerRecord) => {
+    try {
+      await unarchiveCustomer(archived.id);
+      handleSelectCustomer({ ...archived, isArchived: false });
+      toast.success(`تمت استعادة «${archived.name}» من الأرشيف وربط الفاتورة بملفه`);
+    } catch {
+      toast.error("تعذّرت استعادة العميل من الأرشيف");
+    }
   };
 
   const setRelativeDate = (offsetDays: number) => {
@@ -156,32 +201,14 @@ export function CustomInvoiceMetaSection({
         </div>
       </div>
 
-      {/* 2. اسم العميل / الجهة مع زر العملاء المباشر */}
-      <div className="space-y-1.5 relative">
+      {/* 2. اسم العميل / الجهة مع شريط القرار الذكي */}
+      <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
           <Label className="text-[11px] font-black text-foreground flex items-center gap-1.5 text-right">
             <User className="h-3.5 w-3.5 text-primary" />
             <span>{isPurchase ? "اسم المورد / المحل أو الجهة" : "اسم العميل / الشركة أو الجهة"}</span>
             <span className="text-rose-500 font-bold">*</span>
           </Label>
-
-          {!isPurchase && linkedCustomer && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black animate-in fade-in">
-              <Link2 className="h-3 w-3" />
-              <span>مرتبط بملف: {linkedCustomer.name}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  playTapSound();
-                  if (setCustomerId) setCustomerId(null);
-                }}
-                className="hover:text-rose-500 transition-colors p-0.5"
-                title="إلغاء الربط بالعميل (تبقى الفاتورة مستقلة)"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -191,15 +218,20 @@ export function CustomInvoiceMetaSection({
               onChange={(e) => {
                 const val = e.target.value;
                 setPartyName(val);
-                setShowSuggestions(true);
-                if (customerId && setCustomerId) {
+                if (!isPurchase) setShowSuggestions(true);
+                if (!isCustomerLocked && customerId && setCustomerId) {
                   const currentLinked = customers.find((c) => c.id === customerId);
-                  if (currentLinked && currentLinked.name.trim().toLowerCase() !== val.trim().toLowerCase()) {
+                  if (
+                    currentLinked &&
+                    normalizeCustomerName(currentLinked.name) !== normalizeCustomerName(val)
+                  ) {
                     setCustomerId(null);
                   }
                 }
               }}
-              onFocus={() => setShowSuggestions(true)}
+              onFocus={() => {
+                if (!isPurchase && !isCustomerLocked) setShowSuggestions(true);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setShowSuggestions(false);
               }}
@@ -209,15 +241,16 @@ export function CustomInvoiceMetaSection({
                   : "اكتب اسم العميل أو اضغط على «العملاء» للاختيار..."
               }
               className={`h-10 text-xs sm:text-sm rounded-xl font-bold bg-background text-right ${
-                partyName ? "pl-8" : ""
+                partyName && !isCustomerLocked ? "pl-8" : ""
               }`}
             />
-            {partyName && (
+            {partyName && !isCustomerLocked && (
               <button
                 type="button"
                 onClick={() => {
                   setPartyName("");
-                  if (setCustomerId) setCustomerId(null);
+                  setCustomerId?.(null);
+                  setSaveAsNewCustomer?.(false);
                   setShowSuggestions(false);
                 }}
                 aria-label="مسح الاسم"
@@ -227,26 +260,46 @@ export function CustomInvoiceMetaSection({
               </button>
             )}
 
-            {showSuggestions && matchedCustomers.length > 0 && (
+            {showSuggestions && !isCustomerLocked && !isPurchase && (matchedCustomers.length > 0 || (partyName.trim().length >= 2 && !matchResult.exactActive)) && (
               <div className="absolute z-30 top-full mt-1 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden py-1">
-                <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/40 border-b border-border/50">
-                  عملاء مطابقون في السجل (اضغط للاختيار الفوري):
-                </div>
-                {matchedCustomers.map((cust) => (
+                {matchedCustomers.length > 0 && (
+                  <>
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/40 border-b border-border/50">
+                      عملاء مطابقون في السجل (اضغط للاختيار الفوري):
+                    </div>
+                    {matchedCustomers.map((cust) => (
+                      <button
+                        key={cust.id}
+                        type="button"
+                        onClick={() => handleSelectCustomer(cust)}
+                        className="w-full text-right px-3 py-2 text-xs font-bold hover:bg-primary/10 hover:text-primary transition flex items-center justify-between cursor-pointer border-b border-border/20 last:border-0"
+                      >
+                        <span>{cust.name}</span>
+                        {cust.phone && (
+                          <span className="text-[10px] font-mono text-muted-foreground" dir="ltr">
+                            {cust.phone}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {partyName.trim().length >= 2 && !matchResult.exactActive && (
                   <button
-                    key={cust.id}
                     type="button"
-                    onClick={() => handleSelectCustomer(cust)}
-                    className="w-full text-right px-3 py-2 text-xs font-bold hover:bg-primary/10 hover:text-primary transition flex items-center justify-between cursor-pointer border-b border-border/20 last:border-0"
+                    onClick={() => {
+                      playTapSound();
+                      setShowSuggestions(false);
+                      setPickerStartInAddMode(true);
+                      setCustomerPickerOpen(true);
+                    }}
+                    className="w-full text-right px-3 py-2 text-[11px] font-black text-primary bg-primary/5 hover:bg-primary/10 border-t border-border/40 flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span>{cust.name}</span>
-                    {cust.phone && (
-                      <span className="text-[10px] font-mono text-muted-foreground" dir="ltr">
-                        {cust.phone}
-                      </span>
-                    )}
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">تسجيل «{partyName.trim()}» في السجل مع بيانات كاملة</span>
                   </button>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -255,18 +308,40 @@ export function CustomInvoiceMetaSection({
             <Button
               type="button"
               variant="outline"
+              disabled={isCustomerLocked}
               onClick={() => {
                 playTapSound();
+                setPickerStartInAddMode(false);
                 setCustomerPickerOpen(true);
               }}
-              className="h-10 px-3.5 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary hover:text-white text-primary text-xs font-black gap-1.5 shrink-0 active:scale-95 shadow-2xs cursor-pointer transition-all"
-              title="اختيار عميل مسجل من السجل"
+              className="h-10 px-3.5 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary hover:text-white text-primary text-xs font-black gap-1.5 shrink-0 active:scale-95 shadow-2xs cursor-pointer transition-all disabled:opacity-50"
+              title={isCustomerLocked ? "العميل مقفل لوجود مدفوعات على الفاتورة" : "اختيار عميل مسجل من السجل"}
             >
               <Users className="h-4 w-4" />
               <span>العملاء</span>
             </Button>
           )}
         </div>
+
+        {!isPurchase && setSaveAsNewCustomer && setPhone && setNewCustomerType && (
+          <InvoiceCustomerLinkStrip
+            partyName={partyName}
+            linkedCustomer={linkedCustomer}
+            exactActiveMatch={matchResult.exactActive}
+            exactArchivedMatch={matchResult.exactArchived}
+            isCustomerLocked={isCustomerLocked}
+            saveAsNewCustomer={saveAsNewCustomer}
+            setSaveAsNewCustomer={setSaveAsNewCustomer}
+            phone={phone}
+            setPhone={setPhone}
+            newCustomerType={newCustomerType}
+            setNewCustomerType={setNewCustomerType}
+            onLinkCustomer={handleSelectCustomer}
+            onUnlinkCustomer={handleUnlinkCustomer}
+            onRestoreAndLink={handleRestoreAndLink}
+            onOpenCustomerProfile={onOpenCustomerProfile}
+          />
+        )}
       </div>
 
       {/* 3. شبكة التاريخ والمرجع */}
@@ -342,8 +417,13 @@ export function CustomInvoiceMetaSection({
       {!isPurchase && (
         <CustomerPickerModal
           open={customerPickerOpen}
-          onOpenChange={setCustomerPickerOpen}
+          onOpenChange={(next) => {
+            setCustomerPickerOpen(next);
+            if (!next) setPickerStartInAddMode(false);
+          }}
           selectedCustomerId={customerId}
+          initialQuery={partyName}
+          startInAddMode={pickerStartInAddMode}
           onSelect={handleSelectCustomer}
         />
       )}

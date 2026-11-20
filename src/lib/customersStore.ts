@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { Capacitor } from "@capacitor/core";
 import { getStoredJsonSync, setMemoryCacheJson } from "./sqliteStorage";
+import { findCustomerMatch } from "./customers/customerMatching";
 import {
   getAllCustomers as repoGetAllCustomers,
   upsertCustomer as repoUpsertCustomer,
@@ -132,12 +133,18 @@ export function useCustomers() {
   return useSyncExternalStore(subscribeCustomers, getCustomersSnapshot, () => INITIAL_DEMO_CUSTOMERS);
 }
 
+function dispatchFinanceChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("finance-changed"));
+  }
+}
+
 export async function addCustomer(
   data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">
 ): Promise<CustomerRecord> {
   const customer: CustomerRecord = {
     ...data,
-    id: `cust-${Date.now()}`,
+    id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     totalOrders: 0,
     totalSpent: 0,
     balance: data.balance ?? (data.openingBalanceType === "debit" ? data.openingBalance ?? 0 : -(data.openingBalance ?? 0)),
@@ -149,6 +156,7 @@ export async function addCustomer(
   }
   customersSnapshot = [customer, ...customersSnapshot];
   notify();
+  dispatchFinanceChanged();
   return customer;
 }
 
@@ -161,6 +169,7 @@ export async function updateCustomer(id: string, updates: Partial<CustomerRecord
   }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? updatedRecord : c));
   notify();
+  dispatchFinanceChanged();
 }
 
 /**
@@ -191,6 +200,7 @@ export async function deleteCustomer(id: string): Promise<void> {
   }
   customersSnapshot = customersSnapshot.filter((c) => c.id !== id);
   notify();
+  dispatchFinanceChanged();
 }
 
 export async function archiveCustomer(id: string): Promise<void> {
@@ -199,6 +209,7 @@ export async function archiveCustomer(id: string): Promise<void> {
   }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: true } : c));
   notify();
+  dispatchFinanceChanged();
 }
 
 export async function unarchiveCustomer(id: string): Promise<void> {
@@ -207,6 +218,64 @@ export async function unarchiveCustomer(id: string): Promise<void> {
   }
   customersSnapshot = customersSnapshot.map((c) => (c.id === id ? { ...c, isArchived: false } : c));
   notify();
+  dispatchFinanceChanged();
+}
+
+/**
+ * Finds an existing customer (active or archived) by normalized name without creating
+ * duplicates, or creates a new customer record when none matches.
+ */
+export async function findOrCreateCustomerByName(input: {
+  name: string;
+  phone?: string;
+  type?: CustomerType;
+  address?: string;
+  notes?: string;
+}): Promise<{ customer: CustomerRecord; created: boolean; unarchived: boolean }> {
+  const trimmedName = (input.name || "").trim();
+  if (!trimmedName) {
+    throw new Error("اسم العميل مطلوب لحفظ ملف العميل.");
+  }
+
+  const trimmedPhone = (input.phone || "").trim();
+  const match = findCustomerMatch(customersSnapshot, trimmedName);
+
+  if (match.exactActive) {
+    if (trimmedPhone && !match.exactActive.phone) {
+      await updateCustomer(match.exactActive.id, { phone: trimmedPhone });
+      const refreshed =
+        customersSnapshot.find((c) => c.id === match.exactActive!.id) ?? {
+          ...match.exactActive,
+          phone: trimmedPhone,
+        };
+      return { customer: refreshed, created: false, unarchived: false };
+    }
+    return { customer: match.exactActive, created: false, unarchived: false };
+  }
+
+  if (match.exactArchived) {
+    await unarchiveCustomer(match.exactArchived.id);
+    if (trimmedPhone && !match.exactArchived.phone) {
+      await updateCustomer(match.exactArchived.id, { phone: trimmedPhone });
+    }
+    const refreshed =
+      customersSnapshot.find((c) => c.id === match.exactArchived!.id) ?? {
+        ...match.exactArchived,
+        isArchived: false,
+        phone: match.exactArchived.phone || trimmedPhone,
+      };
+    return { customer: refreshed, created: false, unarchived: true };
+  }
+
+  const created = await addCustomer({
+    name: trimmedName,
+    phone: trimmedPhone,
+    type: input.type || "client",
+    address: (input.address || "").trim(),
+    notes: input.notes?.trim() || undefined,
+    balance: 0,
+  });
+  return { customer: created, created: true, unarchived: false };
 }
 
 export {

@@ -14,6 +14,8 @@ import {
 } from "@/lib/proforma/store";
 import type { ProformaInvoice, ProformaLine, ProformaMeta } from "@/lib/proforma/types";
 import { getLocalIsoDate } from "@/lib/dateUtils";
+import { findOrCreateCustomerByName } from "@/lib/customersStore";
+import { router } from "@/router";
 import { registerBackHandler } from "@/lib/backButtonHandler";
 import { playTapSound, playSuccessSound, playErrorSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
@@ -39,6 +41,7 @@ export function ProformaDialog({
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveAsNewCustomer, setSaveAsNewCustomer] = useState(false);
   const draftIdRef = useRef<string>("");
   const saveLockRef = useRef(false);
   const [currentId, setCurrentId] = useState<string | undefined>(existingInvoice?.id);
@@ -65,6 +68,7 @@ export function ProformaDialog({
     if (open) {
       saveLockRef.current = false;
       setIsSaving(false);
+      setSaveAsNewCustomer(false);
       if (existingInvoice) {
         draftIdRef.current = existingInvoice.id;
         setCurrentId(existingInvoice.id);
@@ -127,6 +131,19 @@ export function ProformaDialog({
     return true;
   };
 
+  const maybeSaveNewCustomer = async (effectiveMeta: ProformaMeta) => {
+    if (!saveAsNewCustomer) return null;
+    const candidateName = (effectiveMeta.customerName || effectiveMeta.customerEnName || "").trim();
+    if (!candidateName) return null;
+    const outcome = await findOrCreateCustomerByName({
+      name: candidateName,
+      phone: effectiveMeta.phone,
+      type: "client",
+    });
+    setSaveAsNewCustomer(false);
+    return outcome;
+  };
+
   const handleSave = async () => {
     if (saveLockRef.current || isSaving) return;
     if (!validateRequiredFields()) return;
@@ -146,12 +163,29 @@ export function ProformaDialog({
     saveLockRef.current = true;
     setIsSaving(true);
     try {
+      const customerOutcome = await maybeSaveNewCustomer(effectiveMeta);
       const savedRecord = await saveProformaInvoice(effectiveMeta, lines, stableId);
       draftIdRef.current = savedRecord.id;
       setCurrentId(savedRecord.id);
       setSaved(true);
       playSuccessSound();
-      toast.success(`تم حفظ الفاتورة المبدئية #${meta.serial} بنجاح`);
+      toast.success(`تم حفظ الفاتورة المبدئية #${meta.serial} بنجاح`, {
+        ...(customerOutcome
+          ? {
+              description: customerOutcome.created
+                ? `تمت إضافة «${customerOutcome.customer.name}» لدليل العملاء`
+                : `تم ربط العرض بملف «${customerOutcome.customer.name}»`,
+              action: {
+                label: "فتح ملف العميل",
+                onClick: () =>
+                  void router.navigate({
+                    to: "/customers",
+                    search: { id: customerOutcome.customer.id },
+                  }),
+              },
+            }
+          : {}),
+      });
     } catch (err) {
       playErrorSound();
       toast.error(err instanceof Error ? `تعذّر الحفظ: ${err.message}` : "تعذّر حفظ الفاتورة المبدئية");
@@ -173,12 +207,13 @@ export function ProformaDialog({
         existingInvoice?.id ||
         draftIdRef.current ||
         (draftIdRef.current = `proforma-${meta.serial}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+      const effectiveMeta: ProformaMeta = {
+        ...meta,
+        customerName: meta.customerName?.trim() || "",
+        customerEnName: meta.customerEnName?.trim() || undefined,
+      };
+      await maybeSaveNewCustomer(effectiveMeta);
       if (!saved) {
-        const effectiveMeta: ProformaMeta = {
-          ...meta,
-          customerName: meta.customerName?.trim() || "",
-          customerEnName: meta.customerEnName?.trim() || undefined,
-        };
         const created = await saveProformaInvoice(effectiveMeta, lines, targetId);
         targetId = created.id;
         draftIdRef.current = created.id;
@@ -269,6 +304,8 @@ export function ProformaDialog({
             <ProformaForm
               meta={meta}
               lines={lines}
+              saveAsNewCustomer={saveAsNewCustomer}
+              onSaveAsNewCustomerChange={setSaveAsNewCustomer}
               onMetaChange={(m) => {
                 setMeta(m);
                 setSaved(false);

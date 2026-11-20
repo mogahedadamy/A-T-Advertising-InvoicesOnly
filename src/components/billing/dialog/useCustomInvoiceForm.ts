@@ -14,7 +14,14 @@ import {
 import { AppCurrency } from "@/lib/currency/types";
 import { detectInvoiceLanguage } from "@/lib/billing/languageHelper";
 import { getLocalIsoDate } from "@/lib/dateUtils";
-import { getCustomersSnapshot, type CustomerRecord } from "@/lib/customersStore";
+import {
+  findOrCreateCustomerByName,
+  getCustomersSnapshot,
+  type CustomerRecord,
+  type CustomerType,
+} from "@/lib/customersStore";
+import { settlementFor } from "@/lib/financeStore";
+import { router } from "@/router";
 import {
   printCustomInvoiceDocument,
   saveCustomInvoiceAsPdf,
@@ -74,14 +81,23 @@ export function useCustomInvoiceForm({
   const [language, setLanguage] = useState<"auto" | "ar" | "en">("auto");
   const [currency, setCurrency] = useState<AppCurrency>("SDG");
   const [items, setItems] = useState<CustomInvoiceItem[]>([]);
+  const [saveAsNewCustomer, setSaveAsNewCustomer] = useState(false);
+  const [newCustomerType, setNewCustomerType] = useState<CustomerType>("client");
   const [isProcessing, setIsProcessing] = useState(false);
   const draftIdRef = useRef<string>("");
   const saveLockRef = useRef(false);
+
+  const isCustomerLocked = useMemo(() => {
+    if (!invoiceToEdit || invoiceToEdit.meta.type !== "sales") return false;
+    return settlementFor(invoiceToEdit.id, Number(invoiceToEdit.totalAmount) || 0).paid > 0.009;
+  }, [invoiceToEdit]);
 
   useEffect(() => {
     if (!open) return;
     saveLockRef.current = false;
     setIsProcessing(false);
+    setSaveAsNewCustomer(false);
+    setNewCustomerType("client");
 
     if (invoiceToEdit) {
       draftIdRef.current = invoiceToEdit.id;
@@ -179,7 +195,7 @@ export function useCustomInvoiceForm({
       partyName: (partyName || "").trim(),
       partyEnName: (partyEnName || "").trim() || undefined,
       attn: (attn || "").trim() || undefined,
-      phone,
+      phone: (phone || "").trim() || undefined,
       notes,
       dueDate,
       discount,
@@ -239,6 +255,37 @@ export function useCustomInvoiceForm({
     return buildCurrentInvoice();
   };
 
+  const resolveCustomerBeforeSave = async (invoice: CustomInvoice): Promise<{
+    invoice: CustomInvoice;
+    customerOutcome: { customer: CustomerRecord; created: boolean; unarchived: boolean } | null;
+  }> => {
+    if (invoice.meta.type === "purchase" || invoice.customerId || !saveAsNewCustomer) {
+      return { invoice, customerOutcome: null };
+    }
+    const candidateName = (invoice.meta.partyName || invoice.meta.partyEnName || "").trim();
+    if (!candidateName) {
+      return { invoice, customerOutcome: null };
+    }
+    const outcome = await findOrCreateCustomerByName({
+      name: candidateName,
+      phone: invoice.meta.phone,
+      type: newCustomerType,
+    });
+    setCustomerId(outcome.customer.id);
+    setSaveAsNewCustomer(false);
+    return {
+      invoice: {
+        ...invoice,
+        customerId: outcome.customer.id,
+        meta: {
+          ...invoice.meta,
+          phone: invoice.meta.phone || outcome.customer.phone || undefined,
+        },
+      },
+      customerOutcome: outcome,
+    };
+  };
+
   const runLockedSave = async (
     describeSuccess: (saved: CustomInvoice) => string,
     afterSave: (saved: CustomInvoice) => Promise<unknown> | unknown
@@ -250,13 +297,33 @@ export function useCustomInvoiceForm({
     saveLockRef.current = true;
     setIsProcessing(true);
     try {
-      const saved = await saveCustomInvoice(invoice);
+      const { invoice: resolvedInvoice, customerOutcome } = await resolveCustomerBeforeSave(invoice);
+      const saved = await saveCustomInvoice(resolvedInvoice);
       draftIdRef.current = saved.id;
       setCurrentInvoiceId(saved.id);
       setSavedReference(saved.reference);
       playSuccessSound();
+      const baseDesc = describeSuccess(saved);
+      const description = customerOutcome?.created
+        ? `${baseDesc} · وتمت إضافة «${customerOutcome.customer.name}» لدليل العملاء`
+        : customerOutcome?.unarchived
+        ? `${baseDesc} · وتمت استعادة «${customerOutcome.customer.name}» من الأرشيف`
+        : baseDesc;
+
       toast.success("تم حفظ الفاتورة", {
-        description: describeSuccess(saved),
+        description,
+        ...(customerOutcome
+          ? {
+              action: {
+                label: "فتح ملف العميل",
+                onClick: () =>
+                  void router.navigate({
+                    to: "/customers",
+                    search: { id: customerOutcome.customer.id },
+                  }),
+              },
+            }
+          : {}),
       });
       onSaved?.(saved);
       await afterSave(saved);
@@ -303,19 +370,22 @@ export function useCustomInvoiceForm({
     saveLockRef.current = true;
     setIsProcessing(true);
     try {
-      const savedProforma = await saveCustomInvoice(invoice);
+      const { invoice: resolvedInvoice, customerOutcome } = await resolveCustomerBeforeSave(invoice);
+      const savedProforma = await saveCustomInvoice(resolvedInvoice);
       draftIdRef.current = savedProforma.id;
       setCurrentInvoiceId(savedProforma.id);
       setSavedReference(savedProforma.reference);
 
       const { salesInvoice, alreadyConverted } = await convertProformaToSalesInvoice(savedProforma, {
-        customerId,
+        customerId: savedProforma.customerId ?? customerId,
       });
       playSuccessSound();
       toast.success(
         alreadyConverted ? "العرض محوَّل مسبقاً" : "تم التحويل إلى فاتورة مبيعات",
         {
-          description: `فاتورة المبيعات بالمرجع ${salesInvoice.reference || "—"} محفوظة في سجل المبيعات.`,
+          description: customerOutcome?.created
+            ? `فاتورة المبيعات ${salesInvoice.reference || "—"} محفوظة وتمت إضافة «${customerOutcome.customer.name}» لدليل العملاء.`
+            : `فاتورة المبيعات بالمرجع ${salesInvoice.reference || "—"} محفوظة في سجل المبيعات.`,
         }
       );
       onSaved?.(salesInvoice);
@@ -354,6 +424,13 @@ export function useCustomInvoiceForm({
     setPartyEnName,
     attn,
     setAttn,
+    phone: phone || "",
+    setPhone: (v: string) => setPhone(v || undefined),
+    saveAsNewCustomer,
+    setSaveAsNewCustomer,
+    newCustomerType,
+    setNewCustomerType,
+    isCustomerLocked,
     language,
     setLanguage,
     currency,

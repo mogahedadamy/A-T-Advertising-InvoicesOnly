@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useDeferredValue, useRef } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Search,
   UserPlus,
@@ -43,6 +44,7 @@ import {
   type LiveBalancesMap,
 } from "./CustomersDirectoryViews";
 import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
+import type { CustomInvoiceType } from "@/lib/billing/types";
 import { playTapSound, playDeleteSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -71,32 +73,16 @@ export function CustomersPage() {
   const mainScrollRef = useRef<HTMLElement>(null);
 
   const [liveBalances, setLiveBalances] = useState<LiveBalancesMap>({});
-  const [selectedProfileCustomer, setSelectedProfileCustomer] = useState<CustomerRecord | null>(null);
+  const { id: selectedCustomerId } = useSearch({ from: "/customers" });
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const syncFromUrl = () => {
-      if (typeof window === "undefined") return;
-      const hash = window.location.hash || "";
-      const locSearch = window.location.search || "";
-      const queryString = hash.includes("?") ? hash.split("?")[1] : locSearch.replace("?", "");
-      const params = new URLSearchParams(queryString);
-      const custId = params.get("id");
-      if (custId) {
-        const found = customers.find((c) => c.id === custId);
-        if (found) {
-          setSelectedProfileCustomer(found);
-          return;
-        }
-      }
-      setSelectedProfileCustomer(null);
-    };
-
-    window.addEventListener("popstate", syncFromUrl);
-    syncFromUrl();
-    return () => window.removeEventListener("popstate", syncFromUrl);
-  }, [customers]);
+  const selectedProfileCustomer = useMemo(
+    () => (selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) ?? null : null),
+    [customers, selectedCustomerId]
+  );
 
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceDialogType, setInvoiceDialogType] = useState<CustomInvoiceType>("sales");
   const [invoiceTargetCustomer, setInvoiceTargetCustomer] = useState<CustomerRecord | null>(null);
 
   const loadLiveBalances = async () => {
@@ -278,26 +264,19 @@ export function CustomersPage() {
 
   const handleOpenProfile = (c: CustomerRecord) => {
     playTapSound();
-    setSelectedProfileCustomer(c);
-    if (typeof window !== "undefined") {
-      window.history.pushState({ customerId: c.id }, "", "#/customers?id=" + c.id);
-    }
+    void navigate({ to: "/customers", search: { id: c.id } });
   };
 
   const handleBackToDirectory = () => {
     playTapSound();
-    setSelectedProfileCustomer(null);
-    if (typeof window !== "undefined") {
-      if (window.location.hash.includes("?id=")) {
-        window.history.pushState(null, "", "#/customers");
-      }
-    }
+    void navigate({ to: "/customers", search: {} });
     void loadLiveBalances();
   };
 
-  const handleOpenInvoiceCreation = (c: CustomerRecord) => {
+  const handleOpenInvoiceCreation = (c: CustomerRecord, type: CustomInvoiceType = "sales") => {
     playTapSound();
     setInvoiceTargetCustomer(c);
+    setInvoiceDialogType(type);
     setInvoiceDialogOpen(true);
   };
 
@@ -308,7 +287,8 @@ export function CustomersPage() {
           customer={selectedProfileCustomer}
           onBack={handleBackToDirectory}
           onCustomerUpdated={() => void loadLiveBalances()}
-          onCreateInvoice={(c) => handleOpenInvoiceCreation(c)}
+          onCreateInvoice={(c) => handleOpenInvoiceCreation(c, "sales")}
+          onCreateProforma={(c) => handleOpenInvoiceCreation(c, "proforma")}
         />
 
         <CustomInvoiceDialog
@@ -320,7 +300,7 @@ export function CustomersPage() {
               void loadLiveBalances();
             }
           }}
-          initialType="sales"
+          initialType={invoiceDialogType}
           initialCustomer={invoiceTargetCustomer || selectedProfileCustomer}
           initialCustomerId={invoiceTargetCustomer?.id || selectedProfileCustomer?.id}
           onSaved={() => {
@@ -585,7 +565,7 @@ export function CustomersPage() {
             void loadLiveBalances();
           }
         }}
-        initialType="sales"
+        initialType={invoiceDialogType}
         initialCustomer={invoiceTargetCustomer}
         initialCustomerId={invoiceTargetCustomer?.id}
         onSaved={() => {

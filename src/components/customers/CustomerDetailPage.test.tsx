@@ -1,8 +1,8 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CustomerDetailPage } from "./CustomerDetailPage";
-import type { CustomerRecord } from "@/lib/customersStore";
+import { getCustomerFinancialSummary, type CustomerRecord } from "@/lib/customersStore";
 
 vi.mock("@/components/layout/PageShell", () => ({
   PageShell: ({ children }: { children: React.ReactNode }) => <div data-testid="page-shell">{children}</div>,
@@ -128,5 +128,28 @@ describe("CustomerDetailPage — Full Standalone Page Architecture (CEO Benchmar
     const tabBtn = statementTabs[0];
     fireEvent.click(tabBtn);
     expect(tabBtn.className).toContain("bg-primary");
+  });
+
+  it("renders preview & edit invoice buttons and reloads on finance-changed event", async () => {
+    render(
+      <CustomerDetailPage
+        customer={mockCustomer}
+        onBack={vi.fn()}
+        onCreateProforma={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /عرض سعر/i })).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "معاينة الفاتورة" }).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByRole("button", { name: "تعديل الفاتورة" }).length).toBeGreaterThanOrEqual(1);
+    });
+
+    const beforeCalls = vi.mocked(getCustomerFinancialSummary).mock.calls.length;
+    window.dispatchEvent(new Event("finance-changed"));
+    await waitFor(() => {
+      expect(vi.mocked(getCustomerFinancialSummary).mock.calls.length).toBeGreaterThan(beforeCalls);
+    });
   });
 });

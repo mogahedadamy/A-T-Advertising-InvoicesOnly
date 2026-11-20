@@ -7,6 +7,9 @@ import { getLocalIsoDate } from "@/lib/dateUtils";
 
 import { Capacitor } from "@capacitor/core";
 import { getStoredJsonSync, setMemoryCacheJson } from "@/lib/sqliteStorage";
+import { getCustomersSnapshot } from "@/lib/customersStore";
+import { findCustomerByNormalizedName } from "@/lib/customers/customerMatching";
+import { linkUnlinkedInvoiceToCustomer } from "@/lib/repositories/CustomerRepository";
 import {
   getCustomInvoiceById as repoGetCustomInvoiceById,
   upsertCustomInvoice as repoUpsertCustomInvoice,
@@ -197,6 +200,9 @@ async function executeSaveCustomInvoice(invoice: CustomInvoice): Promise<CustomI
     snapshot = [record, ...snapshot];
   }
   notify();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("finance-changed"));
+  }
 
   return record;
 }
@@ -239,6 +245,35 @@ export async function deleteCustomInvoice(id: string): Promise<void> {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("finance-changed"));
   }
+}
+
+export async function linkCustomInvoiceToCustomer(
+  invoiceId: string,
+  customerId: string
+): Promise<CustomInvoice | undefined> {
+  if (Capacitor.isNativePlatform()) {
+    await linkUnlinkedInvoiceToCustomer(invoiceId, customerId);
+  }
+  const idx = snapshot.findIndex((inv) => inv.id === invoiceId);
+  if (idx === -1) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("finance-changed"));
+    }
+    return undefined;
+  }
+  const updated: CustomInvoice = {
+    ...snapshot[idx],
+    customerId,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = [...snapshot];
+  next[idx] = updated;
+  snapshot = next;
+  notify();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("finance-changed"));
+  }
+  return updated;
 }
 
 export function getCustomInvoice(id: string): CustomInvoice | undefined {
@@ -304,6 +339,12 @@ async function executeConvertProformaToSales(
     const baseNotes = (source.meta?.notes || "").trim();
     const conversionNote = `محوّلة من فاتورة مبدئية (${sourceRefLabel})`;
 
+    const matchedCustomerId =
+      source.customerId ??
+      options?.customerId ??
+      findCustomerByNormalizedName(getCustomersSnapshot(), source.meta?.partyName || "")?.id ??
+      undefined;
+
     salesRecord = {
       id: salesId,
       meta: {
@@ -318,7 +359,7 @@ async function executeConvertProformaToSales(
       totalAmount,
       totalInWords,
       currency,
-      customerId: source.customerId ?? options?.customerId ?? undefined,
+      customerId: matchedCustomerId,
       reference: undefined,
       referenceAssignedAt: undefined,
       createdAt: now,
@@ -342,16 +383,22 @@ async function executeConvertProformaToSales(
     const baseNotes = (legacy.meta?.notes || "").trim();
     const conversionNote = `محوّلة من عرض سعر (${sourceRefLabel})`;
 
+    const legacyPartyName =
+      legacy.meta?.customerName?.trim() ||
+      legacy.meta?.customerEnName?.trim() ||
+      "";
+    const matchedCustomerId =
+      options?.customerId ??
+      findCustomerByNormalizedName(getCustomersSnapshot(), legacyPartyName)?.id ??
+      undefined;
+
     salesRecord = {
       id: salesId,
       meta: {
         serial: legacy.meta?.serial || "001",
         type: "sales",
         date: todayDate,
-        partyName:
-          legacy.meta?.customerName?.trim() ||
-          legacy.meta?.customerEnName?.trim() ||
-          "عميل غير محدد",
+        partyName: legacyPartyName || "عميل غير محدد",
         partyEnName: legacy.meta?.customerEnName?.trim() || undefined,
         attn: legacy.meta?.attn?.trim() || undefined,
         phone: legacy.meta?.phone?.trim() || undefined,
@@ -368,7 +415,7 @@ async function executeConvertProformaToSales(
       totalAmount,
       totalInWords,
       currency,
-      customerId: options?.customerId ?? undefined,
+      customerId: matchedCustomerId,
       reference: undefined,
       referenceAssignedAt: undefined,
       createdAt: now,

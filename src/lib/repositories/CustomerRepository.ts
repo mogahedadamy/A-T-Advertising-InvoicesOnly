@@ -7,7 +7,9 @@
  */
 
 import { getDb } from "@/lib/database";
+import { withDbWriteLock } from "@/lib/database/writeLock";
 import { getLocalIsoDate } from "@/lib/dateUtils";
+import { normalizeCustomerName } from "@/lib/customers/customerMatching";
 import { notifyDataChanged } from "@/lib/backup/notify";
 import { appendAuditEntry } from "@/lib/repositories/AuditLogRepository";
 import type { CustomerRecord, CustomerType } from "@/lib/customersStore";
@@ -229,30 +231,54 @@ export async function deleteCustomer(id: string): Promise<void> {
 }
 
 /**
- * Reconciles unlinked invoices having party_name identical to customer.name
+ * Reconciles unlinked invoices having party_name normalized-identical to customer.name
  */
 export async function reconcileCustomerInvoices(customerId: string, customerName: string): Promise<number> {
-  const trimmed = customerName.trim();
-  if (!trimmed) return 0;
+  const normTarget = normalizeCustomerName(customerName);
+  if (!normTarget) return 0;
   const db = await getDb();
   try {
     const res = await db.query(
-      `SELECT id FROM custom_invoices
+      `SELECT id, party_name FROM custom_invoices
         WHERE customer_id IS NULL
-          AND type = 'sales'
+          AND type IN ('sales', 'proforma')
           AND cancelled_at IS NULL
-          AND TRIM(COALESCE(party_name, '')) <> ''
-          AND LOWER(TRIM(party_name)) = LOWER(TRIM(?))`,
-      [trimmed]
+          AND TRIM(COALESCE(party_name, '')) <> ''`
     );
-    const rows = res.values || [];
-    for (const r of rows) {
+    const matched = (res.values || []).filter(
+      (r: any) => normalizeCustomerName(String(r.party_name || "")) === normTarget
+    );
+    for (const r of matched) {
       await db.run("UPDATE custom_invoices SET customer_id = ? WHERE id = ?", [customerId, r.id]);
     }
-    return rows.length;
+    return matched.length;
   } catch {
     return 0;
   }
+}
+
+/**
+ * Links a previously unlinked walk-in custom invoice to an authoritative customer record.
+ */
+export async function linkUnlinkedInvoiceToCustomer(invoiceId: string, customerId: string): Promise<void> {
+  await withDbWriteLock(async () => {
+    const db = await getDb();
+    const now = new Date().toISOString();
+    await db.run(
+      `UPDATE custom_invoices
+          SET customer_id = ?, updated_at = ?
+        WHERE id = ? AND cancelled_at IS NULL AND (customer_id IS NULL OR customer_id = '')`,
+      [customerId, now, invoiceId]
+    );
+    await appendAuditEntry({
+      entityType: "custom_invoice",
+      entityId: invoiceId,
+      action: "update",
+      details: { customerId, linkedWalkIn: true },
+      nowIso: now,
+    });
+    notifyDataChanged();
+  });
 }
 
 export interface CurrencyFinancialSummary {
@@ -539,21 +565,66 @@ export async function getAllCustomerFinancialSummaries(): Promise<
   }
 
   const custRes = await db.query(
-    "SELECT id, opening_balance, opening_balance_type FROM customers"
+    "SELECT id, name, opening_balance, opening_balance_type FROM customers"
   );
   const custMap = new Map<string, { opening: number; type: string }>();
+  const nameToCustomerId = new Map<string, string>();
   for (const c of custRes.values || []) {
-    if (c.id && c.opening_balance) {
-      custMap.set(String(c.id), { opening: Number(c.opening_balance) || 0, type: String(c.opening_balance_type || "debit") });
+    const cid = c.id ? String(c.id) : "";
+    if (!cid) continue;
+    const norm = normalizeCustomerName(String(c.name || ""));
+    if (norm && !nameToCustomerId.has(norm)) {
+      nameToCustomerId.set(norm, cid);
     }
+    if (c.opening_balance) {
+      custMap.set(cid, { opening: Number(c.opening_balance) || 0, type: String(c.opening_balance_type || "debit") });
+    }
+  }
+
+  const unlinkedInvRes = await db.query(
+    `SELECT i.party_name, i.total_amount, i.date, i.due_date,
+            COALESCE(paid_agg.paid, 0) AS paid
+       FROM custom_invoices i
+       LEFT JOIN (
+         SELECT a.invoice_id, SUM(a.amount) AS paid
+           FROM customer_payment_allocations a
+           JOIN customer_payments p ON p.id = a.payment_id
+          WHERE p.cancelled_at IS NULL
+          GROUP BY a.invoice_id
+       ) paid_agg ON paid_agg.invoice_id = i.id
+      WHERE i.type = 'sales' AND i.cancelled_at IS NULL AND i.customer_id IS NULL
+        AND TRIM(COALESCE(i.party_name, '')) <> ''`
+  );
+
+  const invAggByCid = new Map<string, { invoiced: number; paid: number; overdueCount: number }>();
+  for (const r of invRes.values || []) {
+    const cid = String(r.customer_id);
+    invAggByCid.set(cid, {
+      invoiced: Number(r.total_invoiced) || 0,
+      paid: Number(r.total_paid) || 0,
+      overdueCount: Number(r.overdue_count) || 0,
+    });
+  }
+
+  for (const r of unlinkedInvRes.values || []) {
+    const cid = nameToCustomerId.get(normalizeCustomerName(String(r.party_name || "")));
+    if (!cid) continue;
+    const prev = invAggByCid.get(cid) ?? { invoiced: 0, paid: 0, overdueCount: 0 };
+    const total = Number(r.total_amount) || 0;
+    const paid = Number(r.paid) || 0;
+    const isOverdue = total - paid > 0.009 && String(r.due_date || r.date || "") < today;
+    invAggByCid.set(cid, {
+      invoiced: prev.invoiced + total,
+      paid: prev.paid + paid,
+      overdueCount: prev.overdueCount + (isOverdue ? 1 : 0),
+    });
   }
 
   const map: Record<string, { outstanding: number; invoiced: number; collected: number; overdueCount: number }> = {};
 
-  for (const r of invRes.values || []) {
-    const cid = String(r.customer_id);
-    const invoiced = Number(r.total_invoiced) || 0;
-    const paid = Number(r.total_paid) || 0;
+  for (const [cid, agg] of invAggByCid.entries()) {
+    const invoiced = agg.invoiced;
+    const paid = agg.paid;
     const collected = Math.max(payMap.get(cid) || 0, paid);
     const op = custMap.get(cid);
     const opDebit = op && op.type === "debit" ? op.opening : 0;
@@ -564,11 +635,11 @@ export async function getAllCustomerFinancialSummaries(): Promise<
       invoiced: round2(invoiced + opDebit),
       collected: round2(collected + opCredit),
       outstanding: round2(outstanding),
-      overdueCount: Number(r.overdue_count) || 0,
+      overdueCount: agg.overdueCount,
     };
   }
 
-  const extraCustomerIds = new Set<string>([...custMap.keys(), ...payMap.keys()]);
+  const extraCustomerIds = new Set<string>([...custMap.keys(), ...payMap.keys(), ...invAggByCid.keys()]);
   for (const cid of extraCustomerIds) {
     if (!map[cid]) {
       const op = custMap.get(cid);
