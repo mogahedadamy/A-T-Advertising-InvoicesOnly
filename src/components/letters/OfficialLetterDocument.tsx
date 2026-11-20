@@ -1,13 +1,9 @@
 import React from "react";
-import {
-  TA_LOGO_GREEN_BASE64,
-  TA_QR_CODE_BASE64,
-  TA_SIGNATURE_TARIG_BASE64,
-  TA_STAMP_BASE64,
-  TA_WATERMARK_BASE64,
-} from "@/assets/invoiceImagesBase64";
+import { TA_WATERMARK_BASE64 } from "@/assets/invoiceImagesBase64";
 import { useCompanyProfile } from "@/lib/settings/companyProfileStore";
 import type { OfficialLetter } from "@/lib/letters/types";
+import { OfficialLetterHeader } from "./OfficialLetterHeader";
+import { OfficialLetterFooter } from "./OfficialLetterFooter";
 
 interface Props {
   letter: OfficialLetter;
@@ -109,118 +105,14 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
           />
         </div>
 
-        {/* ══════════ 1. الترويسة الرسمية للورقة المروّسة ══════════ */}
-        <div style={{ position: "relative", zIndex: 2, flexShrink: 0 }}>
-          {/* الشريط المعماري المزدوج (زمردي + ذهبي هادئ) */}
-          <div style={{ marginBottom: "12px" }}>
-            <div style={{ height: "3px", width: "100%", backgroundColor: "#0D4A39", borderRadius: "2px" }} />
-            <div style={{ height: "1px", width: "100%", backgroundColor: "#C5A059", marginTop: "2px" }} />
-          </div>
+        <OfficialLetterHeader
+          letterTitle={letter.letterTitle}
+          formattedDate={formattedDate}
+          reference={letter.reference}
+          monoStyle={monoStyle}
+        />
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              paddingBottom: "12px",
-              borderBottom: "1px solid #cbd5e1",
-            }}
-          >
-            {/* الشعار المعتمد (يمين) */}
-            <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-              <img
-                src={TA_LOGO_GREEN_BASE64}
-                alt="T.A Advertising Solution"
-                style={{ height: "64px", width: "auto", objectFit: "contain" }}
-              />
-            </div>
-
-            {/* عنوان الخطاب الرسمي في المنتصف */}
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                padding: "0 8px",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "17px",
-                  fontWeight: 900,
-                  color: "#0D4A39",
-                  lineHeight: 1.25,
-                }}
-              >
-                {letter.letterTitle || "خطاب رسمي"}
-              </div>
-              <div
-                style={{
-                  width: "52px",
-                  height: "2px",
-                  backgroundColor: "#C5A059",
-                  margin: "5px 0 3px 0",
-                  borderRadius: "1px",
-                }}
-              />
-              <div
-                style={{
-                  fontSize: "8.5px",
-                  fontWeight: 800,
-                  color: "#64748b",
-                  letterSpacing: "1.4px",
-                  textTransform: "uppercase",
-                }}
-              >
-                OFFICIAL CORRESPONDENCE
-              </div>
-            </div>
-
-            {/* صندوق التاريخ والرقم الإشاري (يسار) */}
-            <div
-              style={{
-                width: "162px",
-                flexShrink: 0,
-                border: "1px solid #cbd5e1",
-                borderTop: "2px solid #0D4A39",
-                borderRadius: "6px",
-                padding: "6px 10px",
-                backgroundColor: "#f8faf9",
-                fontSize: "10.5px",
-                lineHeight: 1.5,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px" }}>
-                <span style={{ color: "#475569", fontWeight: 800 }}>التاريخ:</span>
-                <bdi dir="ltr" style={{ color: "#0f172a", fontWeight: 800, whiteSpace: "nowrap", ...monoStyle }}>
-                  {formattedDate}
-                </bdi>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "6px",
-                  marginTop: "3px",
-                  paddingTop: "3px",
-                  borderTop: "1px solid #e2e8f0",
-                }}
-              >
-                <span style={{ color: "#475569", fontWeight: 800 }}>المرجع:</span>
-                <bdi dir="ltr" style={{ color: "#0D4A39", fontWeight: 900, whiteSpace: "nowrap", ...monoStyle }}>
-                  {letter.reference || "TA-001"}
-                </bdi>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ══════════ 2. جسم الخطاب الرسمي: المرسل إليه + مربع الموضوع بالمنتصف + المتن ══════════ */}
+        {/* جسم الخطاب الرسمي: المرسل إليه + مربع الموضوع بالمنتصف + المتن */}
         <div
           style={{
             position: "relative",
@@ -232,7 +124,6 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
             paddingBottom: "14px",
           }}
         >
-          {/* بيانات الشخص أو الجهة المرسل إليها */}
           <div style={{ marginBottom: "10px" }}>
             <div
               style={{
@@ -334,151 +225,13 @@ export const OfficialLetterDocument = React.forwardRef<HTMLDivElement, Props>(
           </div>
         </div>
 
-        {/* ══════════ 3. منطقة الاعتماد: التوقيع والاسم والختم ورمز QR في أسفل الخطاب ══════════ */}
-        <div style={{ position: "relative", zIndex: 2, flexShrink: 0 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              alignItems: "flex-end",
-              gap: "12px",
-              paddingBottom: "14px",
-            }}
-          >
-            {/* رمز التوثيق QR (يمين في الـ RTL أو يمين التذييل للتوازن البصري) */}
-            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start" }}>
-              {letter.includeQr && (
-                <div
-                  style={{
-                    width: "66px",
-                    height: "66px",
-                    padding: "4px",
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "6px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <img
-                    src={TA_QR_CODE_BASE64}
-                    alt="QR Code"
-                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* الختم الرسمي في المنتصف السفلي بجانب التوقيع */}
-            <div
-              style={{
-                minWidth: "126px",
-                minHeight: "92px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {letter.includeStamp && (
-                <img
-                  src={TA_STAMP_BASE64}
-                  alt="T.A Official Stamp"
-                  style={{
-                    width: "122px",
-                    maxHeight: "96px",
-                    height: "auto",
-                    opacity: 0.9,
-                    objectFit: "contain",
-                    mixBlendMode: "multiply",
-                  }}
-                />
-              )}
-            </div>
-
-            {/* التوقيع واسم الموقّع والمنصب (يسار في الـ RTL كما هو متعارف رسمياً) */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                textAlign: "center",
-                padding: "8px 12px",
-                borderTop: "1px solid #e2e8f0",
-              }}
-            >
-              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#64748b", marginBottom: "2px" }}>
-                عن وكالة T.A Advertising Solution
-              </div>
-              <div style={{ fontSize: "13px", fontWeight: 900, color: "#0D4A39" }}>
-                {letter.signatoryName || "طارق عثمان علي"}
-              </div>
-              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#475569", marginBottom: "4px" }}>
-                {letter.signatoryTitle || "المدير العام"}
-              </div>
-
-              <div
-                style={{
-                  height: "44px",
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  overflow: "hidden",
-                }}
-              >
-                {letter.includeSignature && (
-                  <img
-                    src={TA_SIGNATURE_TARIG_BASE64}
-                    alt="Signature"
-                    style={{
-                      maxHeight: "42px",
-                      width: "auto",
-                      objectFit: "contain",
-                      mixBlendMode: "multiply",
-                    }}
-                  />
-                )}
-              </div>
-
-              <div
-                style={{
-                  width: "148px",
-                  borderTop: "1px dashed #94a3b8",
-                  marginTop: "2px",
-                  paddingTop: "2px",
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  color: "#64748b",
-                }}
-              >
-                التوقيع المعتمد
-              </div>
-            </div>
-          </div>
-
-          {/* ══════════ 4. تذييل الورقة المروّسة (بيانات الاتصال الرسمية) ══════════ */}
-          <div
-            style={{
-              borderTop: "2px solid #0D4A39",
-              paddingTop: "7px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "10px",
-              fontSize: "10px",
-              fontWeight: 800,
-              color: "#334155",
-            }}
-          >
-            <span>{addressAr}</span>
-            <bdi dir="ltr">{email}</bdi>
-            <bdi dir="ltr" style={monoStyle}>
-              {phone}
-            </bdi>
-          </div>
-        </div>
+        <OfficialLetterFooter
+          letter={letter}
+          addressAr={addressAr}
+          email={email}
+          phone={phone}
+          monoStyle={monoStyle}
+        />
       </div>
     );
   }
