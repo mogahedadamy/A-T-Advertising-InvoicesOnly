@@ -278,16 +278,6 @@ export function CustomersPage() {
     };
   }, [customers, liveBalances]);
 
-  const nonZeroInvoicedCurrencies = useMemo(
-    () => ALL_CURRENCIES.filter((cur) => (stats.invoicedByCurrency[cur] || 0) > 0.009),
-    [stats.invoicedByCurrency]
-  );
-
-  const nonZeroDebtCurrencies = useMemo(
-    () => ALL_CURRENCIES.filter((cur) => (stats.debtByCurrency[cur] || 0) > 0.009),
-    [stats.debtByCurrency]
-  );
-
   const singleActiveCurrency = activeCurrencies.length === 1 ? activeCurrencies[0] : null;
 
   const handleSave = async (data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">) => {
@@ -461,119 +451,151 @@ export function CustomersPage() {
             </div>
           </div>
 
-          {/* 2. مؤشرات الأداء المالي (KPI Cards Grid) */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-primary" />
-                <span>إجمالي العملاء النشطين</span>
-              </span>
-              <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
-                {stats.total}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-[#C5A059] flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5" />
-                <span>الوكالات والشركات</span>
-              </span>
-              <p className="font-mono text-lg sm:text-xl font-black text-[#C5A059] tabular-nums">
-                {stats.commercialCount}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
-                <Receipt className="h-3.5 w-3.5 text-primary" />
-                <span>إجمالي الفواتير والمطالبات</span>
-              </span>
-              {currencyFilter !== "ALL" ? (
+          {/* 2. مؤشرات الأداء المالي ونوافذ العملات المفصولة (Separated Per-Currency Windows) */}
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
+                <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-primary" />
+                  <span>إجمالي العملاء النشطين</span>
+                </span>
                 <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
-                  {formatNumber(stats.invoicedByCurrency[currencyFilter] || 0)}{" "}
-                  <span className="text-[10px] text-muted-foreground font-normal">
-                    {getCurrencyShortLabel(currencyFilter)}
-                  </span>
+                  {stats.total}
                 </p>
-              ) : nonZeroInvoicedCurrencies.length > 0 ? (
-                <div className="space-y-0.5">
-                  {nonZeroInvoicedCurrencies.map((cur) => (
-                    <p
-                      key={cur}
-                      className={cn(
-                        "font-mono font-black text-foreground tabular-nums leading-tight",
-                        nonZeroInvoicedCurrencies.length > 1
-                          ? "text-sm sm:text-base"
-                          : "text-lg sm:text-xl"
-                      )}
-                    >
-                      {formatNumber(stats.invoicedByCurrency[cur])}{" "}
-                      <span className="text-[10px] text-muted-foreground font-normal">
-                        {getCurrencyShortLabel(cur)}
-                      </span>
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
-                  0
-                  {singleActiveCurrency && (
-                    <>
-                      {" "}
-                      <span className="text-[10px] text-muted-foreground font-normal">
-                        {getCurrencyShortLabel(singleActiveCurrency)}
-                      </span>
-                    </>
-                  )}
+              </div>
+
+              <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-3.5 shadow-2xs space-y-1">
+                <span className="text-[11px] font-bold text-[#C5A059] flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" />
+                  <span>الوكالات والشركات</span>
+                </span>
+                <p className="font-mono text-lg sm:text-xl font-black text-[#C5A059] tabular-nums">
+                  {stats.commercialCount}
                 </p>
-              )}
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 sm:p-3.5 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                <Wallet className="h-3.5 w-3.5" />
-                <span>المديونيات القائمة المستحقة</span>
-              </span>
-              {currencyFilter !== "ALL" ? (
-                <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                  {formatNumber(stats.debtByCurrency[currencyFilter] || 0)}{" "}
-                  <span className="text-[10px] text-rose-600/70 font-normal">
-                    {getCurrencyShortLabel(currencyFilter)}
-                  </span>
-                </p>
-              ) : nonZeroDebtCurrencies.length > 0 ? (
-                <div className="space-y-0.5">
-                  {nonZeroDebtCurrencies.map((cur) => (
-                    <p
-                      key={cur}
-                      className={cn(
-                        "font-mono font-black text-rose-600 dark:text-rose-400 tabular-nums leading-tight",
-                        nonZeroDebtCurrencies.length > 1
-                          ? "text-sm sm:text-base"
-                          : "text-lg sm:text-xl"
-                      )}
-                    >
-                      {formatNumber(stats.debtByCurrency[cur])}{" "}
-                      <span className="text-[10px] text-rose-600/70 font-normal">
-                        {getCurrencyShortLabel(cur)}
-                      </span>
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                  0
-                  {singleActiveCurrency && (
-                    <>
-                      {" "}
-                      <span className="text-[10px] text-rose-600/70 font-normal">
-                        {getCurrencyShortLabel(singleActiveCurrency)}
-                      </span>
-                    </>
+            {(() => {
+              const windowCurrencies: AppCurrency[] =
+                currencyFilter !== "ALL"
+                  ? [currencyFilter]
+                  : ALL_CURRENCIES.filter(
+                      (cur) =>
+                        (stats.invoicedByCurrency[cur] || 0) > 0.009 ||
+                        (stats.debtByCurrency[cur] || 0) > 0.009
+                    );
+              const displayedCurrencies: AppCurrency[] =
+                windowCurrencies.length > 0
+                  ? windowCurrencies
+                  : [singleActiveCurrency || "SDG"];
+
+              return (
+                <div
+                  className={cn(
+                    "grid gap-2.5",
+                    displayedCurrencies.length === 1
+                      ? "grid-cols-1"
+                      : "grid-cols-1 sm:grid-cols-2"
                   )}
-                </p>
-              )}
-            </div>
+                >
+                  {displayedCurrencies.map((cur) => {
+                    const conf = SUPPORTED_CURRENCIES[cur];
+                    const curLabel = getCurrencyShortLabel(cur);
+                    const invoicedVal = stats.invoicedByCurrency[cur] || 0;
+                    const debtVal = stats.debtByCurrency[cur] || 0;
+                    const isFocused = currencyFilter === cur;
+
+                    return (
+                      <div
+                        key={cur}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          playTapSound();
+                          setCurrencyFilter((prev) => (prev === cur ? "ALL" : cur));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            playTapSound();
+                            setCurrencyFilter((prev) => (prev === cur ? "ALL" : cur));
+                          }
+                        }}
+                        className={cn(
+                          "rounded-2xl border bg-card p-3 sm:p-3.5 shadow-2xs space-y-2.5 transition-all cursor-pointer",
+                          isFocused
+                            ? "border-primary ring-1 ring-primary/30 bg-primary/[0.02]"
+                            : "border-border/70 hover:border-primary/40"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm leading-none" aria-hidden="true">
+                              {conf.flag}
+                            </span>
+                            <span className="text-xs font-black text-foreground">
+                              {conf.nameAr}
+                            </span>
+                          </div>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono font-black text-primary">
+                            {cur} ({curLabel})
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-2.5 space-y-1">
+                            <span className="text-[10.5px] font-bold text-muted-foreground flex items-center gap-1">
+                              <Receipt className="h-3 w-3 text-primary shrink-0" />
+                              <span>إجمالي الفواتير</span>
+                            </span>
+                            <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums leading-tight">
+                              {formatNumber(invoicedVal)}{" "}
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                {curLabel}
+                              </span>
+                            </p>
+                          </div>
+
+                          <div
+                            className={cn(
+                              "rounded-xl border p-2.5 space-y-1",
+                              debtVal > 0.009
+                                ? "border-rose-500/25 bg-rose-500/[0.05]"
+                                : "border-emerald-500/20 bg-emerald-500/[0.04]"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "text-[10.5px] font-bold flex items-center gap-1",
+                                debtVal > 0.009
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-emerald-600 dark:text-emerald-400"
+                              )}
+                            >
+                              <Wallet className="h-3 w-3 shrink-0" />
+                              <span>إجمالي المستحقات</span>
+                            </span>
+                            <p
+                              className={cn(
+                                "font-mono text-base sm:text-lg font-black tabular-nums leading-tight",
+                                debtVal > 0.009
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-emerald-600 dark:text-emerald-400"
+                              )}
+                            >
+                              {formatNumber(debtVal)}{" "}
+                              <span className="text-[10px] font-normal opacity-80">
+                                {curLabel}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           {/* 3. شريط البحث والتصنيف والفلترة السريعة */}

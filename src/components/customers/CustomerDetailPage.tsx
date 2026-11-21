@@ -39,7 +39,7 @@ import { printCustomerStatement } from "@/lib/customerStatementExport";
 import { getCustomInvoiceById } from "@/lib/repositories/CustomInvoiceRepository";
 import { formatNumber } from "@/lib/printCalculator";
 import { getCurrencyShortLabel } from "@/lib/currency/currencyFormat";
-import { sanitizeCurrency } from "@/lib/currency/types";
+import { SUPPORTED_CURRENCIES, sanitizeCurrency } from "@/lib/currency/types";
 import { playTapSound } from "@/lib/soundEffects";
 import { CustomerDialog } from "./CustomerDialog";
 import {
@@ -86,6 +86,8 @@ export function CustomerDetailPage({
   const [financialProfile, setFinancialProfile] = useState<CustomerFinancialProfile | null>(null);
   const [invoices, setInvoices] = useState<CustomerInvoiceItemRow[]>([]);
   const [statement, setStatement] = useState<CustomerStatement | null>(null);
+  const [statementsByCurrency, setStatementsByCurrency] = useState<Record<string, CustomerStatement>>({});
+  const [statementViewAllCurrencies, setStatementViewAllCurrencies] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState<string>(() =>
     sanitizeCurrency(customer.openingBalanceCurrency, "SDG")
   );
@@ -163,12 +165,23 @@ export function CustomerDetailPage({
 
       const effectiveFrom = fromOverride !== undefined ? fromOverride : statementFrom;
       const effectiveTo = toOverride !== undefined ? toOverride : statementTo;
-      const stmt = await getCustomerStatement(
-        customer.id,
-        { from: effectiveFrom || undefined, to: effectiveTo || undefined },
-        effectiveCur
+      const currenciesToFetch = availableCurs.length > 0 ? availableCurs : [effectiveCur];
+      const fetchedEntries = await Promise.all(
+        currenciesToFetch.map(async (cur) => {
+          const s = await getCustomerStatement(
+            customer.id,
+            { from: effectiveFrom || undefined, to: effectiveTo || undefined },
+            cur
+          );
+          return [cur, s] as const;
+        })
       );
-      setStatement(stmt);
+      const nextByCur: Record<string, CustomerStatement> = {};
+      for (const [cur, s] of fetchedEntries) {
+        if (s) nextByCur[cur] = s;
+      }
+      setStatementsByCurrency(nextByCur);
+      setStatement(nextByCur[effectiveCur] || fetchedEntries[0]?.[1] || null);
     } catch (err) {
       console.error("[CustomerDetailPage] Failed to load customer data:", err);
     } finally {
@@ -193,6 +206,9 @@ export function CustomerDetailPage({
     selectedCurrencyRef.current = cur;
     setSelectedCurrency(cur);
     setInvoicePage(1);
+    if (statementsByCurrency[cur]) {
+      setStatement(statementsByCurrency[cur]);
+    }
     if (customer?.id) {
       const stmt = await getCustomerStatement(
         customer.id,
@@ -200,6 +216,9 @@ export function CustomerDetailPage({
         cur
       );
       setStatement(stmt);
+      if (stmt) {
+        setStatementsByCurrency((prev) => ({ ...prev, [cur]: stmt }));
+      }
     }
   };
 
@@ -208,12 +227,24 @@ export function CustomerDetailPage({
     setStatementTo(toVal);
     setStatementPage(1);
     if (customer?.id) {
-      const stmt = await getCustomerStatement(
-        customer.id,
-        { from: fromVal || undefined, to: toVal || undefined },
-        selectedCurrency
+      const availableCurs = Object.keys(financialProfile?.summariesByCurrency || {});
+      const currenciesToFetch = availableCurs.length > 0 ? availableCurs : [selectedCurrency];
+      const fetchedEntries = await Promise.all(
+        currenciesToFetch.map(async (cur) => {
+          const s = await getCustomerStatement(
+            customer.id,
+            { from: fromVal || undefined, to: toVal || undefined },
+            cur
+          );
+          return [cur, s] as const;
+        })
       );
-      setStatement(stmt);
+      const nextByCur: Record<string, CustomerStatement> = {};
+      for (const [cur, s] of fetchedEntries) {
+        if (s) nextByCur[cur] = s;
+      }
+      setStatementsByCurrency(nextByCur);
+      setStatement(nextByCur[selectedCurrency] || fetchedEntries[0]?.[1] || null);
     }
   };
 
@@ -331,11 +362,31 @@ export function CustomerDetailPage({
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const orderedActiveStatements = useMemo(() => {
+    const orderedKeys = Object.keys(SUPPORTED_CURRENCIES);
+    const list: CustomerStatement[] = [];
+    for (const key of orderedKeys) {
+      if (statementsByCurrency[key]) {
+        list.push(statementsByCurrency[key]);
+      }
+    }
+    for (const [key, stmt] of Object.entries(statementsByCurrency)) {
+      if (!orderedKeys.includes(key) && stmt) {
+        list.push(stmt);
+      }
+    }
+    return list;
+  }, [statementsByCurrency]);
+
   const handlePrintStatement = async () => {
     if (!statement || isExportingStatement) return;
     setIsExportingStatement(true);
     try {
-      await printCustomerStatement(statement, customer, selectedCurrency);
+      const multiList =
+        orderedActiveStatements.length > 1 && statementViewAllCurrencies
+          ? orderedActiveStatements
+          : undefined;
+      await printCustomerStatement(statement, customer, selectedCurrency, multiList);
       toast.success("تم إرسال كشف الحساب للطباعة");
     } catch (err: any) {
       toast.error(err?.message || "تعذر طباعة كشف الحساب");
@@ -603,6 +654,65 @@ export function CustomerDetailPage({
               </button>
             </div>
 
+            {Object.keys(financialProfile?.summariesByCurrency || {}).length > 1 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {Object.entries(financialProfile?.summariesByCurrency || {}).map(([cur, sum]) => {
+                  const code = sanitizeCurrency(cur, "SDG");
+                  const conf = SUPPORTED_CURRENCIES[code];
+                  const curLabel = getCurrencyShortLabel(code);
+                  const isFocused = selectedCurrency === cur;
+                  return (
+                    <button
+                      key={cur}
+                      type="button"
+                      onClick={() => void handleCurrencyChange(cur)}
+                      className={`text-right rounded-xl border p-2.5 space-y-1.5 transition-all cursor-pointer ${
+                        isFocused
+                          ? "border-primary bg-primary/[0.04] ring-1 ring-primary/30"
+                          : "border-border/60 bg-secondary/25 hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-1">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-foreground">
+                          <span aria-hidden="true">{conf.flag}</span>
+                          <span>{conf.nameAr}</span>
+                        </span>
+                        <span className="rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[9.5px] font-mono font-black text-primary">
+                          {code} ({curLabel})
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 text-[10.5px] font-mono">
+                        <div>
+                          <span className="text-[9.5px] text-muted-foreground font-sans block">الفواتير</span>
+                          <strong className="text-foreground font-black tabular-nums">
+                            {formatNumber(sum.totalInvoiced)} {curLabel}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[9.5px] text-muted-foreground font-sans block">المسدد</span>
+                          <strong className="text-emerald-600 dark:text-emerald-400 font-black tabular-nums">
+                            {formatNumber(sum.totalPaid)} {curLabel}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[9.5px] text-muted-foreground font-sans block">المستحق</span>
+                          <strong
+                            className={`font-black tabular-nums ${
+                              sum.outstanding > 0.009
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-emerald-600 dark:text-emerald-400"
+                            }`}
+                          >
+                            {formatNumber(sum.outstanding)} {curLabel}
+                          </strong>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {isSummaryCollapsed ? (
               <div className="flex flex-wrap items-center justify-between gap-3 text-xs px-2 py-1 bg-secondary/30 rounded-xl font-mono">
                 <div>
@@ -824,6 +934,10 @@ export function CustomerDetailPage({
                 statementPage={statementPage}
                 setStatementPage={setStatementPage}
                 totalStatementPages={totalStatementPages}
+                allStatements={orderedActiveStatements}
+                onSelectCurrency={(cur) => void handleCurrencyChange(cur)}
+                statementViewAllCurrencies={statementViewAllCurrencies}
+                onToggleViewAllCurrencies={setStatementViewAllCurrencies}
               />
             )}
 

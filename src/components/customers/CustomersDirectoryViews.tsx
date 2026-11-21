@@ -232,12 +232,20 @@ export function CustomersDirectoryTable({
                       {c.address || "—"}
                     </td>
                     <td className="py-3 px-3 font-mono font-black text-foreground tabular-nums">
-                      <div className="space-y-0.5">
+                      <div className="flex flex-col gap-1 items-start">
                         {buckets.map((b) => (
-                          <div key={b.currency} className="leading-tight whitespace-nowrap">
-                            {formatNumber(b.invoiced)}{" "}
-                            <span className="text-[10px] text-muted-foreground font-normal">
-                              {getCurrencyShortLabel(b.currency)}
+                          <div
+                            key={b.currency}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/35 px-2 py-0.5 leading-tight whitespace-nowrap"
+                          >
+                            <span className="text-[9.5px] font-black text-primary/90">
+                              {b.currency}
+                            </span>
+                            <span>
+                              {formatNumber(b.invoiced)}{" "}
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                {getCurrencyShortLabel(b.currency)}
+                              </span>
                             </span>
                           </div>
                         ))}
@@ -245,13 +253,18 @@ export function CustomersDirectoryTable({
                     </td>
                     <td className="py-3 px-3 font-mono font-black tabular-nums">
                       {outstandingBuckets.length > 0 ? (
-                        <div className="space-y-0.5">
+                        <div className="flex flex-col gap-1 items-start">
                           {outstandingBuckets.map((b) => (
                             <div
                               key={b.currency}
-                              className="text-rose-600 dark:text-rose-400 font-black leading-tight whitespace-nowrap"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] px-2 py-0.5 text-rose-600 dark:text-rose-400 font-black leading-tight whitespace-nowrap"
                             >
-                              {formatNumber(b.outstanding)} {getCurrencyShortLabel(b.currency)} عليه
+                              <span className="text-[9.5px] font-black opacity-80">
+                                {b.currency}
+                              </span>
+                              <span>
+                                {formatNumber(b.outstanding)} {getCurrencyShortLabel(b.currency)} عليه
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -374,34 +387,63 @@ export function CustomersMobileCards({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-xl border border-border/60 bg-secondary/30 p-2">
-                  <span className="text-[10px] text-muted-foreground font-bold block">إجمالي الفواتير</span>
-                  <div className="font-mono font-bold text-foreground tabular-nums mt-0.5 space-y-0.5">
-                    {buckets.map((b) => (
-                      <p key={b.currency} className="leading-tight">
-                        {formatNumber(b.invoiced)}{" "}
-                        <span className="text-[10px] text-muted-foreground font-normal">
-                          {getCurrencyShortLabel(b.currency)}
+              <div className="space-y-2 text-xs">
+                {buckets.map((b) => {
+                  const conf = SUPPORTED_CURRENCIES[b.currency];
+                  const curLabel = getCurrencyShortLabel(b.currency);
+                  const hasDebt = b.outstanding > 0.009;
+                  return (
+                    <div
+                      key={b.currency}
+                      className="rounded-xl border border-border/70 bg-secondary/25 p-2.5 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-1">
+                        <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-foreground">
+                          <span aria-hidden="true">{conf?.flag}</span>
+                          <span>{conf?.nameAr || b.currency}</span>
                         </span>
-                      </p>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-secondary/30 p-2">
-                  <span className="text-[10px] text-muted-foreground font-bold block">الرصيد / المستحق</span>
-                  <div className="font-mono font-black tabular-nums mt-0.5 space-y-0.5">
-                    {outstandingBuckets.length > 0 ? (
-                      outstandingBuckets.map((b) => (
-                        <p key={b.currency} className="text-rose-600 dark:text-rose-400 leading-tight">
-                          {formatNumber(b.outstanding)} {getCurrencyShortLabel(b.currency)} عليه
-                        </p>
-                      ))
-                    ) : (
-                      <span className="text-emerald-600">متزن (0)</span>
-                    )}
-                  </div>
-                </div>
+                        <span className="rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[9.5px] font-mono font-black text-primary">
+                          {b.currency} ({curLabel})
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-border/50 bg-card/80 px-2 py-1.5">
+                          <span className="text-[9.5px] text-muted-foreground font-bold block">
+                            إجمالي الفواتير
+                          </span>
+                          <p className="font-mono font-bold text-foreground tabular-nums mt-0.5 leading-tight">
+                            {formatNumber(b.invoiced)}{" "}
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                              {curLabel}
+                            </span>
+                          </p>
+                        </div>
+
+                        <div
+                          className={`rounded-lg border px-2 py-1.5 ${
+                            hasDebt
+                              ? "border-rose-500/25 bg-rose-500/[0.05]"
+                              : "border-emerald-500/20 bg-emerald-500/[0.04]"
+                          }`}
+                        >
+                          <span className="text-[9.5px] text-muted-foreground font-bold block">
+                            المستحق المطلوب
+                          </span>
+                          <p className="font-mono font-black tabular-nums mt-0.5 leading-tight">
+                            {hasDebt ? (
+                              <span className="text-rose-600 dark:text-rose-400">
+                                {formatNumber(b.outstanding)} {curLabel} عليه
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600">متزن (0)</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div
