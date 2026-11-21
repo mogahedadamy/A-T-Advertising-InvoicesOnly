@@ -36,6 +36,9 @@ const mockState = vi.hoisted(() => ({
   preparePreUpdateCalls: [] as { appVersion: string; targetSchema: number }[],
   preparePreUpdateDelayMs: 0,
   appStateListeners: [] as ((state: { isActive: boolean }) => void)[],
+  nextCreateResult: null as any,
+  statusResponse: null as any,
+  catchUpCalls: 0,
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -75,6 +78,11 @@ vi.mock("@/lib/backup/bridge", () => ({
   backupBridge: {
     createBackup: async (kind: string, options: any) => {
       mockState.createBackupCalls.push({ kind, options });
+      if (mockState.nextCreateResult) {
+        const custom = mockState.nextCreateResult;
+        mockState.nextCreateResult = null;
+        return custom;
+      }
       return {
         ok: true,
         backupId: `mock-${mockState.createBackupCalls.length}`,
@@ -82,6 +90,12 @@ vi.mock("@/lib/backup/bridge", () => ({
         sizeBytes: 4096,
       };
     },
+    getStatus: async () => mockState.statusResponse ?? { ok: false, status: null },
+    scheduleImmediateCatchUp: async () => {
+      mockState.catchUpCalls += 1;
+      return { ok: true };
+    },
+    pruneBackups: async () => ({ ok: true, pruned: [], prunedCount: 0 }),
     preparePreUpdateBackup: async (appVersion: string, targetSchema: number) => {
       mockState.preparePreUpdateCalls.push({ appVersion, targetSchema });
       if (mockState.preparePreUpdateDelayMs > 0) {
@@ -135,6 +149,9 @@ beforeEach(() => {
   mockState.preparePreUpdateCalls = [];
   mockState.preparePreUpdateDelayMs = 0;
   mockState.appStateListeners = [];
+  mockState.nextCreateResult = null;
+  mockState.statusResponse = null;
+  mockState.catchUpCalls = 0;
 });
 
 afterEach(() => {
@@ -934,3 +951,151 @@ describe("P2: Pre-Update Native Backup & Renamed External Archive Import", () =>
     expect(restored.counts?.official_letters).toBe(1);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. Auto-Backup Folder Link, NO_FOLDER Non-Poisoning & Catch-Up Resilience
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("P3: Auto-Backup Folder Link, Non-Poisoning & Catch-Up Resilience", () => {
+  it("runs an immediate verified backup right after folder selection and notifies dashboard subscribers", async () => {
+    const ws = await createV7Workspace();
+    mockState.db = ws.fixture;
+    const {
+      runInitialBackupAfterFolderLink,
+      subscribeBackupRuns,
+      resetAutoBackupStateForTests,
+    } = await import("@/lib/backup/autoBackup");
+    const { resetBackupSettingsCacheForTests, saveBackupSettings } = await import("@/lib/backup/settingsStore");
+
+    resetAutoBackupStateForTests();
+    resetBackupSettingsCacheForTests();
+    await saveBackupSettings({
+      folderUri: "content://tree/primary:Documents/InvoiceBackups",
+      folderLabel: "Documents / InvoiceBackups",
+      encryptionEnabled: true,
+    });
+
+    mockState.statusResponse = {
+      ok: true,
+      status: {
+        storage: { state: "ok", folderUri: "content://tree/primary:Documents/InvoiceBackups", folderLabel: "Documents / InvoiceBackups" },
+        database: { invoiceCount: 5, totalBusinessRecords: 12, counts: { custom_invoices: 5, customers: 7 } },
+        backups: [],
+      },
+    };
+
+    const emitted: any[] = [];
+    const unsub = subscribeBackupRuns((res) => emitted.push(res));
+    try {
+      const res = await runInitialBackupAfterFolderLink();
+      expect(res.ok).toBe(true);
+      expect(res.skipped).toBeFalsy();
+      expect(mockState.createBackupCalls).toHaveLength(1);
+      expect(mockState.createBackupCalls[0]).toEqual({
+        kind: "daily",
+        options: { skipIfUnchanged: false, encrypt: true },
+      });
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].ok).toBe(true);
+    } finally {
+      unsub();
+    }
+  });
+
+  it("skips creating an empty initial snapshot on a new phone when the linked folder already has verified backups", async () => {
+    const ws = await createV7Workspace();
+    mockState.db = ws.fixture;
+    const { runInitialBackupAfterFolderLink, resetAutoBackupStateForTests } = await import("@/lib/backup/autoBackup");
+    const { resetBackupSettingsCacheForTests, saveBackupSettings } = await import("@/lib/backup/settingsStore");
+
+    resetAutoBackupStateForTests();
+    resetBackupSettingsCacheForTests();
+    await saveBackupSettings({ folderUri: "content://tree/old-backups" });
+
+    mockState.statusResponse = {
+      ok: true,
+      status: {
+        storage: { state: "ok", folderUri: "content://tree/old-backups", folderLabel: "InvoiceBackups" },
+        database: { invoiceCount: 0, totalBusinessRecords: 0, counts: {} },
+        backups: [
+          {
+            fileName: "ta-backup-old.tabk",
+            status: "verified",
+            sha256Ok: true,
+            manifest: { backupId: "old", kind: "daily", createdAt: NOW, invoiceCount: 25, totalBusinessRecords: 40, counts: { custom_invoices: 25 } },
+          },
+        ],
+      },
+    };
+
+    const res = await runInitialBackupAfterFolderLink();
+    expect(res.ok).toBe(true);
+    expect(res.skipped).toBe(true);
+    expect(res.skipReason).toBe("empty-db-existing-backups");
+    expect(mockState.createBackupCalls).toHaveLength(0);
+  });
+
+  it("does NOT poison lastBackupStatus='failed' when an automatic transaction trigger runs before a folder is chosen", async () => {
+    const ws = await createV7Workspace();
+    mockState.db = ws.fixture;
+    vi.useFakeTimers();
+    const { triggerBackupAfterTransaction, resetAutoBackupStateForTests } = await import("@/lib/backup/autoBackup");
+    const { getBackupSettingsSnapshot, resetBackupSettingsCacheForTests, saveBackupSettings } = await import("@/lib/backup/settingsStore");
+
+    resetAutoBackupStateForTests();
+    resetBackupSettingsCacheForTests();
+    await saveBackupSettings({ afterTransaction: true, folderUri: "" });
+
+    mockState.nextCreateResult = {
+      ok: false,
+      errorCode: "NO_FOLDER",
+      message: "لم يتم تحديد مجلد النسخ الاحتياطي بعد.",
+    };
+
+    triggerBackupAfterTransaction("invoice-before-folder");
+    await vi.advanceTimersByTimeAsync(350);
+
+    expect(mockState.createBackupCalls).toHaveLength(1);
+    expect(getBackupSettingsSnapshot().lastBackupStatus).toBe("never");
+    expect(getBackupSettingsSnapshot().lastBackupMessage).toBeNull();
+  });
+
+  it("runs a foreground catch-up backup on startup/resume when today's daily backup is missing", async () => {
+    const ws = await createV7Workspace();
+    mockState.db = ws.fixture;
+    const { runCatchUpAutoBackupIfNeeded, resetAutoBackupStateForTests } = await import("@/lib/backup/autoBackup");
+    const { resetBackupSettingsCacheForTests, saveBackupSettings } = await import("@/lib/backup/settingsStore");
+
+    resetAutoBackupStateForTests();
+    resetBackupSettingsCacheForTests();
+    await saveBackupSettings({
+      autoDaily: true,
+      afterTransaction: true,
+      folderUri: "content://tree/primary:Documents/InvoiceBackups",
+    });
+
+    // Existing backup is 3 days old -> today's daily backup is missing!
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    mockState.statusResponse = {
+      ok: true,
+      status: {
+        storage: { state: "ok", folderUri: "content://tree/primary:Documents/InvoiceBackups", folderLabel: "InvoiceBackups" },
+        database: { invoiceCount: 5, totalBusinessRecords: 8, counts: { custom_invoices: 5, customers: 3 } },
+        backups: [
+          {
+            fileName: "ta-backup-3d-ago.tabk",
+            status: "verified",
+            sha256Ok: true,
+            manifest: { backupId: "3d-ago", kind: "daily", createdAt: threeDaysAgo, invoiceCount: 5, totalBusinessRecords: 8, counts: { custom_invoices: 5, customers: 3 } },
+          },
+        ],
+      },
+    };
+
+    const catchUp = await runCatchUpAutoBackupIfNeeded();
+    expect(catchUp?.ok).toBe(true);
+    expect(mockState.createBackupCalls).toHaveLength(1);
+    expect(mockState.createBackupCalls[0].kind).toBe("daily");
+  });
+});
+
