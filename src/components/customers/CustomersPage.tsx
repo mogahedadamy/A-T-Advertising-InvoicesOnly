@@ -41,13 +41,26 @@ import { CustomerDetailPage } from "./CustomerDetailPage";
 import {
   CustomersDirectoryTable,
   CustomersMobileCards,
+  getCustomerCurrencyBuckets,
   type LiveBalancesMap,
 } from "./CustomersDirectoryViews";
 import { CustomInvoiceDialog } from "@/components/billing/CustomInvoiceDialog";
 import type { CustomInvoiceType } from "@/lib/billing/types";
+import { getCurrencyShortLabel } from "@/lib/currency/currencyFormat";
+import {
+  SUPPORTED_CURRENCIES,
+  sanitizeCurrency,
+  type AppCurrency,
+} from "@/lib/currency/types";
 import { playTapSound, playDeleteSound, playSuccessSound } from "@/lib/soundEffects";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+const ALL_CURRENCIES = Object.keys(SUPPORTED_CURRENCIES) as AppCurrency[];
+
+function round2(v: number): number {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
 
 const TABS: { key: string; label: string }[] = [
   { key: "all", label: "كل العملاء" },
@@ -64,6 +77,7 @@ export function CustomersPage() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [currencyFilter, setCurrencyFilter] = useState<"ALL" | AppCurrency>("ALL");
   const [customerSort, setCustomerSort] = useState<"debt-desc" | "spent-desc" | "name-asc" | "date-desc">("debt-desc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
@@ -110,7 +124,48 @@ export function CustomersPage() {
     }
   }, []);
 
+  const activeCurrencies = useMemo(() => {
+    const set = new Set<AppCurrency>();
+    for (const c of customers) {
+      if (c.isArchived) continue;
+      const live = liveBalances[c.id];
+      if (live?.byCurrency) {
+        for (const code of ALL_CURRENCIES) {
+          const b = live.byCurrency[code];
+          if (b && (b.invoiced > 0.009 || b.outstanding > 0.009 || b.collected > 0.009)) {
+            set.add(code);
+          }
+        }
+      } else if (live) {
+        if (live.invoiced > 0.009 || live.outstanding > 0.009 || live.collected > 0.009) {
+          set.add(sanitizeCurrency(live.primaryCurrency ?? c.openingBalanceCurrency, "SDG"));
+        }
+      } else if ((c.totalSpent || 0) > 0.009 || Math.abs(c.balance || 0) > 0.009) {
+        set.add(sanitizeCurrency(c.openingBalanceCurrency, "SDG"));
+      }
+      if ((c.openingBalance || 0) > 0.009 && c.openingBalanceCurrency) {
+        set.add(sanitizeCurrency(c.openingBalanceCurrency, "SDG"));
+      }
+    }
+    return ALL_CURRENCIES.filter((cur) => set.has(cur));
+  }, [customers, liveBalances]);
+
   const filtered = useMemo(() => {
+    const hasActivityInCurrency = (c: CustomerRecord, cur: AppCurrency): boolean => {
+      const live = liveBalances[c.id];
+      if (live?.byCurrency) {
+        const b = live.byCurrency[cur];
+        if (b && (b.invoiced > 0.009 || b.outstanding > 0.009 || b.collected > 0.009)) {
+          return true;
+        }
+        return Boolean(
+          c.openingBalanceCurrency && sanitizeCurrency(c.openingBalanceCurrency, "SDG") === cur
+        );
+      }
+      const fallbackCur = sanitizeCurrency(live?.primaryCurrency ?? c.openingBalanceCurrency, "SDG");
+      return fallbackCur === cur;
+    };
+
     return customers.filter((c) => {
       const q = (deferredSearch || "").trim().toLowerCase();
       const matchSearch =
@@ -119,53 +174,61 @@ export function CustomersPage() {
         (c.phone && c.phone.includes(q)) ||
         (c.address && c.address.toLowerCase().includes(q));
 
+      if (!matchSearch) return false;
+
       if (typeFilter === "archived") {
-        return matchSearch && Boolean(c.isArchived);
+        if (!c.isArchived) return false;
+        return currencyFilter === "ALL" || hasActivityInCurrency(c, currencyFilter);
       }
       if (c.isArchived) {
         return false;
       }
-      if (typeFilter === "all") {
-        return matchSearch;
-      }
       if (typeFilter === "debtors") {
-        const liveBal = liveBalances[c.id]?.outstanding ?? c.balance;
-        return matchSearch && liveBal > 0.009;
+        const buckets = getCustomerCurrencyBuckets(c, liveBalances[c.id], currencyFilter);
+        return buckets.some((b) => b.outstanding > 0.009);
+      }
+
+      if (currencyFilter !== "ALL" && !hasActivityInCurrency(c, currencyFilter)) {
+        return false;
+      }
+
+      if (typeFilter === "all") {
+        return true;
       }
       if (typeFilter === "institution") {
-        return matchSearch && (c.type === "institution" || c.type === "agency" || c.type === "internal");
+        return c.type === "institution" || c.type === "agency" || c.type === "internal";
       }
-      return matchSearch && c.type === typeFilter;
+      return c.type === typeFilter;
     });
-  }, [customers, deferredSearch, typeFilter, liveBalances]);
+  }, [customers, deferredSearch, typeFilter, currencyFilter, liveBalances]);
 
   const sortedAndFiltered = useMemo(() => {
     const list = [...filtered];
+    const getSortMetric = (c: CustomerRecord, field: "outstanding" | "invoiced") => {
+      const buckets = getCustomerCurrencyBuckets(c, liveBalances[c.id], currencyFilter);
+      if (currencyFilter !== "ALL") {
+        return buckets[0]?.[field] ?? 0;
+      }
+      return buckets.reduce((max, b) => Math.max(max, b[field] || 0), 0);
+    };
+
     if (customerSort === "debt-desc") {
-      list.sort((a, b) => {
-        const debtA = liveBalances[a.id]?.outstanding ?? (a.balance > 0 ? a.balance : 0);
-        const debtB = liveBalances[b.id]?.outstanding ?? (b.balance > 0 ? b.balance : 0);
-        return debtB - debtA;
-      });
+      list.sort((a, b) => getSortMetric(b, "outstanding") - getSortMetric(a, "outstanding"));
     } else if (customerSort === "spent-desc") {
-      list.sort((a, b) => {
-        const spentA = liveBalances[a.id]?.invoiced ?? a.totalSpent ?? 0;
-        const spentB = liveBalances[b.id]?.invoiced ?? b.totalSpent ?? 0;
-        return spentB - spentA;
-      });
+      list.sort((a, b) => getSortMetric(b, "invoiced") - getSortMetric(a, "invoiced"));
     } else if (customerSort === "name-asc") {
       list.sort((a, b) => a.name.localeCompare(b.name, "ar"));
     } else if (customerSort === "date-desc") {
       list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     }
     return list;
-  }, [filtered, customerSort, liveBalances]);
+  }, [filtered, customerSort, currencyFilter, liveBalances]);
 
   const [visibleCount, setVisibleCount] = useState(30);
 
   useEffect(() => {
     setVisibleCount(30);
-  }, [deferredSearch, typeFilter, customerSort]);
+  }, [deferredSearch, typeFilter, currencyFilter, customerSort]);
 
   const visibleCustomers = useMemo(() => {
     return sortedAndFiltered.slice(0, visibleCount);
@@ -174,22 +237,31 @@ export function CustomersPage() {
   const stats = useMemo(() => {
     const activeCustomers = customers.filter((c) => !c.isArchived);
 
-    let totalSpent = 0;
-    let totalDebt = 0;
+    const invoicedByCurrency: Record<AppCurrency, number> = {
+      SDG: 0,
+      USD: 0,
+      SAR: 0,
+      EGP: 0,
+    };
+    const debtByCurrency: Record<AppCurrency, number> = {
+      SDG: 0,
+      USD: 0,
+      SAR: 0,
+      EGP: 0,
+    };
     let debtorsCount = 0;
 
     for (const c of activeCustomers) {
-      const live = liveBalances[c.id];
-      if (live) {
-        totalSpent += live.invoiced;
-        totalDebt += live.outstanding;
-        if (live.outstanding > 0.009) debtorsCount++;
-      } else {
-        totalSpent += c.totalSpent || 0;
-        const curDebt = c.balance > 0 ? c.balance : 0;
-        totalDebt += curDebt;
-        if (curDebt > 0.009) debtorsCount++;
+      const buckets = getCustomerCurrencyBuckets(c, liveBalances[c.id], "ALL");
+      let hasDebt = false;
+      for (const b of buckets) {
+        invoicedByCurrency[b.currency] = round2(invoicedByCurrency[b.currency] + (b.invoiced || 0));
+        debtByCurrency[b.currency] = round2(debtByCurrency[b.currency] + (b.outstanding || 0));
+        if (b.outstanding > 0.009) {
+          hasDebt = true;
+        }
       }
+      if (hasDebt) debtorsCount++;
     }
 
     const agencyCount = activeCustomers.filter((c) => c.type === "agency").length;
@@ -200,11 +272,23 @@ export function CustomersPage() {
       agencyCount,
       companyCount,
       commercialCount: agencyCount + companyCount,
-      totalSpent,
-      totalDebt,
+      invoicedByCurrency,
+      debtByCurrency,
       debtorsCount,
     };
   }, [customers, liveBalances]);
+
+  const nonZeroInvoicedCurrencies = useMemo(
+    () => ALL_CURRENCIES.filter((cur) => (stats.invoicedByCurrency[cur] || 0) > 0.009),
+    [stats.invoicedByCurrency]
+  );
+
+  const nonZeroDebtCurrencies = useMemo(
+    () => ALL_CURRENCIES.filter((cur) => (stats.debtByCurrency[cur] || 0) > 0.009),
+    [stats.debtByCurrency]
+  );
+
+  const singleActiveCurrency = activeCurrencies.length === 1 ? activeCurrencies[0] : null;
 
   const handleSave = async (data: Omit<CustomerRecord, "id" | "createdAt" | "totalOrders" | "totalSpent">) => {
     try {
@@ -303,6 +387,11 @@ export function CustomersPage() {
           initialType={invoiceDialogType}
           initialCustomer={invoiceTargetCustomer || selectedProfileCustomer}
           initialCustomerId={invoiceTargetCustomer?.id || selectedProfileCustomer?.id}
+          initialCurrency={
+            currencyFilter !== "ALL"
+              ? currencyFilter
+              : liveBalances[(invoiceTargetCustomer || selectedProfileCustomer)?.id || ""]?.primaryCurrency
+          }
           onSaved={() => {
             void loadLiveBalances();
           }}
@@ -399,10 +488,45 @@ export function CustomersPage() {
                 <Receipt className="h-3.5 w-3.5 text-primary" />
                 <span>إجمالي الفواتير والمطالبات</span>
               </span>
-              <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
-                {formatNumber(stats.totalSpent)}{" "}
-                <span className="text-[10px] text-muted-foreground font-normal">ج.س</span>
-              </p>
+              {currencyFilter !== "ALL" ? (
+                <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
+                  {formatNumber(stats.invoicedByCurrency[currencyFilter] || 0)}{" "}
+                  <span className="text-[10px] text-muted-foreground font-normal">
+                    {getCurrencyShortLabel(currencyFilter)}
+                  </span>
+                </p>
+              ) : nonZeroInvoicedCurrencies.length > 0 ? (
+                <div className="space-y-0.5">
+                  {nonZeroInvoicedCurrencies.map((cur) => (
+                    <p
+                      key={cur}
+                      className={cn(
+                        "font-mono font-black text-foreground tabular-nums leading-tight",
+                        nonZeroInvoicedCurrencies.length > 1
+                          ? "text-sm sm:text-base"
+                          : "text-lg sm:text-xl"
+                      )}
+                    >
+                      {formatNumber(stats.invoicedByCurrency[cur])}{" "}
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        {getCurrencyShortLabel(cur)}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-mono text-lg sm:text-xl font-black text-foreground tabular-nums">
+                  0
+                  {singleActiveCurrency && (
+                    <>
+                      {" "}
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        {getCurrencyShortLabel(singleActiveCurrency)}
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-3 sm:p-3.5 shadow-2xs space-y-1">
@@ -410,10 +534,45 @@ export function CustomersPage() {
                 <Wallet className="h-3.5 w-3.5" />
                 <span>المديونيات القائمة المستحقة</span>
               </span>
-              <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                {formatNumber(stats.totalDebt)}{" "}
-                <span className="text-[10px] text-rose-600/70 font-normal">ج.س</span>
-              </p>
+              {currencyFilter !== "ALL" ? (
+                <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                  {formatNumber(stats.debtByCurrency[currencyFilter] || 0)}{" "}
+                  <span className="text-[10px] text-rose-600/70 font-normal">
+                    {getCurrencyShortLabel(currencyFilter)}
+                  </span>
+                </p>
+              ) : nonZeroDebtCurrencies.length > 0 ? (
+                <div className="space-y-0.5">
+                  {nonZeroDebtCurrencies.map((cur) => (
+                    <p
+                      key={cur}
+                      className={cn(
+                        "font-mono font-black text-rose-600 dark:text-rose-400 tabular-nums leading-tight",
+                        nonZeroDebtCurrencies.length > 1
+                          ? "text-sm sm:text-base"
+                          : "text-lg sm:text-xl"
+                      )}
+                    >
+                      {formatNumber(stats.debtByCurrency[cur])}{" "}
+                      <span className="text-[10px] text-rose-600/70 font-normal">
+                        {getCurrencyShortLabel(cur)}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-mono text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                  0
+                  {singleActiveCurrency && (
+                    <>
+                      {" "}
+                      <span className="text-[10px] text-rose-600/70 font-normal">
+                        {getCurrencyShortLabel(singleActiveCurrency)}
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
           </div>
 
@@ -484,10 +643,67 @@ export function CustomersPage() {
               </div>
             </div>
 
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none border-t border-border/50 pt-2.5">
+              <span className="text-[11px] font-black text-muted-foreground shrink-0 ml-1">
+                العملة:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  playTapSound();
+                  setCurrencyFilter("ALL");
+                }}
+                aria-pressed={currencyFilter === "ALL"}
+                className={cn(
+                  "shrink-0 rounded-full px-3 py-1 text-[11px] font-bold transition-all cursor-pointer touch-manipulation active:scale-95",
+                  currencyFilter === "ALL"
+                    ? "bg-primary text-white shadow-2xs"
+                    : "bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
+                )}
+              >
+                الكل
+              </button>
+              {ALL_CURRENCIES.map((cur) => {
+                const active = currencyFilter === cur;
+                const hasActivity = activeCurrencies.includes(cur);
+                return (
+                  <button
+                    key={cur}
+                    type="button"
+                    onClick={() => {
+                      playTapSound();
+                      setCurrencyFilter(cur);
+                    }}
+                    aria-pressed={active}
+                    className={cn(
+                      "shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-mono font-bold transition-all cursor-pointer touch-manipulation active:scale-95",
+                      active
+                        ? "bg-primary text-white shadow-2xs"
+                        : "bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
+                    )}
+                  >
+                    <span>{cur}</span>
+                    <span
+                      className={cn(
+                        "font-sans text-[10px]",
+                        active ? "text-white/85" : "text-muted-foreground/80"
+                      )}
+                    >
+                      ({getCurrencyShortLabel(cur)})
+                    </span>
+                    {hasActivity && !active && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
             <CustomersDirectoryTable
               totalMatchedCount={sortedAndFiltered.length}
               visibleCustomers={visibleCustomers}
               liveBalances={liveBalances}
+              selectedCurrency={currencyFilter}
               onOpenProfile={handleOpenProfile}
               onCreateInvoice={handleOpenInvoiceCreation}
               onEditCustomer={(c) => {
@@ -501,6 +717,7 @@ export function CustomersPage() {
               totalMatchedCount={sortedAndFiltered.length}
               visibleCustomers={visibleCustomers}
               liveBalances={liveBalances}
+              selectedCurrency={currencyFilter}
               onOpenProfile={handleOpenProfile}
               onCreateInvoice={handleOpenInvoiceCreation}
               onEditCustomer={(c) => {
@@ -568,6 +785,13 @@ export function CustomersPage() {
         initialType={invoiceDialogType}
         initialCustomer={invoiceTargetCustomer}
         initialCustomerId={invoiceTargetCustomer?.id}
+        initialCurrency={
+          currencyFilter !== "ALL"
+            ? currencyFilter
+            : invoiceTargetCustomer
+            ? liveBalances[invoiceTargetCustomer.id]?.primaryCurrency
+            : undefined
+        }
         onSaved={() => {
           void loadLiveBalances();
         }}

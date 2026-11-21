@@ -38,6 +38,8 @@ import {
 import { printCustomerStatement } from "@/lib/customerStatementExport";
 import { getCustomInvoiceById } from "@/lib/repositories/CustomInvoiceRepository";
 import { formatNumber } from "@/lib/printCalculator";
+import { getCurrencyShortLabel } from "@/lib/currency/currencyFormat";
+import { sanitizeCurrency } from "@/lib/currency/types";
 import { playTapSound } from "@/lib/soundEffects";
 import { CustomerDialog } from "./CustomerDialog";
 import {
@@ -84,7 +86,13 @@ export function CustomerDetailPage({
   const [financialProfile, setFinancialProfile] = useState<CustomerFinancialProfile | null>(null);
   const [invoices, setInvoices] = useState<CustomerInvoiceItemRow[]>([]);
   const [statement, setStatement] = useState<CustomerStatement | null>(null);
-  const [selectedCurrency, setSelectedCurrency] = useState<string>("SDG");
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(() =>
+    sanitizeCurrency(customer.openingBalanceCurrency, "SDG")
+  );
+  const selectedCurrencyRef = useRef<string>(
+    sanitizeCurrency(customer.openingBalanceCurrency, "SDG")
+  );
+  const hasLoadedProfileForCustomerRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
@@ -139,15 +147,26 @@ export function CustomerDetailPage({
       setFinancialProfile(profile);
       setInvoices(invs);
 
-      const defaultCur = profile.primaryCurrency || "SDG";
-      setSelectedCurrency(defaultCur);
+      const isInitialForCustomer = hasLoadedProfileForCustomerRef.current !== customer.id;
+      hasLoadedProfileForCustomerRef.current = customer.id;
+
+      const primaryCur = sanitizeCurrency(profile.primaryCurrency, "SDG");
+      const prevCur = selectedCurrencyRef.current;
+      const availableCurs = Object.keys(profile.summariesByCurrency || {});
+      const effectiveCur =
+        !isInitialForCustomer && prevCur && availableCurs.includes(prevCur)
+          ? prevCur
+          : primaryCur;
+
+      selectedCurrencyRef.current = effectiveCur;
+      setSelectedCurrency(effectiveCur);
 
       const effectiveFrom = fromOverride !== undefined ? fromOverride : statementFrom;
       const effectiveTo = toOverride !== undefined ? toOverride : statementTo;
       const stmt = await getCustomerStatement(
         customer.id,
         { from: effectiveFrom || undefined, to: effectiveTo || undefined },
-        defaultCur
+        effectiveCur
       );
       setStatement(stmt);
     } catch (err) {
@@ -171,6 +190,7 @@ export function CustomerDetailPage({
 
   const handleCurrencyChange = async (cur: string) => {
     playTapSound();
+    selectedCurrencyRef.current = cur;
     setSelectedCurrency(cur);
     setInvoicePage(1);
     if (customer?.id) {
@@ -544,18 +564,25 @@ export function CustomerDetailPage({
                 </span>
 
                 <div className="flex items-center gap-1 bg-secondary/60 p-0.5 rounded-xl border border-border/60">
-                  {Object.keys(financialProfile?.summariesByCurrency || { SDG: {} }).map((cur) => (
+                  {Object.keys(financialProfile?.summariesByCurrency || { [selectedCurrency]: {} }).map((cur) => (
                     <button
                       key={cur}
                       type="button"
                       onClick={() => void handleCurrencyChange(cur)}
-                      className={`px-2.5 py-1 text-xs rounded-lg font-mono font-bold transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 text-xs rounded-lg font-mono font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
                         selectedCurrency === cur
                           ? "bg-primary text-white shadow-2xs"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {cur}
+                      <span>{cur}</span>
+                      <span
+                        className={`font-sans text-[10px] ${
+                          selectedCurrency === cur ? "text-white/85" : "text-muted-foreground/80"
+                        }`}
+                      >
+                        ({getCurrencyShortLabel(cur)})
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -580,16 +607,23 @@ export function CustomerDetailPage({
               <div className="flex flex-wrap items-center justify-between gap-3 text-xs px-2 py-1 bg-secondary/30 rounded-xl font-mono">
                 <div>
                   <span className="text-muted-foreground font-sans text-[11px]">المفوتر: </span>
-                  <strong className="text-foreground font-black">{formatNumber(currentSummary.totalInvoiced)} {selectedCurrency}</strong>
+                  <strong className="text-foreground font-black">
+                    {formatNumber(currentSummary.totalInvoiced)} {getCurrencyShortLabel(selectedCurrency)}{" "}
+                    <span className="text-[10px] font-normal text-muted-foreground">({selectedCurrency})</span>
+                  </strong>
                 </div>
                 <div>
                   <span className="text-muted-foreground font-sans text-[11px]">المسدد: </span>
-                  <strong className="text-emerald-600 dark:text-emerald-400 font-black">{formatNumber(currentSummary.totalPaid)} {selectedCurrency}</strong>
+                  <strong className="text-emerald-600 dark:text-emerald-400 font-black">
+                    {formatNumber(currentSummary.totalPaid)} {getCurrencyShortLabel(selectedCurrency)}{" "}
+                    <span className="text-[10px] font-normal">({selectedCurrency})</span>
+                  </strong>
                 </div>
                 <div>
                   <span className="text-muted-foreground font-sans text-[11px]">المتبقي القائم: </span>
                   <strong className={currentSummary.outstanding > 0.009 ? "text-rose-600 font-black" : "text-emerald-600 font-bold"}>
-                    {formatNumber(currentSummary.outstanding)} {selectedCurrency}
+                    {formatNumber(currentSummary.outstanding)} {getCurrencyShortLabel(selectedCurrency)}{" "}
+                    <span className="text-[10px] font-normal">({selectedCurrency})</span>
                   </strong>
                 </div>
                 <div className="text-[11px] font-sans text-muted-foreground">
@@ -602,7 +636,9 @@ export function CustomerDetailPage({
                   <span className="text-[10.5px] font-bold text-muted-foreground block">إجمالي الفواتير الصادرة</span>
                   <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
                     {formatNumber(currentSummary.totalInvoiced)}{" "}
-                    <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
+                    <span className="text-[10px] font-normal text-muted-foreground">
+                      {getCurrencyShortLabel(selectedCurrency)} ({selectedCurrency})
+                    </span>
                   </p>
                   <span className="text-[10px] text-muted-foreground block">
                     {currentSummary.totalInvoicesCount} فاتورة محررة
@@ -613,7 +649,9 @@ export function CustomerDetailPage({
                   <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-400 block">إجمالي المبالغ المدفوعة</span>
                   <p className="font-mono text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
                     {formatNumber(currentSummary.totalPaid)}{" "}
-                    <span className="text-[10px] font-normal">{selectedCurrency}</span>
+                    <span className="text-[10px] font-normal">
+                      {getCurrencyShortLabel(selectedCurrency)} ({selectedCurrency})
+                    </span>
                   </p>
                   <span className="text-[10px] text-emerald-600/80 block">
                     {currentSummary.paidInvoicesCount} مسددة بالكامل
@@ -624,7 +662,9 @@ export function CustomerDetailPage({
                   <span className="text-[10.5px] font-bold text-rose-700 dark:text-rose-400 block">المبالغ المستحقة (مديونية)</span>
                   <p className="font-mono text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">
                     {formatNumber(currentSummary.outstanding)}{" "}
-                    <span className="text-[10px] font-normal">{selectedCurrency}</span>
+                    <span className="text-[10px] font-normal">
+                      {getCurrencyShortLabel(selectedCurrency)} ({selectedCurrency})
+                    </span>
                   </p>
                   <span className="text-[10px] text-rose-600/80 block">
                     {currentSummary.overdueInvoicesCount > 0
@@ -637,7 +677,9 @@ export function CustomerDetailPage({
                   <span className="text-[10.5px] font-bold text-muted-foreground block">أرصدة مقدمة / دفعات دائنة</span>
                   <p className="font-mono text-base sm:text-lg font-black text-foreground tabular-nums">
                     {formatNumber(currentSummary.advanceCredit)}{" "}
-                    <span className="text-[10px] font-normal text-muted-foreground">{selectedCurrency}</span>
+                    <span className="text-[10px] font-normal text-muted-foreground">
+                      {getCurrencyShortLabel(selectedCurrency)} ({selectedCurrency})
+                    </span>
                   </p>
                   <span className="text-[10px] text-muted-foreground block">
                     {currentSummary.partialInvoicesCount} فاتورة بسداد جزئي
@@ -650,7 +692,7 @@ export function CustomerDetailPage({
           {/* 3. تبويبات مساحة العمل الكاملة */}
           <div className="rounded-2xl border border-border/70 bg-card p-1 shadow-2xs flex items-center gap-1.5 text-xs font-black overflow-x-auto scrollbar-none touch-pan-x overscroll-x-contain select-none">
             {[
-              { key: "invoices" as const, label: `سجل الفواتير (${invoices.length})` },
+              { key: "invoices" as const, label: `سجل الفواتير (${currentInvoicesForCurrency.length})` },
               { key: "statement" as const, label: `كشف الحساب المالي (${selectedCurrency}) (${statement?.lines.length || 0})` },
               { key: "info" as const, label: "بيانات العميل والافتتاحي" },
             ].map((tab) => (
@@ -734,7 +776,7 @@ export function CustomerDetailPage({
                           {pf.meta.date}
                         </span>
                         <span className="font-mono font-bold text-foreground tabular-nums">
-                          {formatNumber(pf.totalAmount)} {pf.currency || "SDG"}
+                          {formatNumber(pf.totalAmount)} {getCurrencyShortLabel(pf.currency)} ({sanitizeCurrency(pf.currency, "SDG")})
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -810,7 +852,9 @@ export function CustomerDetailPage({
                   <div className="border-t border-border/50 pt-3">
                     <span className="text-[10.5px] text-muted-foreground font-bold">حركة الرصيد الافتتاحي</span>
                     <p className="font-bold text-foreground mt-0.5 text-xs">
-                      {formatNumber(customer.openingBalance)} {customer.openingBalanceCurrency || "SDG"}{" "}
+                      {formatNumber(customer.openingBalance)}{" "}
+                      {getCurrencyShortLabel(customer.openingBalanceCurrency)} (
+                      {sanitizeCurrency(customer.openingBalanceCurrency, "SDG")}){" "}
                       ({customer.openingBalanceType === "credit" ? "رصيد دائن / دفعة مقدمة" : "مديونية سابقة مستحقة"})
                     </p>
                     {customer.openingBalanceNotes && (
@@ -859,6 +903,7 @@ export function CustomerDetailPage({
         onOpenChange={setReceiptDialogOpen}
         initialCustomerId={customer.id}
         initialInvoiceId={targetReceiptInvoiceId}
+        defaultCurrency={sanitizeCurrency(selectedCurrency, "SDG")}
         onRecorded={() => {
           void loadAllCustomerData();
           onCustomerUpdated?.();
