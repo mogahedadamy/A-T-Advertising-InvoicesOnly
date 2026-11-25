@@ -127,7 +127,7 @@ async function createV7Workspace(options: { key?: Uint8Array } = {}) {
   const migration = await runPendingMigrations(fixture, { nowIso: NOW });
   expect(migration.warnings).toEqual([]);
   expect(migration.to).toBe(SCHEMA_VERSION);
-  expect(migration.to).toBe(7);
+  expect(migration.to).toBe(DB_VERSION);
 
   const engine = new NodeBackupEngine({
     folderDir,
@@ -393,7 +393,7 @@ describe("P0: Full Multi-Module v7 Round-Trip with AES-256-GCM & Cross-Device Re
     const created = await ws.engine.create({ kind: "manual" });
     expect(created.ok).toBe(true);
     expect(created.manifest?.encrypted).toBe(true);
-    expect(created.manifest?.databaseSchemaVersion).toBe(7);
+    expect(created.manifest?.databaseSchemaVersion).toBe(DB_VERSION);
     expect(created.manifest?.invoiceCount).toBe(5); // 3 custom + 1 proforma + 1 print
     expect(created.manifest?.counts?.official_letters).toBe(2);
     expect(created.manifest?.counts?.customers).toBe(2);
@@ -581,7 +581,7 @@ describe("P0: Official Letters Migration (v7), Smart Merge, Conflict & Parent Gu
 
     const outcome = await runPendingMigrations(fixture, { nowIso: NOW });
     expect(outcome.warnings).toEqual([]);
-    expect(outcome.to).toBe(7);
+    expect(outcome.to).toBe(DB_VERSION);
     expect(fixture.count("official_letters")).toBe(2);
 
     const engine = new NodeBackupEngine({ folderDir, dbDir, currentSchema: DB_VERSION });

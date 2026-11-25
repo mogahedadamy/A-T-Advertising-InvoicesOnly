@@ -1017,7 +1017,12 @@ export function CustomerDetailPage({
         onOpenChange={setReceiptDialogOpen}
         initialCustomerId={customer.id}
         initialInvoiceId={targetReceiptInvoiceId}
-        defaultCurrency={sanitizeCurrency(selectedCurrency, "SDG")}
+        defaultCurrency={sanitizeCurrency(
+          selectedCurrency && selectedCurrency !== "ALL"
+            ? selectedCurrency
+            : financialProfile?.primaryCurrency,
+          "SDG"
+        )}
         onRecorded={() => {
           void loadAllCustomerData();
           onCustomerUpdated?.();

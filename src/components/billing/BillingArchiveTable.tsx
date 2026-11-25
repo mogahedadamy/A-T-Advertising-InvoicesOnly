@@ -60,6 +60,7 @@ interface Props {
   onEditProforma?: (invoice: ProformaInvoice) => void;
   onPreviewProforma?: (invoice: ProformaInvoice) => void;
   onRecordPayment?: (invoiceId: string) => void;
+  onRecordPurchasePayment?: (invoiceId: string) => void;
   onPreviewCalc?: (invoice: InvoiceRecord) => void;
   onCreateNew?: (type: CustomInvoiceType) => void;
 }
@@ -70,6 +71,7 @@ export function BillingArchiveTable({
   onEditProforma,
   onPreviewProforma,
   onRecordPayment,
+  onRecordPurchasePayment,
   onPreviewCalc,
 }: Props) {
   const customers = useCustomers();
@@ -413,10 +415,14 @@ export function BillingArchiveTable({
                         {formatAccountingNumber(rec.total)}{" "}
                         <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase">{rec.currency || "SDG"}</span>
                       </span>
-                      {isCustom && rec.type === "sales" && (
+                      {isCustom && (rec.type === "sales" || rec.type === "purchase") && (
                         <span
                           className={`mt-0.5 block text-[10px] font-sans font-bold ${
-                            settlement.outstanding > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+                            settlement.outstanding > 0
+                              ? rec.type === "purchase"
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-amber-600 dark:text-amber-400"
+                              : "text-emerald-600 dark:text-emerald-400"
                           }`}
                         >
                           {settlement.outstanding > 0
@@ -433,6 +439,7 @@ export function BillingArchiveTable({
                         convertingId={convertingId}
                         sharingId={sharingId}
                         onRecordPayment={onRecordPayment}
+                        onRecordPurchasePayment={onRecordPurchasePayment}
                         onConvertProformaToSales={(r) => void handleConvertProformaToSales(r)}
                         onPreviewCustom={onPreviewCustom}
                         onPreviewProforma={onPreviewProforma}
